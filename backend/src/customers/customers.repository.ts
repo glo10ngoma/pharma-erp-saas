@@ -1,0 +1,18 @@
+import { Injectable } from '@nestjs/common';
+import { AuthUser } from '../common/types/auth-user';
+import { DatabaseService } from '../database/database.service';
+import { CreateCustomerDto } from './dto/create-customer.dto';
+import { UpdateCustomerDto } from './dto/update-customer.dto';
+
+type Row = { customer_id: string; tenant_id: string; customer_code: string; customer_name: string; customer_type: string; phone: string | null; email: string | null; address: string | null; credit_allowed: boolean; credit_limit: string; is_active: boolean; created_at: Date };
+
+@Injectable()
+export class CustomersRepository {
+  constructor(private readonly db: DatabaseService) {}
+  async findAll(user: AuthUser) { const r = await this.db.query<Row>(`SELECT customer_id, tenant_id, customer_code, customer_name, customer_type, phone, email, address, credit_allowed, credit_limit, is_active, created_at FROM customers WHERE tenant_id=$1 ORDER BY customer_name`, [user.tenantId]); return r.rows.map(this.toDto); }
+  async findOne(user: AuthUser, id: string) { const r = await this.db.query<Row>(`SELECT customer_id, tenant_id, customer_code, customer_name, customer_type, phone, email, address, credit_allowed, credit_limit, is_active, created_at FROM customers WHERE tenant_id=$1 AND customer_id=$2 LIMIT 1`, [user.tenantId, id]); return r.rows[0] ? this.toDto(r.rows[0]) : null; }
+  async create(user: AuthUser, dto: CreateCustomerDto) { const r = await this.db.query<Row>(`INSERT INTO customers (tenant_id, customer_code, customer_name, customer_type, phone, email, address, credit_allowed, credit_limit, is_active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING customer_id, tenant_id, customer_code, customer_name, customer_type, phone, email, address, credit_allowed, credit_limit, is_active, created_at`, [user.tenantId, dto.customerCode, dto.customerName, dto.customerType ?? 'INDIVIDUAL', dto.phone ?? null, dto.email ?? null, dto.address ?? null, dto.creditAllowed ?? false, dto.creditLimit ?? 0, dto.isActive ?? true]); return this.toDto(r.rows[0]); }
+  async update(user: AuthUser, id: string, dto: UpdateCustomerDto) { const c = await this.findOne(user, id); if (!c) return null; const r = await this.db.query<Row>(`UPDATE customers SET customer_code=$3, customer_name=$4, customer_type=$5, phone=$6, email=$7, address=$8, credit_allowed=$9, credit_limit=$10, is_active=$11 WHERE tenant_id=$1 AND customer_id=$2 RETURNING customer_id, tenant_id, customer_code, customer_name, customer_type, phone, email, address, credit_allowed, credit_limit, is_active, created_at`, [user.tenantId, id, dto.customerCode ?? c.customerCode, dto.customerName ?? c.customerName, dto.customerType ?? c.customerType, dto.phone ?? c.phone, dto.email ?? c.email, dto.address ?? c.address, dto.creditAllowed ?? c.creditAllowed, dto.creditLimit ?? c.creditLimit, dto.isActive ?? c.isActive]); return r.rows[0] ? this.toDto(r.rows[0]) : null; }
+  async remove(user: AuthUser, id: string) { const r = await this.db.query<Row>(`UPDATE customers SET is_active=false WHERE tenant_id=$1 AND customer_id=$2 RETURNING customer_id, tenant_id, customer_code, customer_name, customer_type, phone, email, address, credit_allowed, credit_limit, is_active, created_at`, [user.tenantId, id]); return r.rows[0] ? this.toDto(r.rows[0]) : null; }
+  private toDto(row: Row) { return { customerId: row.customer_id, tenantId: row.tenant_id, customerCode: row.customer_code, customerName: row.customer_name, customerType: row.customer_type, phone: row.phone, email: row.email, address: row.address, creditAllowed: row.credit_allowed, creditLimit: Number(row.credit_limit), isActive: row.is_active, createdAt: row.created_at }; }
+}

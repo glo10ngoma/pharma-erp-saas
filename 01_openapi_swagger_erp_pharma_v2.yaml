@@ -1,0 +1,523 @@
+openapi: 3.0.3
+info:
+  title: ERP Pharmaceutique SaaS V2 API
+  version: 1.0.0
+  description: API REST pour ERP Pharmaceutique SaaS multi-tenant basé sur React, NestJS et Supabase PostgreSQL.
+servers:
+  - url: https://api.pharmaerp.local/api/v1
+    description: Production / exemple
+  - url: http://localhost:3000/api/v1
+    description: Local development
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+  - name: Tenants
+  - name: Users
+  - name: Articles
+  - name: Purchases
+  - name: Stocks
+  - name: Sales
+  - name: Cash
+  - name: Insurance
+  - name: Receivables
+  - name: Accounting
+  - name: Reports
+
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Connexion utilisateur
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Connexion réussie
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Profil utilisateur connecté
+      responses:
+        '200':
+          description: Profil connecté
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+
+  /tenants:
+    get:
+      tags: [Tenants]
+      summary: Liste des tenants SaaS
+      x-permission: saas.tenants.read
+      responses:
+        '200':
+          description: Liste tenants
+    post:
+      tags: [Tenants]
+      summary: Créer un tenant
+      x-permission: saas.tenants.create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTenantDto'
+      responses:
+        '201':
+          description: Tenant créé
+
+  /users:
+    get:
+      tags: [Users]
+      summary: Liste utilisateurs
+      x-permission: users.read
+      responses:
+        '200':
+          description: Liste utilisateurs
+    post:
+      tags: [Users]
+      summary: Créer utilisateur
+      x-permission: users.create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserDto'
+      responses:
+        '201':
+          description: Utilisateur créé
+
+  /articles:
+    get:
+      tags: [Articles]
+      summary: Liste des articles
+      x-permission: articles.read
+      parameters:
+        - in: query
+          name: search
+          schema: { type: string }
+        - in: query
+          name: categoryId
+          schema: { type: string, format: uuid }
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 50 }
+      responses:
+        '200':
+          description: Liste articles
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedArticles'
+    post:
+      tags: [Articles]
+      summary: Créer article
+      x-permission: articles.create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateArticleDto'
+      responses:
+        '201':
+          description: Article créé
+
+  /articles/{id}:
+    get:
+      tags: [Articles]
+      summary: Détail article
+      x-permission: articles.read
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Article
+    patch:
+      tags: [Articles]
+      summary: Modifier article
+      x-permission: articles.update
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Article modifié
+
+  /purchases:
+    get:
+      tags: [Purchases]
+      summary: Liste achats
+      x-permission: purchases.read
+      responses:
+        '200': { description: Liste achats }
+    post:
+      tags: [Purchases]
+      summary: Créer achat brouillon
+      x-permission: purchases.create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePurchaseDto'
+      responses:
+        '201':
+          description: Achat créé
+
+  /purchases/{id}/items:
+    post:
+      tags: [Purchases]
+      summary: Ajouter ligne achat
+      x-permission: purchases.update_draft
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddPurchaseItemDto'
+      responses:
+        '201':
+          description: Ligne ajoutée
+
+  /purchases/{id}/validate:
+    post:
+      tags: [Purchases]
+      summary: Valider achat et alimenter stock
+      x-permission: purchases.validate
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Achat validé
+
+  /stocks:
+    get:
+      tags: [Stocks]
+      summary: Consulter stocks
+      x-permission: stocks.read
+      responses:
+        '200':
+          description: Stocks
+
+  /stocks/articles/{articleId}:
+    get:
+      tags: [Stocks]
+      summary: Stock par article et lot
+      x-permission: stocks.read
+      parameters:
+        - name: articleId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Stock article
+
+  /sales:
+    get:
+      tags: [Sales]
+      summary: Liste ventes
+      x-permission: sales.read
+      responses:
+        '200': { description: Liste ventes }
+    post:
+      tags: [Sales]
+      summary: Créer vente brouillon
+      x-permission: sales.create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSaleDto'
+      responses:
+        '201':
+          description: Vente créée
+
+  /sales/{id}/items/fefo:
+    post:
+      tags: [Sales]
+      summary: Ajouter article à la vente avec allocation FEFO
+      x-permission: sales.update_draft
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddSaleItemFefoDto'
+      responses:
+        '201':
+          description: Lignes FEFO ajoutées
+
+  /sales/{id}/validate:
+    post:
+      tags: [Sales]
+      summary: Valider vente, paiement, facture et sortie stock
+      x-permission: sales.validate
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateSaleDto'
+      responses:
+        '200':
+          description: Vente validée
+
+  /cash/sessions/open:
+    post:
+      tags: [Cash]
+      summary: Ouvrir session caisse
+      x-permission: cash_sessions.open
+      responses:
+        '201': { description: Session ouverte }
+
+  /cash/sessions/{id}/close:
+    post:
+      tags: [Cash]
+      summary: Fermer session caisse
+      x-permission: cash_sessions.close
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200': { description: Session fermée }
+
+  /organizations:
+    get:
+      tags: [Insurance]
+      summary: Liste organisations partenaires
+      x-permission: organizations.read
+      responses:
+        '200': { description: Organisations }
+    post:
+      tags: [Insurance]
+      summary: Créer organisation
+      x-permission: organizations.create
+      responses:
+        '201': { description: Organisation créée }
+
+  /receivables:
+    get:
+      tags: [Receivables]
+      summary: Liste créances
+      x-permission: receivables.read
+      responses:
+        '200': { description: Créances }
+
+  /receivables/{id}/pay:
+    post:
+      tags: [Receivables]
+      summary: Encaisser une créance
+      x-permission: receivables.pay
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200': { description: Paiement créance enregistré }
+
+  /accounting/journal-entries:
+    get:
+      tags: [Accounting]
+      summary: Liste écritures comptables
+      x-permission: accounting.read
+      responses:
+        '200': { description: Écritures }
+
+  /reports/dashboard:
+    get:
+      tags: [Reports]
+      summary: Dashboard principal
+      x-permission: reports.dashboard
+      responses:
+        '200':
+          description: Indicateurs dashboard
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, format: password }
+
+    AuthResponse:
+      type: object
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        user:
+          $ref: '#/components/schemas/UserProfile'
+
+    UserProfile:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tenantId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        fullName: { type: string }
+        role: { type: string }
+        permissions:
+          type: array
+          items: { type: string }
+
+    CreateTenantDto:
+      type: object
+      required: [tenantCode, tenantName, tenantType]
+      properties:
+        tenantCode: { type: string }
+        tenantName: { type: string }
+        tenantType:
+          type: string
+          enum: [PHARMACY, PHARMACY_GROUP, WAREHOUSE, CLINIC, HOSPITAL, WHOLESALER, OTHER]
+        email: { type: string }
+        phone: { type: string }
+
+    CreateUserDto:
+      type: object
+      required: [fullName, username, password, roleId, siteId]
+      properties:
+        fullName: { type: string }
+        username: { type: string }
+        email: { type: string }
+        password: { type: string }
+        roleId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+
+    CreateArticleDto:
+      type: object
+      required: [articleCode, commercialName]
+      properties:
+        articleCode: { type: string }
+        commercialName: { type: string }
+        dci: { type: string }
+        categoryId: { type: string, format: uuid }
+        subCategoryId: { type: string, format: uuid }
+        formId: { type: string, format: uuid }
+        routeId: { type: string, format: uuid }
+        dosage: { type: string }
+        atcCode: { type: string }
+        prescriptionRequired: { type: boolean }
+        barcode: { type: string }
+        defaultStockMin: { type: number }
+
+    PaginatedArticles:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Article'
+        total: { type: integer }
+
+    Article:
+      type: object
+      properties:
+        articleId: { type: string, format: uuid }
+        articleCode: { type: string }
+        commercialName: { type: string }
+        dci: { type: string }
+        stockAvailable: { type: number }
+        sellingPrice: { type: number }
+
+    CreatePurchaseDto:
+      type: object
+      required: [supplierId, siteId, currencyId, exchangeRate, purchaseDate]
+      properties:
+        supplierId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        currencyId: { type: string, format: uuid }
+        exchangeRate: { type: number }
+        purchaseDate: { type: string, format: date }
+
+    AddPurchaseItemDto:
+      type: object
+      required: [articleId, lotNumber, expiryDate, quantity, purchaseUnitPrice, sellingUnitPrice]
+      properties:
+        articleId: { type: string, format: uuid }
+        lotNumber: { type: string }
+        expiryDate: { type: string, format: date }
+        quantity: { type: number }
+        purchaseUnitPrice: { type: number }
+        sellingUnitPrice: { type: number }
+
+    CreateSaleDto:
+      type: object
+      required: [siteId, currencyId, saleType]
+      properties:
+        siteId: { type: string, format: uuid }
+        customerId: { type: string, format: uuid }
+        currencyId: { type: string, format: uuid }
+        saleType:
+          type: string
+          enum: [CASH, CUSTOMER_CREDIT, ORGANIZATION_CREDIT, INSURANCE]
+
+    AddSaleItemFefoDto:
+      type: object
+      required: [articleId, quantity]
+      properties:
+        articleId: { type: string, format: uuid }
+        quantity: { type: number }
+
+    ValidateSaleDto:
+      type: object
+      required: [payments]
+      properties:
+        payments:
+          type: array
+          items:
+            type: object
+            required: [paymentMethodId, currencyId, amount]
+            properties:
+              paymentMethodId: { type: string, format: uuid }
+              currencyId: { type: string, format: uuid }
+              amount: { type: number }
+              referencePayment: { type: string }
+
+    ApiError:
+      type: object
+      properties:
+        success: { type: boolean, example: false }
+        error:
+          type: object
+          properties:
+            code: { type: string, example: STOCK_INSUFFICIENT }
+            message: { type: string }
