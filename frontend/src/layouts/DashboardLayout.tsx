@@ -1,66 +1,95 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, Outlet, useNavigate } from 'react-router-dom';
+
+type NavLinkItem = [to: string, label: string, permission?: string];
+type NavGroup = { title: string; icon: string; links: NavLinkItem[] };
 
 export function DashboardLayout() {
   const navigate = useNavigate();
   const token = localStorage.getItem('accessToken');
-  const groups = [
+  const user = JSON.parse(localStorage.getItem('currentUser') || 'null');
+  const permissions: string[] = user?.permissions ?? [];
+  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
+  const groups = useMemo<NavGroup[]>(() => [
     {
       title: 'Pilotage',
+      icon: 'TB',
       links: [
-        ['/dashboard', 'Dashboard'],
-        ['/reports', 'Reporting BI'],
-        ['/profile', 'Mon profil'],
+        ['/dashboard', 'Dashboard', undefined],
+        ['/reports', 'Reporting BI', 'reports.dashboard'],
+        ['/profile', 'Mon profil', undefined],
       ],
     },
     {
-      title: 'Pharmacie',
+      title: 'Administration',
+      icon: 'AD',
       links: [
-        ['/articles', 'Articles'],
-        ['/categories', 'Categories'],
-        ['/sub-categories', 'Sous-categories'],
-        ['/galenic-forms', 'Formes galeniques'],
-        ['/administration-routes', 'Voies administration'],
-        ['/product-types', 'Types produits'],
-        ['/suppliers', 'Fournisseurs'],
-        ['/customers', 'Clients'],
+        ['/users', 'Users', 'users.read'],
+        ['/roles', 'Roles', 'roles.read'],
+        ['/permissions', 'Permissions', 'permissions.read'],
+        ['/sites', 'Sites', 'sites.read'],
       ],
     },
     {
-      title: 'Operations',
+      title: 'Referentiel',
+      icon: 'RF',
       links: [
-        ['/purchases', 'Achats'],
-        ['/lots', 'Lots'],
-        ['/stocks', 'Stocks'],
-        ['/sales', 'Ventes'],
-        ['/pos', 'POS'],
-        ['/cash', 'Caisse'],
-        ['/inventories', 'Inventaires'],
+        ['/articles', 'Articles', 'articles.read'],
+        ['/categories', 'Categories', 'categories.read'],
+        ['/sub-categories', 'Sous-categories', 'sub_categories.read'],
+        ['/galenic-forms', 'Formes', 'galenic_forms.read'],
+        ['/administration-routes', 'Voies', 'administration_routes.read'],
+        ['/product-types', 'Types produits', 'product_types.read'],
+        ['/suppliers', 'Fournisseurs', 'suppliers.read'],
+        ['/customers', 'Clients', 'customers.read'],
       ],
     },
     {
-      title: 'Tiers',
+      title: 'Stock',
+      icon: 'ST',
       links: [
-        ['/organizations', 'Organisations'],
-        ['/insurance-plans', 'Plans assurance'],
-        ['/memberships', 'Affiliations'],
-        ['/receivables', 'Creances'],
+        ['/purchases', 'Achats', 'purchases.read'],
+        ['/lots', 'Lots', 'lots.read'],
+        ['/stocks', 'Stocks', 'stocks.read'],
+        ['/inventories', 'Inventaires', 'inventories.read'],
       ],
     },
     {
-      title: 'Finance & admin',
+      title: 'Vente',
+      icon: 'VN',
       links: [
-        ['/accounting/accounts', 'Plan comptable'],
-        ['/accounting/journals', 'Journaux'],
-        ['/accounting/entries', 'Ecritures'],
-        ['/accounting/general-ledger', 'Grand livre'],
-        ['/accounting/trial-balance', 'Balance'],
-        ['/users', 'Users'],
-        ['/roles', 'Roles'],
-        ['/permissions', 'Permissions'],
-        ['/sites', 'Sites'],
+        ['/pos', 'POS', 'sales.create'],
+        ['/sales', 'Ventes', 'sales.read'],
+        ['/cash', 'Caisse', 'cash_registers.read'],
       ],
     },
-  ];
+    {
+      title: 'Assurances & creances',
+      icon: 'AS',
+      links: [
+        ['/organizations', 'Organisations', 'organizations.read'],
+        ['/insurance-plans', 'Plans assurance', 'insurance_plans.read'],
+        ['/memberships', 'Memberships', 'memberships.read'],
+        ['/receivables', 'Creances', 'receivables.read'],
+      ],
+    },
+    {
+      title: 'Finance',
+      icon: 'FI',
+      links: [
+        ['/accounting/accounts', 'Comptes', 'accounting.read'],
+        ['/accounting/journals', 'Journaux', 'accounting.read'],
+        ['/accounting/entries', 'Ecritures', 'accounting.read'],
+        ['/accounting/general-ledger', 'Grand livre', 'accounting.general_ledger'],
+        ['/accounting/trial-balance', 'Balance', 'accounting.trial_balance'],
+      ],
+    },
+  ], []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('theme', theme);
+  }, [theme]);
 
   if (!token) return <Navigate to="/login" replace />;
 
@@ -77,16 +106,21 @@ export function DashboardLayout() {
           <h2>PharmaERP</h2>
           <span>SaaS pharmacie V1</span>
         </div>
+        <button className="ghost-button theme-toggle" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+          {theme === 'dark' ? 'Theme light' : 'Theme dark'}
+        </button>
         <nav>
           {groups.map((group) => (
-            <div className="nav-group" key={group.title}>
-              <div className="nav-group-title">{group.title}</div>
-              {group.links.map(([to, label]) => (
-                <Link className="nav-link" key={to} to={to}>
-                  {label}
-                </Link>
-              ))}
-            </div>
+            <details className="nav-group" key={group.title} open>
+              <summary className="nav-group-title"><span>{group.icon}</span> {group.title}</summary>
+              {group.links
+                .filter(([, , permission]) => !permission || permissions.includes(permission))
+                .map(([to, label]) => (
+                  <Link className="nav-link" key={to} to={to}>
+                    {label}
+                  </Link>
+                ))}
+            </details>
           ))}
         </nav>
         <button className="ghost-button" onClick={logout}>

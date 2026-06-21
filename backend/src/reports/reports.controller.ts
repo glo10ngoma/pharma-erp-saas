@@ -48,7 +48,7 @@ export class ReportsController {
   expiry(@CurrentUser() user: AuthUser, @Query() filters: ReportFilterDto) { return this.service.expiry(user, filters); }
 
   @Get('top-products')
-  @RequirePermission('reports.sales')
+  @RequirePermission('reports.top_products')
   @ApiOperation({ summary: 'Top produits vendus' })
   topProducts(@CurrentUser() user: AuthUser, @Query() filters: ReportFilterDto) { return this.service.topProducts(user, filters); }
 }

@@ -93,6 +93,8 @@ VALUES
   ('articles.create', 'Creer article', 'Articles', 'Creer un article', TRUE),
   ('articles.update', 'Modifier article', 'Articles', 'Modifier un article', TRUE),
   ('articles.delete', 'Desactiver article', 'Articles', 'Desactiver un article', TRUE),
+  ('attachments.read', 'Consulter pieces jointes', 'Attachments', 'Voir les pieces jointes', TRUE),
+  ('audit.read', 'Consulter audit', 'Audit', 'Voir les journaux audit', TRUE),
   ('categories.read', 'Consulter categories', 'Categories', 'Voir les categories', TRUE),
   ('categories.create', 'Creer categorie', 'Categories', 'Creer une categorie', TRUE),
   ('categories.update', 'Modifier categorie', 'Categories', 'Modifier une categorie', TRUE),
@@ -121,6 +123,7 @@ VALUES
   ('customers.create', 'Creer client', 'Customers', 'Creer un client', TRUE),
   ('customers.update', 'Modifier client', 'Customers', 'Modifier un client', TRUE),
   ('customers.delete', 'Desactiver client', 'Customers', 'Desactiver un client', TRUE),
+  ('disposals.read', 'Consulter sorties stock', 'Disposals', 'Voir les sorties stock', TRUE),
   ('purchases.read', 'Consulter achats', 'Purchases', 'Voir les achats', TRUE),
   ('purchases.create', 'Creer achat', 'Purchases', 'Creer un achat brouillon', TRUE),
   ('purchases.update_draft', 'Modifier achat brouillon', 'Purchases', 'Modifier un achat brouillon', TRUE),
@@ -152,6 +155,8 @@ VALUES
   ('memberships.read', 'Consulter affiliations', 'Memberships', 'Voir les affiliations', TRUE),
   ('memberships.create', 'Creer affiliation', 'Memberships', 'Creer une affiliation', TRUE),
   ('memberships.update', 'Modifier affiliation', 'Memberships', 'Modifier une affiliation', TRUE),
+  ('notifications.read', 'Consulter notifications', 'Notifications', 'Voir les notifications', TRUE),
+  ('prescriptions.read', 'Consulter ordonnances', 'Prescriptions', 'Voir les ordonnances', TRUE),
   ('receivables.read', 'Consulter creances', 'Receivables', 'Voir les creances', TRUE),
   ('receivables.pay', 'Payer creance', 'Receivables', 'Enregistrer un paiement creance', TRUE),
   ('inventories.read', 'Consulter inventaires', 'Inventories', 'Voir les inventaires', TRUE),
@@ -172,6 +177,7 @@ VALUES
   ('reports.receivables', 'Consulter rapports creances', 'Reports', 'Voir les rapports creances', TRUE),
   ('reports.expiry', 'Consulter rapports peremption', 'Reports', 'Voir les rapports peremption', TRUE),
   ('reports.margins', 'Consulter rapports marges', 'Reports', 'Voir les rapports marges', TRUE),
+  ('reports.top_products', 'Consulter top produits', 'Reports', 'Voir les produits les plus vendus', TRUE),
   ('users.read', 'Consulter utilisateurs', 'Users', 'Voir les utilisateurs', TRUE),
   ('users.create', 'Creer utilisateur', 'Users', 'Creer un utilisateur', TRUE),
   ('users.update', 'Modifier utilisateur', 'Users', 'Modifier un utilisateur', TRUE),
@@ -188,7 +194,9 @@ VALUES
   ('sites.read', 'Consulter sites', 'Sites', 'Voir les sites', TRUE),
   ('sites.create', 'Creer site', 'Sites', 'Creer un site', TRUE),
   ('sites.update', 'Modifier site', 'Sites', 'Modifier un site', TRUE),
-  ('sites.delete', 'Desactiver site', 'Sites', 'Desactiver un site', TRUE)
+  ('sites.delete', 'Desactiver site', 'Sites', 'Desactiver un site', TRUE),
+  ('tenants.read', 'Consulter tenants', 'Tenants', 'Voir les tenants', TRUE),
+  ('transfers.read', 'Consulter transferts', 'Transfers', 'Voir les transferts', TRUE)
 ON CONFLICT (permission_code) DO UPDATE
 SET permission_name = EXCLUDED.permission_name,
     module_name = EXCLUDED.module_name,
@@ -222,6 +230,7 @@ FROM roles r
 JOIN tenants t ON t.tenant_id = r.tenant_id
 JOIN permissions p ON p.permission_code IN (
   'articles.read','articles.create','articles.update','articles.delete',
+  'attachments.read','audit.read',
   'categories.read','categories.create','categories.update','categories.delete',
   'sub_categories.read','sub_categories.create','sub_categories.update','sub_categories.delete',
   'galenic_forms.read','galenic_forms.create','galenic_forms.update','galenic_forms.delete',
@@ -229,6 +238,7 @@ JOIN permissions p ON p.permission_code IN (
   'product_types.read','product_types.create','product_types.update','product_types.delete',
   'suppliers.read','suppliers.create','suppliers.update','suppliers.delete',
   'customers.read','customers.create','customers.update','customers.delete',
+  'disposals.read',
   'purchases.read','purchases.create','purchases.update_draft','purchases.validate',
   'lots.read','lots.block','stocks.read','stock_movements.read',
   'sales.read','sales.create','sales.update_draft','sales.validate','sales.cancel_draft',
@@ -237,15 +247,17 @@ JOIN permissions p ON p.permission_code IN (
   'organizations.read','organizations.create','organizations.update','organizations.disable',
   'insurance_plans.read','insurance_plans.create','insurance_plans.update',
   'memberships.read','memberships.create','memberships.update',
+  'notifications.read','prescriptions.read',
   'receivables.read','receivables.pay',
   'inventories.read','inventories.create','inventories.start','inventories.close','inventories.validate',
   'stock_adjustments.read',
   'accounting.read','accounting.post','accounting.manage_accounts','accounting.trial_balance','accounting.general_ledger',
-  'reports.dashboard','reports.sales','reports.stock','reports.cash','reports.receivables','reports.expiry','reports.margins',
+  'reports.dashboard','reports.sales','reports.stock','reports.cash','reports.receivables','reports.expiry','reports.margins','reports.top_products',
   'users.read','users.create','users.update','users.delete',
   'roles.read','roles.create','roles.update','roles.delete','roles.assign_permissions',
   'permissions.read','permissions.create','permissions.update','permissions.delete',
-  'sites.read','sites.create','sites.update','sites.delete'
+  'sites.read','sites.create','sites.update','sites.delete',
+  'tenants.read','transfers.read'
 )
 WHERE t.tenant_code = 'STAGING'
   AND r.role_name = 'ADMIN'

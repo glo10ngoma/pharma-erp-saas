@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiErrorMessage } from '../../services/apiError';
 import { reportsService, ReportFilters } from '../../services/reports.service';
+import { sitesService } from '../../services/sites.service';
 
 const moneyKeys = new Set(['totalAmount', 'patientAmount', 'insuranceAmount', 'purchaseValue', 'saleValue', 'revenue', 'estimatedCost', 'grossMargin', 'amountDue', 'amountPaid', 'balance', 'amount']);
 
@@ -17,6 +18,7 @@ export function ReportsDashboardPage() {
   const receivables = useQuery({ queryKey: [...queryKey, 'receivables'], queryFn: async () => (await reportsService.receivables(filters)).data });
   const expiry = useQuery({ queryKey: [...queryKey, 'expiry'], queryFn: async () => (await reportsService.expiry(filters)).data });
   const topProducts = useQuery({ queryKey: [...queryKey, 'top-products'], queryFn: async () => (await reportsService.topProducts(filters)).data });
+  const sites = useQuery({ queryKey: ['sites'], queryFn: async () => (await sitesService.getAll()).data });
   const error = [dashboard, sales, stock, margins, cash, receivables, expiry, topProducts].find((q) => q.isError)?.error;
   const kpis = dashboard.data;
   const cards = useMemo(() => kpis ? [
@@ -41,7 +43,10 @@ export function ReportsDashboardPage() {
     <div className="card form-grid">
       <input className="input" type="date" value={filters.from ?? ''} onChange={(e)=>setFilters({ ...filters, from: e.target.value })} />
       <input className="input" type="date" value={filters.to ?? ''} onChange={(e)=>setFilters({ ...filters, to: e.target.value })} />
-      <input className="input" placeholder="siteId optionnel" value={filters.siteId ?? ''} onChange={(e)=>setFilters({ ...filters, siteId: e.target.value || undefined })} />
+      <select className="input" value={filters.siteId ?? ''} onChange={(e)=>setFilters({ ...filters, siteId: e.target.value || undefined })}>
+        <option value="">Tous les sites</option>
+        {(sites.data ?? []).map((site) => <option key={site.siteId} value={site.siteId}>{site.siteName}</option>)}
+      </select>
     </div>
     <div className="grid two">
       {dashboard.isLoading ? <div className="card"><p className="loading-state">Chargement des KPIs...</p></div> : cards.map(([label, value]) => <div className="card kpi-card" key={label}><span className="kpi-label">{label}</span><p className="metric">{format(value)}</p></div>)}

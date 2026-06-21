@@ -1,6 +1,7 @@
 export function usePermission() {
-  const raw = localStorage.getItem('permissions');
-  const permissions = raw ? JSON.parse(raw) : [];
+  const raw = localStorage.getItem('currentUser');
+  const user = raw ? JSON.parse(raw) : null;
+  const permissions = user?.permissions ?? [];
 
   return {
     can: (permission: string) => permissions.includes(permission),

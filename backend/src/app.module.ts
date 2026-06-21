@@ -31,6 +31,7 @@ import { ReceivablesModule } from './receivables/receivables.module';
 import { InventoriesModule } from './inventories/inventories.module';
 import { AccountingModule } from './accounting/accounting.module';
 import { ReportsModule } from './reports/reports.module';
+import { CodeGeneratorModule } from './code-generator/code-generator.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { ReportsModule } from './reports/reports.module';
     InventoriesModule,
     AccountingModule,
     ReportsModule,
+    CodeGeneratorModule,
     UsersModule,
     RolesModule,
     PermissionsModule,

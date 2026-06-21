@@ -1,10 +1,13 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Modal } from '../../components/Modal';
 import { articlesService } from '../../services/articles.service';
+import { codeGeneratorService } from '../../services/codeGenerator.service';
 import { referenceService } from '../../services/reference.service';
 
 export function ArticlesPage() {
   const qc = useQueryClient();
+  const [modalOpen, setModalOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [articleCode, setArticleCode] = useState('');
   const [commercialName, setCommercialName] = useState('');
@@ -26,7 +29,16 @@ export function ArticlesPage() {
   const forms = useQuery({ queryKey: ['galenic-forms'], queryFn: async () => (await referenceService.galenicForms.getAll()).data });
   const routes = useQuery({ queryKey: ['administration-routes'], queryFn: async () => (await referenceService.administrationRoutes.getAll()).data });
   const productTypes = useQuery({ queryKey: ['product-types'], queryFn: async () => (await referenceService.productTypes.getAll()).data });
-  const create = useMutation({ mutationFn: articlesService.create, onSuccess: () => { setArticleCode(''); setCommercialName(''); setDci(''); setDosage(''); setAtcCode(''); setBarcode(''); qc.invalidateQueries({ queryKey: ['articles'] }); } });
+  const nextCode = useQuery({ queryKey: ['next-code', 'articles', modalOpen], enabled: modalOpen, queryFn: async () => (await codeGeneratorService.next('articles')).data.code });
+  const create = useMutation({ mutationFn: articlesService.create, onSuccess: () => { setArticleCode(''); setCommercialName(''); setDci(''); setDosage(''); setAtcCode(''); setBarcode(''); setModalOpen(false); qc.invalidateQueries({ queryKey: ['articles'] }); } });
+
+  function openCreate() {
+    setModalOpen(true);
+  }
+
+  useEffect(() => {
+    if (modalOpen && !articleCode && nextCode.data) setArticleCode(nextCode.data);
+  }, [articleCode, modalOpen, nextCode.data]);
 
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -50,8 +62,12 @@ export function ArticlesPage() {
 
   return (
     <>
-      <h1>Articles</h1>
-      <form className="card form-grid" onSubmit={submit}>
+      <div className="toolbar">
+        <h1>Articles</h1>
+        <button className="button" onClick={openCreate}>Nouvel article</button>
+      </div>
+      <Modal title="Nouvel article" open={modalOpen} onClose={() => setModalOpen(false)}>
+      <form className="form-grid" onSubmit={submit}>
         <input className="input" placeholder="Code article" value={articleCode} onChange={(e)=>setArticleCode(e.target.value)} required />
         <input className="input" placeholder="Nom commercial" value={commercialName} onChange={(e)=>setCommercialName(e.target.value)} required />
         <input className="input" placeholder="DCI" value={dci} onChange={(e)=>setDci(e.target.value)} />
@@ -67,6 +83,7 @@ export function ArticlesPage() {
         <input className="input" placeholder="Stock max" type="number" value={defaultStockMax} onChange={(e)=>setDefaultStockMax(e.target.value)} />
         <button className="button" disabled={create.isPending}>{create.isPending ? 'Creation...' : 'Creer article'}</button>
       </form>
+      </Modal>
       <div className="card">
         <input className="input" placeholder="Recherche article, DCI ou code-barres" value={search} onChange={(e)=>setSearch(e.target.value)} />
       </div>
