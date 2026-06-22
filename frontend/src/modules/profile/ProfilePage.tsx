@@ -1,11 +1,12 @@
 import { FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../auth/AuthContext';
 import { apiErrorMessage } from '../../services/apiError';
 import { authService } from '../../services/auth.service';
 
 export function ProfilePage() {
   const navigate = useNavigate();
-  const user = JSON.parse(localStorage.getItem('currentUser') || 'null');
+  const { currentUser: user, logout } = useAuth();
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -19,8 +20,7 @@ export function ProfilePage() {
 
     try {
       await authService.changePassword({ oldPassword, newPassword, confirmPassword });
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('currentUser');
+      logout();
       navigate('/login', { replace: true });
     } catch (err) {
       setError(apiErrorMessage(err));

@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { AuthProvider } from './auth/AuthContext';
 import { DashboardLayout } from './layouts/DashboardLayout';
 import { LoginPage } from './modules/auth/LoginPage';
 import { DashboardPage } from './modules/dashboard/DashboardPage';
@@ -43,49 +44,51 @@ const queryClient = new QueryClient();
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route element={<DashboardLayout />}>
-            <Route path="/" element={<Navigate to="/dashboard" />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
-            <Route path="/articles" element={<ArticlesPage />} />
-            <Route path="/categories" element={<CategoriesPage />} />
-            <Route path="/sub-categories" element={<SubCategoriesPage />} />
-            <Route path="/galenic-forms" element={<GalenicFormsPage />} />
-            <Route path="/administration-routes" element={<AdministrationRoutesPage />} />
-            <Route path="/product-types" element={<ProductTypesPage />} />
-            <Route path="/suppliers" element={<SuppliersPage />} />
-            <Route path="/customers" element={<CustomersPage />} />
-            <Route path="/purchases" element={<PurchasesPage />} />
-            <Route path="/purchases/new" element={<NewPurchasePage />} />
-            <Route path="/purchases/:id" element={<PurchaseDetailPage />} />
-            <Route path="/lots" element={<LotsPage />} />
-            <Route path="/stocks" element={<StocksPage />} />
-            <Route path="/sales" element={<SalesPage />} />
-            <Route path="/pos" element={<PosPage />} />
-            <Route path="/sales/:id" element={<SaleDetailPage />} />
-            <Route path="/cash" element={<CashPage />} />
-            <Route path="/organizations" element={<OrganizationsPage />} />
-            <Route path="/insurance-plans" element={<InsurancePlansPage />} />
-            <Route path="/memberships" element={<MembershipsPage />} />
-            <Route path="/receivables" element={<ReceivablesPage />} />
-            <Route path="/inventories" element={<InventoriesPage />} />
-            <Route path="/inventories/:id" element={<InventoryDetailPage />} />
-            <Route path="/accounting/accounts" element={<AccountsPage />} />
-            <Route path="/accounting/journals" element={<JournalsPage />} />
-            <Route path="/accounting/entries" element={<EntriesPage />} />
-            <Route path="/accounting/general-ledger" element={<GeneralLedgerPage />} />
-            <Route path="/accounting/trial-balance" element={<TrialBalancePage />} />
-            <Route path="/reports" element={<ReportsDashboardPage />} />
-            <Route path="/users" element={<UsersPage />} />
-            <Route path="/roles" element={<RolesPage />} />
-            <Route path="/permissions" element={<PermissionsPage />} />
-            <Route path="/sites" element={<SitesPage />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route element={<DashboardLayout />}>
+              <Route path="/" element={<Navigate to="/dashboard" />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/articles" element={<ArticlesPage />} />
+              <Route path="/categories" element={<CategoriesPage />} />
+              <Route path="/sub-categories" element={<SubCategoriesPage />} />
+              <Route path="/galenic-forms" element={<GalenicFormsPage />} />
+              <Route path="/administration-routes" element={<AdministrationRoutesPage />} />
+              <Route path="/product-types" element={<ProductTypesPage />} />
+              <Route path="/suppliers" element={<SuppliersPage />} />
+              <Route path="/customers" element={<CustomersPage />} />
+              <Route path="/purchases" element={<PurchasesPage />} />
+              <Route path="/purchases/new" element={<NewPurchasePage />} />
+              <Route path="/purchases/:id" element={<PurchaseDetailPage />} />
+              <Route path="/lots" element={<LotsPage />} />
+              <Route path="/stocks" element={<StocksPage />} />
+              <Route path="/sales" element={<SalesPage />} />
+              <Route path="/pos" element={<PosPage />} />
+              <Route path="/sales/:id" element={<SaleDetailPage />} />
+              <Route path="/cash" element={<CashPage />} />
+              <Route path="/organizations" element={<OrganizationsPage />} />
+              <Route path="/insurance-plans" element={<InsurancePlansPage />} />
+              <Route path="/memberships" element={<MembershipsPage />} />
+              <Route path="/receivables" element={<ReceivablesPage />} />
+              <Route path="/inventories" element={<InventoriesPage />} />
+              <Route path="/inventories/:id" element={<InventoryDetailPage />} />
+              <Route path="/accounting/accounts" element={<AccountsPage />} />
+              <Route path="/accounting/journals" element={<JournalsPage />} />
+              <Route path="/accounting/entries" element={<EntriesPage />} />
+              <Route path="/accounting/general-ledger" element={<GeneralLedgerPage />} />
+              <Route path="/accounting/trial-balance" element={<TrialBalancePage />} />
+              <Route path="/reports" element={<ReportsDashboardPage />} />
+              <Route path="/users" element={<UsersPage />} />
+              <Route path="/roles" element={<RolesPage />} />
+              <Route path="/permissions" element={<PermissionsPage />} />
+              <Route path="/sites" element={<SitesPage />} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

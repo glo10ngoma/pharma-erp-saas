@@ -1,7 +1,7 @@
+import { useAuth } from '../auth/AuthContext';
+
 export function usePermission() {
-  const raw = localStorage.getItem('currentUser');
-  const user = raw ? JSON.parse(raw) : null;
-  const permissions = user?.permissions ?? [];
+  const { permissions } = useAuth();
 
   return {
     can: (permission: string) => permissions.includes(permission),

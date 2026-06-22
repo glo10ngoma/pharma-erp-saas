@@ -47,7 +47,6 @@ export class AuthRepository {
         COALESCE(array_agg(DISTINCT p.permission_code) FILTER (WHERE p.permission_code IS NOT NULL), '{}') AS permissions
       FROM users u
       LEFT JOIN roles r ON r.role_id = u.role_id
-        AND (r.tenant_id = u.tenant_id OR r.tenant_id IS NULL)
       LEFT JOIN role_permissions rp ON rp.role_id = r.role_id
       LEFT JOIN permissions p ON p.permission_id = rp.permission_id
       LEFT JOIN tenants t ON t.tenant_id = u.tenant_id

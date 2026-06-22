@@ -1,9 +1,10 @@
 import { FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { authService } from '../../services/auth.service';
+import { useAuth } from '../../auth/AuthContext';
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const auth = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -15,9 +16,7 @@ export function LoginPage() {
     setLoading(true);
 
     try {
-      const response = await authService.login(email, password);
-      localStorage.setItem('accessToken', response.data.accessToken);
-      localStorage.setItem('currentUser', JSON.stringify(response.data.user));
+      await auth.login(email, password);
       navigate('/dashboard');
     } catch {
       setError('Identifiants invalides ou utilisateur inactif.');

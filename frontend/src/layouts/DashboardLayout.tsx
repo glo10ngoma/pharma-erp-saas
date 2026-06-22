@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, Outlet, useNavigate } from 'react-router-dom';
+import { useAuth } from '../auth/AuthContext';
 
 type NavLinkItem = [to: string, label: string, permission?: string];
 type NavGroup = { title: string; icon: string; links: NavLinkItem[] };
 
 export function DashboardLayout() {
   const navigate = useNavigate();
-  const token = localStorage.getItem('accessToken');
-  const user = JSON.parse(localStorage.getItem('currentUser') || 'null');
-  const permissions: string[] = user?.permissions ?? [];
+  const { accessToken, currentUser, permissions, loading, logout: clearAuth } = useAuth();
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
   const groups = useMemo<NavGroup[]>(() => [
     {
@@ -91,11 +90,12 @@ export function DashboardLayout() {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
-  if (!token) return <Navigate to="/login" replace />;
+  if (loading) return <main className="content"><p className="loading-state">Chargement du profil...</p></main>;
+  if (!accessToken) return <Navigate to="/login" replace />;
+  if (!currentUser) return <Navigate to="/login" replace />;
 
   function logout() {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('currentUser');
+    clearAuth();
     navigate('/login');
   }
 

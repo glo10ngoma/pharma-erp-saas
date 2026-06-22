@@ -1,5 +1,7 @@
+import { useAuth } from '../../auth/AuthContext';
+
 export function DashboardPage() {
-  const user = JSON.parse(localStorage.getItem('currentUser') || 'null');
+  const { currentUser: user } = useAuth();
   const modules = ['Auth', 'Articles', 'Achats', 'Stock', 'POS', 'Caisse', 'Assurances', 'Inventaires', 'Comptabilite', 'BI'];
 
   return (
