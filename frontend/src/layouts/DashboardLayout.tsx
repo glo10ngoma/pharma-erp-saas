@@ -15,7 +15,6 @@ export function DashboardLayout() {
       icon: 'TB',
       links: [
         ['/dashboard', 'Dashboard', undefined],
-        ['/reports', 'Reporting BI', 'reports.dashboard'],
         ['/profile', 'Mon profil', undefined],
       ],
     },
@@ -81,6 +80,13 @@ export function DashboardLayout() {
         ['/accounting/entries', 'Ecritures', 'accounting.read'],
         ['/accounting/general-ledger', 'Grand livre', 'accounting.general_ledger'],
         ['/accounting/trial-balance', 'Balance', 'accounting.trial_balance'],
+      ],
+    },
+    {
+      title: 'BI',
+      icon: 'BI',
+      links: [
+        ['/reports', 'Dashboard BI', 'reports.dashboard'],
       ],
     },
   ], []);
