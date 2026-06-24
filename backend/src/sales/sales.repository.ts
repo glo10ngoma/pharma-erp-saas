@@ -7,7 +7,7 @@ import { ApplyInsuranceDto } from './dto/apply-insurance.dto';
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { ValidateSaleDto } from './dto/validate-sale.dto';
 
-type SaleRow = { sale_id: string; tenant_id: string; sale_number: string; sale_date: Date; customer_id: string | null; customer_name: string | null; organization_id?: string | null; membership_id?: string | null; site_id: string; site_name: string | null; currency_id: string; currency_code: string | null; currency_symbol: string | null; exchange_rate: string; subtotal: string; insurance_covered_amount?: string; customer_payable_amount?: string; credit_amount?: string; total_amount: string; sale_type: string; status: string; created_by: string | null; created_at: Date; validated_at: Date | null };
+type SaleRow = { sale_id: string; tenant_id: string; sale_number: string; sale_date: Date; customer_id: string | null; customer_name: string | null; organization_id?: string | null; organization_name?: string | null; membership_id?: string | null; plan_name?: string | null; coverage_percent?: string | null; site_id: string; site_name: string | null; currency_id: string; currency_code: string | null; currency_symbol: string | null; exchange_rate: string; subtotal: string; discount_amount?: string; insurance_covered_amount?: string; customer_payable_amount?: string; credit_amount?: string; total_amount: string; sale_type: string; status: string; created_by: string | null; created_at: Date; validated_at: Date | null };
 type ItemRow = { sale_item_id: string; tenant_id: string; sale_id: string; article_id: string; article_code: string | null; commercial_name: string | null; lot_id: string; lot_number: string | null; expiry_date: string | null; quantity: string; unit_price: string; line_total: string };
 
 @Injectable()
@@ -20,15 +20,19 @@ export class SalesRepository {
   async findAll(user: AuthUser) {
     const r = await this.db.query<SaleRow>(
       `SELECT s.sale_id, s.tenant_id, s.sale_number, s.sale_date, s.customer_id, c.customer_name,
-              s.organization_id, s.membership_id, s.site_id, st.site_name, s.currency_id, cur.currency_code,
+              s.organization_id, o.organization_name, s.membership_id, ip.plan_name, ip.coverage_percent,
+              s.site_id, st.site_name, s.currency_id, cur.currency_code,
               CASE WHEN cur.currency_code='CDF' THEN 'FC' WHEN cur.currency_code='USD' THEN '$' ELSE cur.currency_code END AS currency_symbol,
-              s.exchange_rate, s.subtotal,
+              s.exchange_rate, s.subtotal, s.discount_amount,
               s.insurance_covered_amount, s.customer_payable_amount, s.credit_amount, s.total_amount,
               s.sale_type, s.status, s.created_by, s.created_at, s.validated_at
        FROM sales s
        JOIN sites st ON st.site_id=s.site_id AND st.tenant_id=s.tenant_id
        LEFT JOIN currencies cur ON cur.currency_id=s.currency_id
        LEFT JOIN customers c ON c.customer_id=s.customer_id AND c.tenant_id=s.tenant_id
+       LEFT JOIN organizations o ON o.organization_id=s.organization_id AND o.tenant_id=s.tenant_id
+       LEFT JOIN customer_memberships cm ON cm.membership_id=s.membership_id AND cm.tenant_id=s.tenant_id
+       LEFT JOIN insurance_plans ip ON ip.plan_id=cm.plan_id
        WHERE s.tenant_id=$1
          AND ($2::uuid IS NULL OR s.site_id=$2::uuid)
        ORDER BY s.sale_date DESC`,
@@ -40,15 +44,19 @@ export class SalesRepository {
   async findOne(user: AuthUser, id: string) {
     const r = await this.db.query<SaleRow>(
       `SELECT s.sale_id, s.tenant_id, s.sale_number, s.sale_date, s.customer_id, c.customer_name,
-              s.organization_id, s.membership_id, s.site_id, st.site_name, s.currency_id, cur.currency_code,
+              s.organization_id, o.organization_name, s.membership_id, ip.plan_name, ip.coverage_percent,
+              s.site_id, st.site_name, s.currency_id, cur.currency_code,
               CASE WHEN cur.currency_code='CDF' THEN 'FC' WHEN cur.currency_code='USD' THEN '$' ELSE cur.currency_code END AS currency_symbol,
-              s.exchange_rate, s.subtotal,
+              s.exchange_rate, s.subtotal, s.discount_amount,
               s.insurance_covered_amount, s.customer_payable_amount, s.credit_amount, s.total_amount,
               s.sale_type, s.status, s.created_by, s.created_at, s.validated_at
        FROM sales s
        JOIN sites st ON st.site_id=s.site_id AND st.tenant_id=s.tenant_id
        LEFT JOIN currencies cur ON cur.currency_id=s.currency_id
        LEFT JOIN customers c ON c.customer_id=s.customer_id AND c.tenant_id=s.tenant_id
+       LEFT JOIN organizations o ON o.organization_id=s.organization_id AND o.tenant_id=s.tenant_id
+       LEFT JOIN customer_memberships cm ON cm.membership_id=s.membership_id AND cm.tenant_id=s.tenant_id
+       LEFT JOIN insurance_plans ip ON ip.plan_id=cm.plan_id
        WHERE s.tenant_id=$1 AND s.sale_id=$2
          AND ($3::uuid IS NULL OR s.site_id=$3::uuid)
        LIMIT 1`,
@@ -59,13 +67,14 @@ export class SalesRepository {
   }
 
   async create(user: AuthUser, dto: CreateSaleDto) {
-    await this.assertRelations(user, dto.siteId, dto.currencyId, dto.customerId, dto.exchangeRate);
+    const currencyId = dto.currencyId ?? await this.defaultCurrencyId();
+    await this.assertRelations(user, dto.siteId, currencyId, dto.customerId, dto.exchangeRate);
     const number = `SAL-${Date.now()}`;
     const r = await this.db.query<SaleRow>(
       `INSERT INTO sales (tenant_id, sale_number, site_id, customer_id, currency_id, exchange_rate, sale_type, created_by)
        VALUES ($1,$2,$3,$4,$5,$8,$7,$6)
        RETURNING sale_id, tenant_id, sale_number, sale_date, customer_id, NULL::text AS customer_name, organization_id, membership_id, site_id, NULL::text AS site_name, currency_id, NULL::text AS currency_code, NULL::text AS currency_symbol, exchange_rate, subtotal, insurance_covered_amount, customer_payable_amount, credit_amount, total_amount, sale_type, status, created_by, created_at, validated_at`,
-      [user.tenantId, number, dto.siteId, dto.customerId ?? null, dto.currencyId, user.userId, dto.saleType ?? 'CASH', dto.exchangeRate ?? 1],
+      [user.tenantId, number, dto.siteId, dto.customerId ?? null, currencyId, user.userId, dto.saleType ?? 'CASH', dto.exchangeRate ?? 1],
     );
     return this.findOne(user, r.rows[0].sale_id);
   }
@@ -310,13 +319,14 @@ export class SalesRepository {
     const r = await this.db.query(
       `SELECT p.payment_id, p.sale_id, p.payment_date, p.payment_method_id, pm.method_name, p.currency_id, cur.currency_code,
               CASE WHEN cur.currency_code='CDF' THEN 'FC' WHEN cur.currency_code='USD' THEN '$' ELSE cur.currency_code END AS currency_symbol,
-              p.amount, p.reference_payment, p.received_by
+              p.amount, p.reference_payment, p.received_by, u.full_name AS received_by_name
        FROM payments p JOIN payment_methods pm ON pm.payment_method_id=p.payment_method_id
        LEFT JOIN currencies cur ON cur.currency_id=p.currency_id
+       LEFT JOIN users u ON u.user_id=p.received_by AND u.tenant_id=p.tenant_id
        WHERE p.tenant_id=$1 AND p.sale_id=$2 ORDER BY p.payment_date`,
       [user.tenantId, saleId],
     );
-    return r.rows.map((row) => ({ paymentId: row.payment_id, saleId: row.sale_id, paymentDate: row.payment_date, paymentMethodId: row.payment_method_id, methodName: row.method_name, currencyId: row.currency_id, currencyCode: row.currency_code, currencySymbol: row.currency_symbol, amount: Number(row.amount), referencePayment: row.reference_payment, receivedBy: row.received_by }));
+    return r.rows.map((row) => ({ paymentId: row.payment_id, saleId: row.sale_id, paymentDate: row.payment_date, paymentMethodId: row.payment_method_id, methodName: row.method_name, currencyId: row.currency_id, currencyCode: row.currency_code, currencySymbol: row.currency_symbol, amount: Number(row.amount), referencePayment: row.reference_payment, receivedBy: row.received_by, receivedByName: row.received_by_name }));
   }
 
   private async recalculateTotal(user: AuthUser, saleId: string) {
@@ -345,11 +355,19 @@ export class SalesRepository {
     if (Number(r.rows[0]?.customers_count ?? 0) !== 1) throw new Error('CUSTOMER_NOT_IN_TENANT');
   }
 
+  private async defaultCurrencyId() {
+    const result = await this.db.query<{ currency_id: string }>(
+      `SELECT currency_id FROM currencies WHERE currency_code='USD' OR is_default=true ORDER BY is_default DESC LIMIT 1`,
+    );
+    if (!result.rows[0]) throw new Error('CURRENCY_NOT_FOUND');
+    return result.rows[0].currency_id;
+  }
+
   private async assertArticle(user: AuthUser, articleId: string) {
     const r = await this.db.query<{ total: string }>(`SELECT COUNT(*)::int AS total FROM articles WHERE tenant_id=$1 AND article_id=$2 AND is_active=true`, [user.tenantId, articleId]);
     if (Number(r.rows[0]?.total ?? 0) !== 1) throw new Error('ARTICLE_NOT_IN_TENANT');
   }
 
-  private toSale(row: SaleRow) { return { saleId: row.sale_id, tenantId: row.tenant_id, saleNumber: row.sale_number, saleDate: row.sale_date, customerId: row.customer_id, customerName: row.customer_name, organizationId: row.organization_id ?? null, membershipId: row.membership_id ?? null, siteId: row.site_id, siteName: row.site_name, currencyId: row.currency_id, currencyCode: row.currency_code, currencySymbol: row.currency_symbol, exchangeRate: Number(row.exchange_rate), subtotal: Number(row.subtotal), insuranceCoveredAmount: Number(row.insurance_covered_amount ?? 0), customerPayableAmount: Number(row.customer_payable_amount ?? row.total_amount), creditAmount: Number(row.credit_amount ?? 0), totalAmount: Number(row.total_amount), saleType: row.sale_type, status: row.status, createdBy: row.created_by, createdAt: row.created_at, validatedAt: row.validated_at }; }
+  private toSale(row: SaleRow) { return { saleId: row.sale_id, tenantId: row.tenant_id, saleNumber: row.sale_number, saleDate: row.sale_date, customerId: row.customer_id, customerName: row.customer_name, organizationId: row.organization_id ?? null, organizationName: row.organization_name ?? null, membershipId: row.membership_id ?? null, planName: row.plan_name ?? null, coveragePercent: row.coverage_percent === null || row.coverage_percent === undefined ? null : Number(row.coverage_percent), siteId: row.site_id, siteName: row.site_name, currencyId: row.currency_id, currencyCode: row.currency_code, currencySymbol: row.currency_symbol, exchangeRate: Number(row.exchange_rate), subtotal: Number(row.subtotal), discountAmount: Number(row.discount_amount ?? 0), insuranceCoveredAmount: Number(row.insurance_covered_amount ?? 0), customerPayableAmount: Number(row.customer_payable_amount ?? row.total_amount), creditAmount: Number(row.credit_amount ?? 0), totalAmount: Number(row.total_amount), saleType: row.sale_type, status: row.status, createdBy: row.created_by, createdAt: row.created_at, validatedAt: row.validated_at }; }
   private toItem(row: ItemRow) { return { saleItemId: row.sale_item_id, saleId: row.sale_id, articleId: row.article_id, articleCode: row.article_code, commercialName: row.commercial_name, lotId: row.lot_id, lotNumber: row.lot_number, expiryDate: row.expiry_date, quantity: Number(row.quantity), unitPrice: Number(row.unit_price), lineTotal: Number(row.line_total) }; }
 }

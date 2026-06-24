@@ -98,8 +98,9 @@ export class PurchasesRepository {
   }
 
   async create(user: AuthUser, dto: CreatePurchaseDto) {
-    await this.assertTenantRelations(user, dto.supplierId, dto.siteId, dto.currencyId, dto.exchangeRate);
-    const number = `PUR-${Date.now()}`;
+    const currencyId = dto.currencyId ?? await this.defaultCurrencyId();
+    await this.assertTenantRelations(user, dto.supplierId, dto.siteId, currencyId, dto.exchangeRate);
+    const number = dto.purchaseNumber?.trim() || `PUR-${Date.now()}`;
     const result = await this.db.query<PurchaseRow>(
       `
       INSERT INTO purchases (
@@ -118,7 +119,7 @@ export class PurchasesRepository {
         dto.purchaseDate ?? null,
         dto.supplierId,
         dto.siteId,
-        dto.currencyId ?? null,
+        currencyId,
         dto.exchangeRate ?? 1,
         user.userId,
       ],
@@ -358,6 +359,14 @@ export class PurchasesRepository {
       const currency = await this.db.query<{ currency_code: string }>(`SELECT currency_code FROM currencies WHERE currency_id=$1`, [currencyId]);
       if (currency.rows[0]?.currency_code === 'CDF' && (!exchangeRate || exchangeRate <= 1)) throw new Error('EXCHANGE_RATE_REQUIRED');
     }
+  }
+
+  private async defaultCurrencyId() {
+    const result = await this.db.query<{ currency_id: string }>(
+      `SELECT currency_id FROM currencies WHERE currency_code='USD' OR is_default=true ORDER BY is_default DESC LIMIT 1`,
+    );
+    if (!result.rows[0]) throw new Error('CURRENCY_NOT_FOUND');
+    return result.rows[0].currency_id;
   }
 
   private async assertArticle(user: AuthUser, articleId: string) {

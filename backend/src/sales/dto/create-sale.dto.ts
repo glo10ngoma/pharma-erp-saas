@@ -8,8 +8,9 @@ export class CreateSaleDto {
   @IsUUID()
   customerId?: string;
 
+  @IsOptional()
   @IsUUID()
-  currencyId: string;
+  currencyId?: string;
 
   @IsOptional()
   @IsNumber()
