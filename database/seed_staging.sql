@@ -248,8 +248,12 @@ WHERE t.tenant_code = 'STAGING'
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 INSERT INTO currencies(currency_code, currency_name, is_default)
-VALUES ('USD', 'Dollar US', TRUE)
-ON CONFLICT (currency_code) DO NOTHING;
+VALUES
+  ('USD', 'Dollar americain ($)', TRUE),
+  ('CDF', 'Franc congolais (FC)', FALSE)
+ON CONFLICT (currency_code) DO UPDATE
+SET currency_name = EXCLUDED.currency_name,
+    is_default = EXCLUDED.is_default;
 
 INSERT INTO payment_methods(method_code, method_name, is_active)
 VALUES ('CASH', 'Cash', TRUE)

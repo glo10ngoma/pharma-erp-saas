@@ -15,6 +15,8 @@ type PurchaseRow = {
   site_id: string;
   site_name: string | null;
   currency_id: string | null;
+  currency_code: string | null;
+  currency_symbol: string | null;
   exchange_rate: string;
   total_amount: string;
   status: string;
@@ -56,11 +58,14 @@ export class PurchasesRepository {
     const result = await this.db.query<PurchaseRow>(
       `
       SELECT p.purchase_id, p.tenant_id, p.purchase_number, p.purchase_date, p.supplier_id,
-             sup.supplier_name, p.site_id, s.site_name, p.currency_id, p.exchange_rate,
+             sup.supplier_name, p.site_id, s.site_name, p.currency_id, cur.currency_code,
+             CASE WHEN cur.currency_code='CDF' THEN 'FC' WHEN cur.currency_code='USD' THEN '$' ELSE cur.currency_code END AS currency_symbol,
+             p.exchange_rate,
              p.total_amount, p.status, p.created_by, p.created_at, p.validated_at
       FROM purchases p
       JOIN suppliers sup ON sup.supplier_id = p.supplier_id AND sup.tenant_id = p.tenant_id
       JOIN sites s ON s.site_id = p.site_id AND s.tenant_id = p.tenant_id
+      LEFT JOIN currencies cur ON cur.currency_id = p.currency_id
       WHERE ${filters.join(' AND ')}
       ORDER BY p.created_at DESC
       `,
@@ -73,11 +78,14 @@ export class PurchasesRepository {
     const purchase = await this.db.query<PurchaseRow>(
       `
       SELECT p.purchase_id, p.tenant_id, p.purchase_number, p.purchase_date, p.supplier_id,
-             sup.supplier_name, p.site_id, s.site_name, p.currency_id, p.exchange_rate,
+             sup.supplier_name, p.site_id, s.site_name, p.currency_id, cur.currency_code,
+             CASE WHEN cur.currency_code='CDF' THEN 'FC' WHEN cur.currency_code='USD' THEN '$' ELSE cur.currency_code END AS currency_symbol,
+             p.exchange_rate,
              p.total_amount, p.status, p.created_by, p.created_at, p.validated_at
       FROM purchases p
       JOIN suppliers sup ON sup.supplier_id = p.supplier_id AND sup.tenant_id = p.tenant_id
       JOIN sites s ON s.site_id = p.site_id AND s.tenant_id = p.tenant_id
+      LEFT JOIN currencies cur ON cur.currency_id = p.currency_id
       WHERE p.tenant_id = $1 AND p.purchase_id = $2
         AND ($3::uuid IS NULL OR p.site_id = $3::uuid)
       LIMIT 1
@@ -90,7 +98,7 @@ export class PurchasesRepository {
   }
 
   async create(user: AuthUser, dto: CreatePurchaseDto) {
-    await this.assertTenantRelations(user, dto.supplierId, dto.siteId, dto.currencyId);
+    await this.assertTenantRelations(user, dto.supplierId, dto.siteId, dto.currencyId, dto.exchangeRate);
     const number = `PUR-${Date.now()}`;
     const result = await this.db.query<PurchaseRow>(
       `
@@ -101,6 +109,7 @@ export class PurchasesRepository {
       VALUES ($1,$2,COALESCE($3::date, CURRENT_DATE),$4,$5,$6,$7,$8)
       RETURNING purchase_id, tenant_id, purchase_number, purchase_date, supplier_id,
                 NULL::text AS supplier_name, site_id, NULL::text AS site_name, currency_id,
+                NULL::text AS currency_code, NULL::text AS currency_symbol,
                 exchange_rate, total_amount, status, created_by, created_at, validated_at
       `,
       [
@@ -124,7 +133,7 @@ export class PurchasesRepository {
     const supplierId = dto.supplierId ?? current.supplierId;
     const siteId = dto.siteId ?? current.siteId;
     const currencyId = dto.currencyId ?? current.currencyId ?? undefined;
-    await this.assertTenantRelations(user, supplierId, siteId, currencyId);
+    await this.assertTenantRelations(user, supplierId, siteId, currencyId, dto.exchangeRate ?? current.exchangeRate);
     await this.db.query(
       `
       UPDATE purchases
@@ -193,6 +202,7 @@ export class PurchasesRepository {
         `
         SELECT p.purchase_id, p.tenant_id, p.purchase_number, p.purchase_date, p.supplier_id,
                NULL::text AS supplier_name, p.site_id, NULL::text AS site_name, p.currency_id,
+               NULL::text AS currency_code, NULL::text AS currency_symbol,
                p.exchange_rate, p.total_amount, p.status, p.created_by, p.created_at, p.validated_at
         FROM purchases p
         WHERE p.tenant_id=$1 AND p.purchase_id=$2
@@ -330,7 +340,7 @@ export class PurchasesRepository {
     );
   }
 
-  private async assertTenantRelations(user: AuthUser, supplierId: string, siteId: string, currencyId?: string) {
+  private async assertTenantRelations(user: AuthUser, supplierId: string, siteId: string, currencyId?: string, exchangeRate?: number) {
     if (user.siteId && user.siteId !== siteId) throw new Error('SITE_NOT_ALLOWED');
     const result = await this.db.query<{ suppliers_count: string; sites_count: string; currencies_count: string }>(
       `
@@ -344,6 +354,10 @@ export class PurchasesRepository {
     if (Number(result.rows[0]?.suppliers_count ?? 0) !== 1) throw new Error('SUPPLIER_NOT_IN_TENANT');
     if (Number(result.rows[0]?.sites_count ?? 0) !== 1) throw new Error('SITE_NOT_IN_TENANT');
     if (Number(result.rows[0]?.currencies_count ?? 0) !== 1) throw new Error('CURRENCY_NOT_FOUND');
+    if (currencyId) {
+      const currency = await this.db.query<{ currency_code: string }>(`SELECT currency_code FROM currencies WHERE currency_id=$1`, [currencyId]);
+      if (currency.rows[0]?.currency_code === 'CDF' && (!exchangeRate || exchangeRate <= 1)) throw new Error('EXCHANGE_RATE_REQUIRED');
+    }
   }
 
   private async assertArticle(user: AuthUser, articleId: string) {
@@ -365,6 +379,8 @@ export class PurchasesRepository {
       siteId: row.site_id,
       siteName: row.site_name,
       currencyId: row.currency_id,
+      currencyCode: row.currency_code,
+      currencySymbol: row.currency_symbol,
       exchangeRate: Number(row.exchange_rate),
       totalAmount: Number(row.total_amount),
       status: row.status,

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiErrorMessage } from '../../services/apiError';
 import { cashService } from '../../services/cash.service';
 import { sitesService } from '../../services/sites.service';
+import { formatMoney } from '../../utils/money';
 
 export function CashPage() {
   const queryClient = useQueryClient();
@@ -101,7 +102,7 @@ export function CashPage() {
           </div>
           <div>
             Ecart
-            <strong style={{ display: 'block', marginTop: 10 }}>{totals.difference.toFixed(2)}</strong>
+            <strong style={{ display: 'block', marginTop: 10 }}>{formatMoney(totals.difference, 'USD')}</strong>
           </div>
         </div>
       </div>
@@ -120,10 +121,10 @@ export function CashPage() {
       {current.data && (
         <>
           <div className="stats-grid">
-            <div className="card"><strong>{current.data.openingBalance.toFixed(2)}</strong><br />Ouverture</div>
-            <div className="card"><strong>{totals.cashIn.toFixed(2)}</strong><br />Entrees cash</div>
-            <div className="card"><strong>{totals.cashOut.toFixed(2)}</strong><br />Sorties cash</div>
-            <div className="card"><strong>{totals.expected.toFixed(2)}</strong><br />Solde attendu</div>
+            <div className="card"><strong>{formatMoney(current.data.openingBalance, 'USD')}</strong><br />Ouverture</div>
+            <div className="card"><strong>{formatMoney(totals.cashIn, 'USD')}</strong><br />Entrees cash</div>
+            <div className="card"><strong>{formatMoney(totals.cashOut, 'USD')}</strong><br />Sorties cash</div>
+            <div className="card"><strong>{formatMoney(totals.expected, 'USD')}</strong><br />Solde attendu</div>
           </div>
 
           <form className="card form-grid" onSubmit={submitExpense}>
@@ -160,7 +161,7 @@ export function CashPage() {
                   <tr key={movement.cashMovementId}>
                     <td>{new Date(movement.movementDate).toLocaleString()}</td>
                     <td>{movement.movementType}</td>
-                    <td>{movement.amount.toFixed(2)}</td>
+                    <td>{formatMoney(movement.amount, movement.currencyCode ?? 'USD', movement.currencySymbol)}</td>
                     <td>{movement.currencyCode}</td>
                     <td>{movement.description}</td>
                   </tr>
@@ -181,8 +182,8 @@ export function CashPage() {
                 <td>{session.siteName}</td>
                 <td>{session.userName}</td>
                 <td>{session.status}</td>
-                <td>{session.expectedClosingBalance.toFixed(2)}</td>
-                <td>{session.differenceAmount.toFixed(2)}</td>
+                <td>{formatMoney(session.expectedClosingBalance, 'USD')}</td>
+                <td>{formatMoney(session.differenceAmount, 'USD')}</td>
               </tr>
             ))}
           </tbody>

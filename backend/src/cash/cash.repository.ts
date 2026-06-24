@@ -38,6 +38,7 @@ type CashMovementRow = {
   amount: string;
   currency_id: string;
   currency_code: string | null;
+  currency_symbol: string | null;
   reference_type: string | null;
   reference_id: string | null;
   description: string | null;
@@ -201,6 +202,7 @@ export class CashRepository {
       `
       SELECT cm.cash_movement_id, cm.tenant_id, cm.cash_session_id, cm.movement_date,
              cm.movement_type, cm.amount, cm.currency_id, c.currency_code,
+             CASE WHEN c.currency_code='CDF' THEN 'FC' WHEN c.currency_code='USD' THEN '$' ELSE c.currency_code END AS currency_symbol,
              cm.reference_type, cm.reference_id, cm.description, cm.created_by
       FROM cash_movements cm
       JOIN cash_sessions cs ON cs.cash_session_id = cm.cash_session_id AND cs.tenant_id = cm.tenant_id
@@ -359,6 +361,7 @@ export class CashRepository {
       amount: Number(row.amount),
       currencyId: row.currency_id,
       currencyCode: row.currency_code,
+      currencySymbol: row.currency_symbol,
       referenceType: row.reference_type,
       referenceId: row.reference_id,
       description: row.description,

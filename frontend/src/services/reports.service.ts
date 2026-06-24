@@ -3,6 +3,9 @@ import { apiClient } from './apiClient';
 export type ReportFilters = { from?: string; to?: string; siteId?: string };
 
 export type DashboardKpis = {
+  baseCurrency: string;
+  currencyCode: string;
+  currencySymbol: string;
   revenueToday: number;
   revenueMonth: number;
   totalCashSales: number;

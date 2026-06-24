@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsUUID } from 'class-validator';
+import { IsEnum, IsNumber, IsOptional, IsUUID, Min } from 'class-validator';
 
 export class CreateSaleDto {
   @IsUUID()
@@ -10,6 +10,11 @@ export class CreateSaleDto {
 
   @IsUUID()
   currencyId: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  exchangeRate?: number;
 
   @IsOptional()
   @IsEnum(['CASH', 'CUSTOMER_CREDIT', 'ORGANIZATION_CREDIT', 'INSURANCE'])

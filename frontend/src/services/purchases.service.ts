@@ -1,7 +1,7 @@
 import { apiClient } from './apiClient';
 
 export type PurchaseItem = { purchaseItemId: string; articleId: string; articleCode: string | null; commercialName: string | null; lotNumber: string; expiryDate: string; quantity: number; purchaseUnitPrice: number; sellingUnitPrice: number; lineTotal: number };
-export type Purchase = { purchaseId: string; purchaseNumber: string; purchaseDate: string; supplierId: string; supplierName: string | null; siteId: string; siteName: string | null; currencyId: string | null; exchangeRate: number; totalAmount: number; status: string; items?: PurchaseItem[] };
+export type Purchase = { purchaseId: string; purchaseNumber: string; purchaseDate: string; supplierId: string; supplierName: string | null; siteId: string; siteName: string | null; currencyId: string | null; currencyCode?: string | null; currencySymbol?: string | null; exchangeRate: number; totalAmount: number; status: string; items?: PurchaseItem[] };
 
 export const purchasesService = {
   getAll: (status?: string) => apiClient.get<Purchase[]>('/purchases', { params: { status: status || undefined } }),

@@ -131,7 +131,9 @@ SET tenant_name = EXCLUDED.tenant_name,
     updated_at = CURRENT_TIMESTAMP;
 
 INSERT INTO currencies(currency_code, currency_name, is_default)
-VALUES ('USD', 'Dollar US', TRUE)
+VALUES
+  ('USD', 'Dollar americain ($)', TRUE),
+  ('CDF', 'Franc congolais (FC)', FALSE)
 ON CONFLICT (currency_code) DO UPDATE
 SET currency_name = EXCLUDED.currency_name,
     is_default = EXCLUDED.is_default;

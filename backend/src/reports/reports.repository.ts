@@ -20,6 +20,9 @@ export class ReportsRepository {
       this.lowStockCount(user, scope),
     ]);
     return {
+      baseCurrency: 'USD',
+      currencyCode: 'USD',
+      currencySymbol: '$',
       revenueToday: sales.revenueToday,
       revenueMonth: sales.revenueMonth,
       totalCashSales: sales.totalCashSales,
@@ -39,11 +42,12 @@ export class ReportsRepository {
   async sales(user: AuthUser, filters: ReportFilterDto) {
     const scope = await this.resolveScope(user, filters);
     const result = await this.db.query(
-      `SELECT s.sale_type AS "saleType", COUNT(*)::int AS count,
-              COALESCE(SUM(s.total_amount),0)::numeric AS "totalAmount",
-              COALESCE(SUM(s.customer_payable_amount),0)::numeric AS "patientAmount",
-              COALESCE(SUM(s.insurance_covered_amount),0)::numeric AS "insuranceAmount"
+      `SELECT s.sale_type AS "saleType", 'USD' AS "baseCurrency", 'USD' AS "currencyCode", '$' AS "currencySymbol", COUNT(*)::int AS count,
+              COALESCE(SUM(CASE WHEN cur.currency_code='CDF' THEN s.total_amount / NULLIF(s.exchange_rate,0) ELSE s.total_amount END),0)::numeric AS "totalAmount",
+              COALESCE(SUM(CASE WHEN cur.currency_code='CDF' THEN s.customer_payable_amount / NULLIF(s.exchange_rate,0) ELSE s.customer_payable_amount END),0)::numeric AS "patientAmount",
+              COALESCE(SUM(CASE WHEN cur.currency_code='CDF' THEN s.insurance_covered_amount / NULLIF(s.exchange_rate,0) ELSE s.insurance_covered_amount END),0)::numeric AS "insuranceAmount"
        FROM sales s
+       LEFT JOIN currencies cur ON cur.currency_id=s.currency_id
        WHERE s.tenant_id=$1 AND s.status='VALIDATED'
          AND s.sale_date >= $2::date AND s.sale_date < ($3::date + INTERVAL '1 day')
          AND ($4::uuid IS NULL OR s.site_id=$4::uuid)
@@ -64,11 +68,13 @@ export class ReportsRepository {
     const result = await this.db.query(
       `SELECT a.article_id AS "articleId", a.article_code AS "articleCode", a.commercial_name AS "commercialName",
               SUM(st.quantity_available)::numeric AS "quantityAvailable",
-              SUM(st.quantity_available * l.purchase_price)::numeric AS "purchaseValue",
-              SUM(st.quantity_available * l.selling_price)::numeric AS "saleValue",
+              'USD' AS "baseCurrency", 'USD' AS "currencyCode", '$' AS "currencySymbol",
+              SUM(CASE WHEN cur.currency_code='CDF' THEN 0 ELSE st.quantity_available * l.purchase_price END)::numeric AS "purchaseValue",
+              SUM(CASE WHEN cur.currency_code='CDF' THEN 0 ELSE st.quantity_available * l.selling_price END)::numeric AS "saleValue",
               MIN(l.expiry_date) AS "nearestExpiryDate"
        FROM stocks st
        JOIN lots l ON l.lot_id=st.lot_id
+       LEFT JOIN currencies cur ON cur.currency_id=l.currency_id
        JOIN articles a ON a.article_id=l.article_id
        JOIN sites s ON s.site_id=st.site_id
        WHERE s.tenant_id=$1 AND a.tenant_id=$1
@@ -90,12 +96,15 @@ export class ReportsRepository {
     const result = await this.db.query(
       `SELECT a.article_id AS "articleId", a.article_code AS "articleCode", a.commercial_name AS "commercialName",
               SUM(si.quantity)::numeric AS quantity,
-              SUM(si.line_total)::numeric AS revenue,
-              SUM(si.quantity * l.purchase_price)::numeric AS "estimatedCost",
-              (SUM(si.line_total) - SUM(si.quantity * l.purchase_price))::numeric AS "grossMargin"
+              'USD' AS "baseCurrency", 'USD' AS "currencyCode", '$' AS "currencySymbol",
+              SUM(CASE WHEN cur.currency_code='CDF' THEN si.line_total / NULLIF(s.exchange_rate,0) ELSE si.line_total END)::numeric AS revenue,
+              SUM(CASE WHEN lot_cur.currency_code='CDF' THEN 0 ELSE si.quantity * l.purchase_price END)::numeric AS "estimatedCost",
+              (SUM(CASE WHEN cur.currency_code='CDF' THEN si.line_total / NULLIF(s.exchange_rate,0) ELSE si.line_total END) - SUM(CASE WHEN lot_cur.currency_code='CDF' THEN 0 ELSE si.quantity * l.purchase_price END))::numeric AS "grossMargin"
        FROM sale_items si
        JOIN sales s ON s.sale_id=si.sale_id
        JOIN lots l ON l.lot_id=si.lot_id
+       LEFT JOIN currencies cur ON cur.currency_id=s.currency_id
+       LEFT JOIN currencies lot_cur ON lot_cur.currency_id=l.currency_id
        JOIN articles a ON a.article_id=si.article_id
        WHERE s.tenant_id=$1 AND s.status='VALIDATED'
          AND s.sale_date >= $2::date AND s.sale_date < ($3::date + INTERVAL '1 day')
@@ -116,10 +125,11 @@ export class ReportsRepository {
   async cash(user: AuthUser, filters: ReportFilterDto) {
     const scope = await this.resolveScope(user, filters);
     const result = await this.db.query(
-      `SELECT cm.movement_type AS "movementType", COUNT(*)::int AS count,
-              COALESCE(SUM(cm.amount),0)::numeric AS amount
+      `SELECT cm.movement_type AS "movementType", 'USD' AS "baseCurrency", 'USD' AS "currencyCode", '$' AS "currencySymbol", COUNT(*)::int AS count,
+              COALESCE(SUM(CASE WHEN cur.currency_code='CDF' THEN 0 ELSE cm.amount END),0)::numeric AS amount
        FROM cash_movements cm
        JOIN cash_sessions cs ON cs.cash_session_id=cm.cash_session_id AND cs.tenant_id=cm.tenant_id
+       LEFT JOIN currencies cur ON cur.currency_id=cm.currency_id
        WHERE cm.tenant_id=$1
          AND cm.movement_date >= $2::date AND cm.movement_date < ($3::date + INTERVAL '1 day')
          AND ($4::uuid IS NULL OR cs.site_id=$4::uuid)
@@ -134,12 +144,14 @@ export class ReportsRepository {
     const scope = await this.resolveScope(user, filters);
     const result = await this.db.query(
       `SELECT ar.receivable_type AS "receivableType", ar.status,
+              'USD' AS "baseCurrency", 'USD' AS "currencyCode", '$' AS "currencySymbol",
               COUNT(*)::int AS count,
-              COALESCE(SUM(ar.amount_due),0)::numeric AS "amountDue",
-              COALESCE(SUM(ar.amount_paid),0)::numeric AS "amountPaid",
-              COALESCE(SUM(ar.balance),0)::numeric AS balance
+              COALESCE(SUM(CASE WHEN cur.currency_code='CDF' THEN ar.amount_due / NULLIF(s.exchange_rate,0) ELSE ar.amount_due END),0)::numeric AS "amountDue",
+              COALESCE(SUM(CASE WHEN cur.currency_code='CDF' THEN ar.amount_paid / NULLIF(s.exchange_rate,0) ELSE ar.amount_paid END),0)::numeric AS "amountPaid",
+              COALESCE(SUM(CASE WHEN cur.currency_code='CDF' THEN ar.balance / NULLIF(s.exchange_rate,0) ELSE ar.balance END),0)::numeric AS balance
        FROM accounts_receivable ar
        LEFT JOIN sales s ON s.sale_id=ar.sale_id
+       LEFT JOIN currencies cur ON cur.currency_id=ar.currency_id
        WHERE ar.tenant_id=$1
          AND ar.issue_date >= $2::date AND ar.issue_date <= $3::date
          AND ($4::uuid IS NULL OR s.site_id=$4::uuid)
@@ -187,10 +199,12 @@ export class ReportsRepository {
     const result = await this.db.query(
       `SELECT a.article_id AS "articleId", a.article_code AS "articleCode", a.commercial_name AS "commercialName",
               SUM(si.quantity)::numeric AS quantity,
-              SUM(si.line_total)::numeric AS revenue
+              'USD' AS "baseCurrency", 'USD' AS "currencyCode", '$' AS "currencySymbol",
+              SUM(CASE WHEN cur.currency_code='CDF' THEN si.line_total / NULLIF(s.exchange_rate,0) ELSE si.line_total END)::numeric AS revenue
        FROM sale_items si
        JOIN sales s ON s.sale_id=si.sale_id
        JOIN articles a ON a.article_id=si.article_id
+       LEFT JOIN currencies cur ON cur.currency_id=s.currency_id
        WHERE s.tenant_id=$1 AND s.status='VALIDATED'
          AND s.sale_date >= $2::date AND s.sale_date < ($3::date + INTERVAL '1 day')
          AND ($4::uuid IS NULL OR s.site_id=$4::uuid)
@@ -205,11 +219,12 @@ export class ReportsRepository {
   private async salesSummary(user: AuthUser, scope: Scope) {
     const result = await this.db.query(
       `SELECT
-          COALESCE(SUM(CASE WHEN s.sale_date::date = CURRENT_DATE THEN s.total_amount ELSE 0 END),0)::numeric AS "revenueToday",
-          COALESCE(SUM(CASE WHEN date_trunc('month', s.sale_date) = date_trunc('month', CURRENT_DATE) THEN s.total_amount ELSE 0 END),0)::numeric AS "revenueMonth",
-          COALESCE(SUM(CASE WHEN s.sale_type='CASH' THEN s.total_amount ELSE 0 END),0)::numeric AS "totalCashSales",
-          COALESCE(SUM(CASE WHEN s.sale_type='INSURANCE' THEN s.total_amount ELSE 0 END),0)::numeric AS "totalInsuranceSales"
+          COALESCE(SUM(CASE WHEN s.sale_date::date = CURRENT_DATE THEN CASE WHEN cur.currency_code='CDF' THEN s.total_amount / NULLIF(s.exchange_rate,0) ELSE s.total_amount END ELSE 0 END),0)::numeric AS "revenueToday",
+          COALESCE(SUM(CASE WHEN date_trunc('month', s.sale_date) = date_trunc('month', CURRENT_DATE) THEN CASE WHEN cur.currency_code='CDF' THEN s.total_amount / NULLIF(s.exchange_rate,0) ELSE s.total_amount END ELSE 0 END),0)::numeric AS "revenueMonth",
+          COALESCE(SUM(CASE WHEN s.sale_type='CASH' THEN CASE WHEN cur.currency_code='CDF' THEN s.total_amount / NULLIF(s.exchange_rate,0) ELSE s.total_amount END ELSE 0 END),0)::numeric AS "totalCashSales",
+          COALESCE(SUM(CASE WHEN s.sale_type='INSURANCE' THEN CASE WHEN cur.currency_code='CDF' THEN s.total_amount / NULLIF(s.exchange_rate,0) ELSE s.total_amount END ELSE 0 END),0)::numeric AS "totalInsuranceSales"
        FROM sales s
+       LEFT JOIN currencies cur ON cur.currency_id=s.currency_id
        WHERE s.tenant_id=$1 AND s.status='VALIDATED'
          AND s.sale_date >= $2::date AND s.sale_date < ($3::date + INTERVAL '1 day')
          AND ($4::uuid IS NULL OR s.site_id=$4::uuid)`,
@@ -220,9 +235,10 @@ export class ReportsRepository {
 
   private async cashSummary(user: AuthUser, scope: Scope) {
     const result = await this.db.query(
-      `SELECT COALESCE(SUM(cm.amount),0)::numeric AS "totalCashPayments"
+      `SELECT COALESCE(SUM(CASE WHEN cur.currency_code='CDF' THEN 0 ELSE cm.amount END),0)::numeric AS "totalCashPayments"
        FROM cash_movements cm
        JOIN cash_sessions cs ON cs.cash_session_id=cm.cash_session_id AND cs.tenant_id=cm.tenant_id
+       LEFT JOIN currencies cur ON cur.currency_id=cm.currency_id
        WHERE cm.tenant_id=$1 AND cm.movement_type IN ('SALE_PAYMENT','RECEIVABLE_PAYMENT','CASH_IN','ADVANCE','ADJUSTMENT')
          AND cm.movement_date >= $2::date AND cm.movement_date < ($3::date + INTERVAL '1 day')
          AND ($4::uuid IS NULL OR cs.site_id=$4::uuid)`,
@@ -233,9 +249,10 @@ export class ReportsRepository {
 
   private async receivablesSummary(user: AuthUser, scope: Scope) {
     const result = await this.db.query(
-      `SELECT COALESCE(SUM(ar.balance),0)::numeric AS "openBalance"
+      `SELECT COALESCE(SUM(CASE WHEN cur.currency_code='CDF' THEN ar.balance / NULLIF(s.exchange_rate,0) ELSE ar.balance END),0)::numeric AS "openBalance"
        FROM accounts_receivable ar
        LEFT JOIN sales s ON s.sale_id=ar.sale_id
+       LEFT JOIN currencies cur ON cur.currency_id=ar.currency_id
        WHERE ar.tenant_id=$1 AND ar.status IN ('OPEN','PARTIALLY_PAID','OVERDUE')
          AND ($2::uuid IS NULL OR s.site_id=$2::uuid)`,
       [user.tenantId, scope.siteId],
@@ -245,10 +262,11 @@ export class ReportsRepository {
 
   private async stockSummary(user: AuthUser, scope: Scope) {
     const result = await this.db.query(
-      `SELECT COALESCE(SUM(st.quantity_available * l.purchase_price),0)::numeric AS "purchaseValue",
-              COALESCE(SUM(st.quantity_available * l.selling_price),0)::numeric AS "saleValue"
+      `SELECT COALESCE(SUM(CASE WHEN cur.currency_code='CDF' THEN 0 ELSE st.quantity_available * l.purchase_price END),0)::numeric AS "purchaseValue",
+              COALESCE(SUM(CASE WHEN cur.currency_code='CDF' THEN 0 ELSE st.quantity_available * l.selling_price END),0)::numeric AS "saleValue"
        FROM stocks st
        JOIN lots l ON l.lot_id=st.lot_id
+       LEFT JOIN currencies cur ON cur.currency_id=l.currency_id
        JOIN articles a ON a.article_id=l.article_id
        JOIN sites s ON s.site_id=st.site_id
        WHERE a.tenant_id=$1 AND s.tenant_id=$1

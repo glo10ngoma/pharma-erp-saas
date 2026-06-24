@@ -23,6 +23,7 @@ export type CashMovement = {
   movementType: string;
   amount: number;
   currencyCode: string | null;
+  currencySymbol?: string | null;
   referenceType: string | null;
   description: string | null;
 };

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiErrorMessage } from '../../services/apiError';
 import { reportsService, ReportFilters } from '../../services/reports.service';
 import { sitesService } from '../../services/sites.service';
+import { formatMoney } from '../../utils/money';
 
 const moneyKeys = new Set(['totalAmount', 'patientAmount', 'insuranceAmount', 'purchaseValue', 'saleValue', 'revenue', 'estimatedCost', 'grossMargin', 'amountDue', 'amountPaid', 'balance', 'amount']);
 
@@ -39,6 +40,7 @@ export function ReportsDashboardPage() {
 
   return <>
     <h1>Dashboard BI</h1>
+    <p className="muted-text">Devise de reporting : {kpis?.baseCurrency ?? 'USD'}</p>
     {error && <p className="form-error">{apiErrorMessage(error)}</p>}
     <div className="card form-grid">
       <input className="input" type="date" value={filters.from ?? ''} onChange={(e)=>setFilters({ ...filters, from: e.target.value })} />
@@ -49,7 +51,7 @@ export function ReportsDashboardPage() {
       </select>
     </div>
     <div className="grid two">
-      {dashboard.isLoading ? <div className="card"><p className="loading-state">Chargement des KPIs...</p></div> : cards.map(([label, value]) => <div className="card kpi-card" key={label}><span className="kpi-label">{label}</span><p className="metric">{format(value)}</p></div>)}
+      {dashboard.isLoading ? <div className="card"><p className="loading-state">Chargement des KPIs...</p></div> : cards.map(([label, value]) => <div className="card kpi-card" key={label}><span className="kpi-label">{label}</span><p className="metric">{format(value, kpis?.currencyCode, kpis?.currencySymbol)}</p></div>)}
     </div>
     <ReportTable title="Rapport ventes" rows={sales.data ?? []} />
     <ReportTable title="Rapport stock" rows={(stock.data ?? []).slice(0, 20)} />
@@ -63,19 +65,19 @@ export function ReportsDashboardPage() {
 
 function ReportTable({ title, rows }: { title: string; rows: Array<Record<string, unknown>> }) {
   const columns = Object.keys(rows[0] ?? {});
-  return <div className="card"><h2>{title}</h2>{rows.length === 0 ? <p className="empty-state">Aucune donnee pour la periode.</p> : <div className="table-wrap"><table className="data-table"><thead><tr>{columns.map((column)=><th key={column}>{label(column)}</th>)}</tr></thead><tbody>{rows.map((row, index)=><tr key={index}>{columns.map((column)=><td key={column}>{formatCell(column, row[column])}</td>)}</tr>)}</tbody></table></div>}</div>;
+  return <div className="card"><h2>{title}</h2>{rows.length === 0 ? <p className="empty-state">Aucune donnee pour la periode.</p> : <div className="table-wrap"><table className="data-table"><thead><tr>{columns.map((column)=><th key={column}>{label(column)}</th>)}</tr></thead><tbody>{rows.map((row, index)=><tr key={index}>{columns.map((column)=><td key={column}>{formatCell(column, row[column], row)}</td>)}</tr>)}</tbody></table></div>}</div>;
 }
 
 function label(value: string) {
   return value.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
 }
 
-function formatCell(key: string, value: unknown) {
+function formatCell(key: string, value: unknown, row: Record<string, unknown>) {
   if (value === null || value === undefined) return '';
-  if (typeof value === 'number') return moneyKeys.has(key) ? value.toFixed(2) : value.toString();
+  if (typeof value === 'number') return moneyKeys.has(key) ? formatMoney(value, String(row.currencyCode ?? row.baseCurrency ?? 'USD'), String(row.currencySymbol ?? '$')) : value.toString();
   return String(value);
 }
 
-function format(value: unknown) {
-  return typeof value === 'number' ? value.toFixed(2) : String(value ?? '');
+function format(value: unknown, currencyCode = 'USD', currencySymbol = '$') {
+  return typeof value === 'number' ? formatMoney(value, currencyCode, currencySymbol) : String(value ?? '');
 }

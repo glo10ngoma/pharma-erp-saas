@@ -3,7 +3,7 @@ import { apiClient } from './apiClient';
 export type Organization = { organizationId: string; organizationCode: string; organizationName: string; organizationType: string; phone: string | null; email: string | null; creditAllowed: boolean; creditLimit: number; paymentTermsDays: number; isActive: boolean };
 export type InsurancePlan = { planId: string; organizationId: string; organizationName: string | null; planCode: string; planName: string; coveragePercent: number; patientCopayPercent: number; isActive: boolean };
 export type Membership = { membershipId: string; customerId: string; customerName: string | null; organizationId: string; organizationName: string | null; planId: string | null; planName: string | null; coveragePercent: number | null; memberNumber: string | null; isActive: boolean };
-export type Receivable = { receivableId: string; saleId: string | null; customerName: string | null; organizationName: string | null; receivableType: string; amountDue: number; amountPaid: number; balance: number; status: string };
+export type Receivable = { receivableId: string; saleId: string | null; customerName: string | null; organizationName: string | null; receivableType: string; currencyCode?: string | null; currencySymbol?: string | null; amountDue: number; amountPaid: number; balance: number; status: string };
 
 export const insuranceService = {
   organizations: {
