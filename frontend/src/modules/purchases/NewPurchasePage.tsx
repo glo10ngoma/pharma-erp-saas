@@ -97,7 +97,9 @@ export function NewPurchasePage() {
   const hasBlockingError = draftLines.length === 0 || [...lineIssues.values()].some((issue) => issue.blocksSave);
   const totals = useMemo(() => {
     const articleIds = new Set<string>();
-    return draftLines.reduce((acc, line) => {
+    const quickHasValues = Boolean(quickLine.articleId || quickLine.purchaseUnitPrice || quickLine.sellingUnitPrice);
+    const lines = quickHasValues ? [...draftLines, quickLine] : draftLines;
+    return lines.reduce((acc, line) => {
       if (line.articleId) articleIds.add(line.articleId);
       const quantity = Number(line.quantity || 0);
       acc.quantity += Number.isFinite(quantity) ? quantity : 0;
@@ -106,7 +108,7 @@ export function NewPurchasePage() {
       acc.articleCount = articleIds.size;
       return acc;
     }, { articleCount: 0, quantity: 0, purchase: 0, sale: 0 });
-  }, [draftLines]);
+  }, [draftLines, quickLine]);
   const currentSupplier = suppliers.data?.find((supplier) => supplier.supplierId === form.supplierId);
   const currentSite = sites.data?.find((site) => site.siteId === form.siteId);
 
@@ -120,6 +122,10 @@ export function NewPurchasePage() {
     },
     onSuccess: (purchase) => navigate(`/purchases/${purchase.purchaseId}`),
   });
+
+  useEffect(() => {
+    if (form.currencyCode === 'USD' && form.exchangeRate !== '1') setForm((current) => ({ ...current, exchangeRate: '1' }));
+  }, [form.currencyCode, form.exchangeRate]);
 
   function update<K extends keyof PurchaseForm>(key: K, value: PurchaseForm[K]) { setForm((current) => ({ ...current, [key]: value })); }
   function updateLine(id: string, patch: Partial<PurchaseDraftLine>) { setDraftLines((current) => current.map((line) => line.id === id ? { ...line, ...patch } : line)); }
@@ -224,8 +230,8 @@ export function NewPurchasePage() {
           <Field label="Fournisseur"><select className="input compact-input" value={form.supplierId} onChange={(event) => update('supplierId', event.target.value)} required><option value="">Fournisseur</option>{(suppliers.data ?? []).map((supplier) => <option key={supplier.supplierId} value={supplier.supplierId}>{supplier.supplierName}</option>)}</select></Field>
           <Field label="Date"><input className="input compact-input" type="date" value={form.purchaseDate} onChange={(event) => update('purchaseDate', event.target.value)} required /></Field>
           <Field label="Site"><select className="input compact-input" value={form.siteId} onChange={(event) => update('siteId', event.target.value)} required><option value="">Site</option>{(sites.data ?? []).map((site) => <option key={site.siteId} value={site.siteId}>{site.siteName}</option>)}</select></Field>
-          <Field label="Devise"><select className="input compact-input" value={form.currencyCode} disabled><option value="USD">USD</option></select></Field>
-          <Field label="Taux"><input className="input compact-input" type="number" min="1" step="0.0001" placeholder="1" value={form.exchangeRate} onChange={(event) => update('exchangeRate', event.target.value)} required /></Field>
+          <Field label="Devise"><select className="input compact-input" value={form.currencyCode} onChange={(event) => update('currencyCode', event.target.value)}><option value="USD">USD</option><option value="CDF">CDF</option></select></Field>
+          <Field label="Taux"><input className="input compact-input" type="number" min={form.currencyCode === 'USD' ? '1' : '0.0001'} step="0.0001" placeholder="1" value={form.currencyCode === 'USD' ? '1' : form.exchangeRate} disabled={form.currencyCode === 'USD'} readOnly={form.currencyCode === 'USD'} onChange={(event) => update('exchangeRate', event.target.value)} required /></Field>
         </div>
       </section>
       <section className="card compact-card purchase-page-grid">
@@ -247,7 +253,7 @@ export function NewPurchasePage() {
         </div>
       </section>
       <section className="purchase-totals premium-summary compact-summary">
-        <div className="form-summary"><span>Lignes</span><strong>{draftLines.length}</strong></div>
+        <div className="form-summary"><span>Lignes</span><strong>{draftLines.length + (quickLine.articleId || quickLine.purchaseUnitPrice || quickLine.sellingUnitPrice ? 1 : 0)}</strong></div>
         <div className="form-summary"><span>Qte</span><strong>{totals.quantity}</strong></div>
         <div className="form-summary"><span>Achat</span><strong>{formatMoney(totals.purchase, form.currencyCode)}</strong></div>
         <div className="form-summary"><span>Vente</span><strong>{formatMoney(totals.sale, form.currencyCode)}</strong></div>
@@ -266,19 +272,19 @@ function PurchaseGridRow(props: { action?: ReactNode; activeAutocomplete: string
   const { action, activeAutocomplete, article, categoryById, currencyCode, formById, handleGridKey, issue, line, removeLine, rowIndex, selectArticle, selected, setActiveAutocomplete, setSelectedLineId, stockByArticle, suggestions, updateLine } = props;
   return <Fragment><tr className={`erp-grid-row line-${issue.level} ${selected ? 'selected' : ''}`} onClick={() => setSelectedLineId(line.id)}>
     <td><span className={`line-indicator ${issue.level}`}></span></td>
-    <ArticleCell activeAutocomplete={activeAutocomplete} article={article} formById={formById} line={line} rowIndex={rowIndex} selectArticle={selectArticle} setActiveAutocomplete={setActiveAutocomplete} setSelectedLineId={setSelectedLineId} suggestions={suggestions} updateLine={updateLine} handleGridKey={handleGridKey} />
+    <ArticleCell activeAutocomplete={activeAutocomplete} article={article} currencyCode={currencyCode} formById={formById} line={line} rowIndex={rowIndex} selectArticle={selectArticle} setActiveAutocomplete={setActiveAutocomplete} setSelectedLineId={setSelectedLineId} stockByArticle={stockByArticle} suggestions={suggestions} updateLine={updateLine} handleGridKey={handleGridKey} />
     <td><input className="input compact-input" data-grid-cell={`${rowIndex}-1`} placeholder="Lot" value={line.lotNumber} onKeyDown={(event) => handleGridKey(event, rowIndex, 1, line.id)} onChange={(event) => updateLine({ lotNumber: event.target.value })} /></td>
     <td><input className="input compact-input" data-grid-cell={`${rowIndex}-2`} type="date" value={line.expiryDate} onKeyDown={(event) => handleGridKey(event, rowIndex, 2, line.id)} onChange={(event) => updateLine({ expiryDate: event.target.value })} /></td>
     <td><input className="input compact-input numeric-cell" data-grid-cell={`${rowIndex}-3`} type="number" min="0.001" step="0.001" placeholder="Qte" value={line.quantity} onKeyDown={(event) => handleGridKey(event, rowIndex, 3, line.id)} onChange={(event) => updateLine({ quantity: event.target.value })} /></td>
     <td><input className="input compact-input numeric-cell" data-grid-cell={`${rowIndex}-4`} type="number" min="0.01" step="0.01" placeholder="PA" value={line.purchaseUnitPrice} onKeyDown={(event) => handleGridKey(event, rowIndex, 4, line.id)} onChange={(event) => updateLine({ purchaseUnitPrice: event.target.value })} /></td>
     <td><input className="input compact-input numeric-cell" data-grid-cell={`${rowIndex}-5`} type="number" min="0" step="0.01" placeholder="PV" value={line.sellingUnitPrice} onKeyDown={(event) => handleGridKey(event, rowIndex, 5, line.id)} onChange={(event) => updateLine({ sellingUnitPrice: event.target.value })} /></td>
     <td className="numeric-text"><strong>{formatMoney(lineTotal(line), currencyCode)}</strong></td>
-    <td className="article-readonly"><span>{categoryById.get(article?.categoryId ?? '') ?? '-'}</span><span>{formById.get(article?.formId ?? '') ?? '-'}</span><span>Stock: {article ? (stockByArticle.get(article.articleId) ?? article.stockAvailable ?? 0) : '-'}</span><span>Min: {article?.defaultStockMin ?? '-'}</span></td>
-    <td>{action ?? <button className="ghost-button compact-button" type="button" onClick={() => removeLine(line.id)}>X</button>}</td>
+    <td className="article-readonly"><span>Stock: {article ? (stockByArticle.get(article.articleId) ?? article.stockAvailable ?? 0) : '-'}</span><span>Min: {article?.defaultStockMin ?? '-'}</span></td>
+    <td>{action ?? <button className="ghost-button compact-button row-action-button" type="button" onClick={() => removeLine(line.id)}>X</button>}</td>
   </tr>{issue.level !== 'valid' && <tr className="line-message-row"><td className={`line-message ${issue.level}`} colSpan={10}>{issue.message}</td></tr>}</Fragment>;
 }
 
-function ArticleCell({ activeAutocomplete, formById, handleGridKey, line, rowIndex, selectArticle, setActiveAutocomplete, setSelectedLineId, suggestions, updateLine }: { activeAutocomplete: string; article?: Article; formById: Map<string, string>; handleGridKey: (event: KeyboardEvent<HTMLElement>, row: number, col: number, lineId: string) => void; line: PurchaseDraftLine; rowIndex: number; selectArticle: (lineId: string, article: Article) => void; setActiveAutocomplete: (id: string) => void; setSelectedLineId: (id: string) => void; suggestions: Article[]; updateLine: (patch: Partial<PurchaseDraftLine>) => void }) {
+function ArticleCell({ activeAutocomplete, currencyCode, formById, handleGridKey, line, rowIndex, selectArticle, setActiveAutocomplete, setSelectedLineId, stockByArticle, suggestions, updateLine }: { activeAutocomplete: string; article?: Article; currencyCode: string; formById: Map<string, string>; handleGridKey: (event: KeyboardEvent<HTMLElement>, row: number, col: number, lineId: string) => void; line: PurchaseDraftLine; rowIndex: number; selectArticle: (lineId: string, article: Article) => void; setActiveAutocomplete: (id: string) => void; setSelectedLineId: (id: string) => void; stockByArticle: Map<string, number>; suggestions: Article[]; updateLine: (patch: Partial<PurchaseDraftLine>) => void }) {
   const isOpen = activeAutocomplete === line.id;
   const updateArticleQuery = (value: string) => {
     setActiveAutocomplete(line.id);
@@ -296,6 +302,11 @@ function ArticleCell({ activeAutocomplete, formById, handleGridKey, line, rowInd
       onFocus={() => { setSelectedLineId(line.id); setActiveAutocomplete(line.id); }}
       onMouseDown={() => { setSelectedLineId(line.id); setActiveAutocomplete(line.id); }}
       onKeyDown={(event) => {
+        if (event.key === 'Escape' && isOpen) {
+          event.preventDefault();
+          setActiveAutocomplete('');
+          return;
+        }
         if (event.key === 'Enter' && isOpen && suggestions[0]) {
           event.preventDefault();
           selectArticle(line.id, suggestions[0]);
@@ -306,17 +317,34 @@ function ArticleCell({ activeAutocomplete, formById, handleGridKey, line, rowInd
       onChange={(event) => updateArticleQuery(event.target.value)}
       onInput={(event) => updateArticleQuery(event.currentTarget.value)}
     />
-    {isOpen && suggestions.length > 0 && <div className="autocomplete-menu">
-      {suggestions.map((suggestion) => <button type="button" key={suggestion.articleId} onMouseDown={(event) => { event.preventDefault(); selectArticle(line.id, suggestion); }}>
-        <strong>{suggestion.articleCode}</strong>
-        <span>{suggestion.commercialName}</span>
-        <small>{formById.get(suggestion.formId ?? '') ?? '-'} | {suggestion.dosage ?? '-'}</small>
-      </button>)}
+    {isOpen && <div className="article-popover" onMouseDown={(event) => event.preventDefault()}>
+      <input
+        className="input compact-input article-popover-search"
+        placeholder="Rechercher code, nom, DCI, dosage"
+        value={line.articleQuery}
+        onChange={(event) => updateArticleQuery(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') { event.preventDefault(); setActiveAutocomplete(''); }
+          if (event.key === 'Enter' && suggestions[0]) { event.preventDefault(); selectArticle(line.id, suggestions[0]); }
+        }}
+      />
+      <div className="article-popover-list">
+        <div className="article-popover-head"><span>Code</span><span>Nom</span><span>DCI</span><span>Dosage</span><span>Stock</span><span>PV</span></div>
+        {suggestions.length === 0 && <div className="article-popover-empty">Aucun article trouve</div>}
+        {suggestions.map((suggestion) => <button className="article-popover-option" type="button" key={suggestion.articleId} onMouseDown={(event) => { event.preventDefault(); selectArticle(line.id, suggestion); }}>
+          <span>{suggestion.articleCode}</span>
+          <strong>{suggestion.commercialName}</strong>
+          <span>{suggestion.dci ?? '-'}</span>
+          <span>{suggestion.dosage ?? '-'}</span>
+          <span>{stockByArticle.get(suggestion.articleId) ?? suggestion.stockAvailable ?? 0}</span>
+          <span>{formatMoney(suggestion.sellingPrice ?? 0, currencyCode)}</span>
+        </button>)}
+      </div>
     </div>}
   </td>;
 }
 
 function QuickEntryRow(props: { activeAutocomplete: string; article?: Article; categoryById: Map<string, string>; commitQuickLine: () => void; currencyCode: string; formById: Map<string, string>; handleGridKey: (event: KeyboardEvent<HTMLElement>, row: number, col: number, lineId: string) => void; issue: LineIssue; line: PurchaseDraftLine; rowIndex: number; selectArticle: (lineId: string, article: Article) => void; setActiveAutocomplete: (id: string) => void; setSelectedLineId: (id: string) => void; stockByArticle: Map<string, number>; suggestions: Article[]; updateQuickLine: (patch: Partial<PurchaseDraftLine>) => void }) {
   const { activeAutocomplete, categoryById, commitQuickLine, currencyCode, formById, handleGridKey, issue, line, rowIndex, selectArticle, setActiveAutocomplete, setSelectedLineId, stockByArticle, suggestions, updateQuickLine } = props;
-  return <PurchaseGridRow action={<button className="ghost-button compact-button" type="button" disabled={issue.blocksSave} onClick={commitQuickLine}>Ajouter</button>} activeAutocomplete={activeAutocomplete} article={props.article} categoryById={categoryById} currencyCode={currencyCode} formById={formById} handleGridKey={handleGridKey} issue={issue} line={line} removeLine={() => updateQuickLine(newLine())} rowIndex={rowIndex} selectArticle={selectArticle} selected={false} setActiveAutocomplete={setActiveAutocomplete} setSelectedLineId={setSelectedLineId} stockByArticle={stockByArticle} suggestions={suggestions} updateLine={updateQuickLine} />;
+  return <PurchaseGridRow action={<button className="ghost-button compact-button row-action-button add" type="button" disabled={issue.blocksSave} onClick={commitQuickLine}>Ajouter</button>} activeAutocomplete={activeAutocomplete} article={props.article} categoryById={categoryById} currencyCode={currencyCode} formById={formById} handleGridKey={handleGridKey} issue={issue} line={line} removeLine={() => updateQuickLine(newLine())} rowIndex={rowIndex} selectArticle={selectArticle} selected={false} setActiveAutocomplete={setActiveAutocomplete} setSelectedLineId={setSelectedLineId} stockByArticle={stockByArticle} suggestions={suggestions} updateLine={updateQuickLine} />;
 }

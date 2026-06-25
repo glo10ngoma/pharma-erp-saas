@@ -841,8 +841,8 @@ details.nav-group .nav-link {
 }
 
 .compact-input {
-  min-height: 32px;
-  padding: 6px 8px;
+  min-height: 28px;
+  padding: 4px 7px;
 }
 
 .compact-button {
@@ -918,7 +918,7 @@ details.nav-group .nav-link {
 
 .compact-grid th,
 .compact-grid td {
-  padding: 7px 8px;
+  padding: 4px 6px;
 }
 
 .compact-toolbar {
@@ -948,6 +948,96 @@ details.nav-group .nav-link {
 
 .quick-message-row td {
   background: var(--surface-soft);
+}
+
+.line-message {
+  font-size: .76rem;
+  padding: 4px 8px !important;
+}
+
+.row-action-button {
+  border-color: var(--line);
+  color: var(--text);
+  font-weight: 800;
+  margin: 0;
+  min-height: 28px;
+  min-width: 34px;
+  padding: 4px 8px;
+  width: auto;
+}
+
+.row-action-button:hover:not(:disabled) {
+  background: var(--surface-soft);
+}
+
+.row-action-button.add {
+  min-width: 72px;
+}
+
+[data-theme='dark'] .row-action-button {
+  border-color: #475569;
+  color: var(--text);
+}
+
+.article-popover {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 8px;
+  left: 8px;
+  min-width: min(760px, calc(100vw - 48px));
+  padding: 8px;
+  position: absolute;
+  top: 34px;
+  z-index: 1000;
+}
+
+.article-popover-search {
+  width: 100%;
+}
+
+.article-popover-list {
+  display: grid;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.article-popover-head,
+.article-popover-option {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 110px minmax(180px, 1.4fr) minmax(120px, 1fr) 90px 70px 100px;
+  min-width: 700px;
+}
+
+.article-popover-head {
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 800;
+  padding: 4px 8px;
+  text-transform: uppercase;
+}
+
+.article-popover-option {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  padding: 7px 8px;
+  text-align: left;
+}
+
+.article-popover-option:hover,
+.article-popover-option:focus {
+  background: var(--surface-soft);
+}
+
+.article-popover-empty {
+  color: var(--muted);
+  padding: 12px 8px;
 }
 
 .form-summary {
