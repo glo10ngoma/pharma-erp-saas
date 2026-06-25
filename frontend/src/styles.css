@@ -541,52 +541,54 @@ details.nav-group .nav-link {
 }
 
 .purchase-lines-table {
-  min-width: 1320px;
+  min-width: 1180px;
+  table-layout: fixed;
+  width: 100%;
 }
 
 .purchase-lines-table th,
 .purchase-lines-table td {
+  min-width: 0;
   vertical-align: middle;
 }
 
-.purchase-lines-table th:first-child,
-.purchase-lines-table td:first-child {
-  min-width: 42px;
-  width: 42px;
+.purchase-col-status {
+  width: 3%;
 }
 
-.purchase-lines-table th:nth-child(2),
-.purchase-lines-table td:nth-child(2) {
-  min-width: 420px;
+.purchase-col-article {
+  width: 34%;
 }
 
-.purchase-lines-table th:nth-child(3),
-.purchase-lines-table td:nth-child(3) {
-  min-width: 220px;
+.purchase-col-lot {
+  width: 15%;
 }
 
-.purchase-lines-table th:nth-child(4),
-.purchase-lines-table td:nth-child(4) {
-  min-width: 170px;
+.purchase-col-expiry {
+  width: 10%;
 }
 
-.purchase-lines-table th:nth-child(5),
-.purchase-lines-table td:nth-child(5),
-.purchase-lines-table th:nth-child(6),
-.purchase-lines-table td:nth-child(6),
-.purchase-lines-table th:nth-child(7),
-.purchase-lines-table td:nth-child(7) {
-  min-width: 130px;
+.purchase-col-qty {
+  width: 6%;
 }
 
-.purchase-lines-table th:nth-child(8),
-.purchase-lines-table td:nth-child(8) {
-  min-width: 130px;
+.purchase-col-pa,
+.purchase-col-pv {
+  width: 8%;
 }
 
-.purchase-lines-table th:nth-child(9),
-.purchase-lines-table td:nth-child(9) {
-  min-width: 82px;
+.purchase-col-total {
+  width: 11%;
+}
+
+.purchase-col-actions {
+  width: 5%;
+}
+
+@media (min-width: 1400px) {
+  .purchase-lines-table {
+    min-width: 0;
+  }
 }
 
 .purchase-totals {
@@ -668,8 +670,8 @@ details.nav-group .nav-link {
 .erp-grid .sticky-article-cell {
   background: var(--surface);
   box-shadow: 1px 0 0 var(--line);
-  left: 42px;
-  min-width: 320px;
+  left: 3%;
+  min-width: 0;
   position: sticky;
   z-index: 30;
 }
@@ -687,7 +689,6 @@ details.nav-group .nav-link {
 .erp-grid td:first-child {
   background: var(--surface);
   left: 0;
-  min-width: 42px;
   position: sticky;
   z-index: 31;
 }
@@ -698,8 +699,10 @@ details.nav-group .nav-link {
 
 .erp-grid .input {
   border-radius: 6px;
-  min-height: 34px;
-  padding: 7px 9px;
+  font-size: .86rem;
+  min-height: 28px;
+  padding: 4px 6px;
+  width: 100%;
 }
 
 .erp-grid-row.selected td {
@@ -726,6 +729,28 @@ details.nav-group .nav-link {
 .numeric-cell,
 .numeric-text {
   text-align: right;
+}
+
+.purchase-lines-table th:nth-child(5),
+.purchase-lines-table td:nth-child(5),
+.purchase-lines-table td:nth-child(5) .input {
+  text-align: center;
+}
+
+.purchase-lines-table th:nth-child(6),
+.purchase-lines-table th:nth-child(7),
+.purchase-lines-table th:nth-child(8),
+.purchase-lines-table td:nth-child(6),
+.purchase-lines-table td:nth-child(7),
+.purchase-lines-table td:nth-child(8),
+.purchase-lines-table td:nth-child(6) .input,
+.purchase-lines-table td:nth-child(7) .input {
+  text-align: right;
+}
+
+.purchase-lines-table th:last-child,
+.purchase-lines-table td:last-child {
+  text-align: center;
 }
 
 .line-indicator {
@@ -932,7 +957,7 @@ details.nav-group .nav-link {
 
 .compact-grid th,
 .compact-grid td {
-  padding: 4px 6px;
+  padding: 3px 5px;
 }
 
 .compact-toolbar {
@@ -974,10 +999,26 @@ details.nav-group .nav-link {
   color: var(--text);
   font-weight: 800;
   margin: 0;
-  min-height: 28px;
-  min-width: 34px;
-  padding: 4px 8px;
-  width: auto;
+  min-height: 30px;
+  min-width: 30px;
+  padding: 0;
+  width: 30px;
+}
+
+.row-action-button.icon-only {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.row-action-icon {
+  fill: none;
+  height: 16px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.2;
+  width: 16px;
 }
 
 .row-action-button:hover:not(:disabled) {
@@ -985,12 +1026,33 @@ details.nav-group .nav-link {
 }
 
 .row-action-button.add {
-  min-width: 72px;
+  background: rgba(15, 118, 110, .12);
+  border-color: rgba(15, 118, 110, .45);
+  color: var(--primary-dark);
+  min-width: 30px;
+}
+
+.row-action-button.danger {
+  background: rgba(220, 38, 38, .08);
+  border-color: rgba(220, 38, 38, .35);
+  color: #b91c1c;
 }
 
 [data-theme='dark'] .row-action-button {
   border-color: #475569;
   color: var(--text);
+}
+
+[data-theme='dark'] .row-action-button.add {
+  background: rgba(45, 212, 191, .14);
+  border-color: rgba(45, 212, 191, .45);
+  color: #5eead4;
+}
+
+[data-theme='dark'] .row-action-button.danger {
+  background: rgba(248, 113, 113, .14);
+  border-color: rgba(248, 113, 113, .45);
+  color: #fca5a5;
 }
 
 .article-popover {

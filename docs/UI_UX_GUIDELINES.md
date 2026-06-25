@@ -33,6 +33,11 @@ Ce document formalise progressivement l'identite visuelle de l'ERP Pharmaceutiqu
 - Sticky header quand le tableau est long.
 - Colonne principale figee lorsque le tableau est large.
 - Scroll horizontal propre sur ecran portable.
+- Les grilles metier Achats, Ventes et Inventaires doivent rester compactes et eviter le scroll horizontal sur ecran Full HD.
+- Reserver la largeur maximale a la colonne metier principale, par exemple Article ou Produit.
+- Aligner tous les montants a droite.
+- Centrer les quantites.
+- Utiliser uniquement des icones pour les actions de ligne, avec libelle accessible et tooltip.
 
 ## Formulaires
 
