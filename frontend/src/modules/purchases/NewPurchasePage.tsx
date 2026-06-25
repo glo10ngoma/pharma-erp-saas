@@ -169,7 +169,22 @@ export function NewPurchasePage() {
     if (event.ctrlKey && event.key.toLowerCase() === 'l') { event.preventDefault(); addLine(lineId); return; }
     if (event.ctrlKey && event.key === 'Delete') { event.preventDefault(); lineId === quickLine.id ? setQuickLine(newLine()) : removeLine(lineId); return; }
     if (event.key === 'Escape') { event.preventDefault(); navigate('/purchases'); return; }
-    if (event.key === 'Enter') { event.preventDefault(); if (lineId === quickLine.id) commitQuickLine(); else focusCell(Math.min(row + 1, draftLines.length), col); return; }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      if (lineId === quickLine.id) {
+        commitQuickLine();
+        return;
+      }
+      const currentLine = draftLines.find((line) => line.id === lineId);
+      const currentIssue = currentLine ? (lineIssues.get(lineId) ?? issueForLine(currentLine)) : undefined;
+      if (currentIssue && !currentIssue.blocksSave) {
+        addLine(lineId);
+        setTimeout(() => focusCell(row + 1, 0), 0);
+        return;
+      }
+      focusCell(Math.min(row + 1, draftLines.length), col);
+      return;
+    }
     if (event.key === 'ArrowDown') { event.preventDefault(); focusCell(Math.min(row + 1, draftLines.length), col); }
     if (event.key === 'ArrowUp') { event.preventDefault(); focusCell(Math.max(row - 1, 0), col); }
   }
@@ -199,7 +214,7 @@ export function NewPurchasePage() {
       </section>
       <section className="card compact-card purchase-page-grid">
         <div className="erp-toolbar compact-toolbar">
-          <button className="ghost-button compact-button" type="button" onClick={() => addLine()}>+ Ligne</button>
+          <button className="ghost-button compact-button" type="button" onClick={() => addLine()}>+ Ajouter ligne</button>
           <button className="ghost-button compact-button" type="button" onClick={duplicateSelectedLine} disabled={!selectedLineId}>Dupliquer</button>
           <button className="ghost-button compact-button" type="button" onClick={removeSelectedLine} disabled={!selectedLineId}>Supprimer</button>
           <button className="ghost-button compact-button" type="button" disabled>Importer CSV</button>
@@ -231,8 +246,8 @@ export function NewPurchasePage() {
   );
 }
 
-function PurchaseGridRow(props: { activeAutocomplete: string; article?: Article; categoryById: Map<string, string>; currencyCode: string; formById: Map<string, string>; handleGridKey: (event: KeyboardEvent<HTMLElement>, row: number, col: number, lineId: string) => void; issue: LineIssue; line: PurchaseDraftLine; removeLine: (id: string) => void; rowIndex: number; selectArticle: (lineId: string, article: Article) => void; selected: boolean; setActiveAutocomplete: (id: string) => void; setSelectedLineId: (id: string) => void; stockByArticle: Map<string, number>; suggestions: Article[]; updateLine: (patch: Partial<PurchaseDraftLine>) => void }) {
-  const { activeAutocomplete, article, categoryById, currencyCode, formById, handleGridKey, issue, line, removeLine, rowIndex, selectArticle, selected, setActiveAutocomplete, setSelectedLineId, stockByArticle, suggestions, updateLine } = props;
+function PurchaseGridRow(props: { action?: ReactNode; activeAutocomplete: string; article?: Article; categoryById: Map<string, string>; currencyCode: string; formById: Map<string, string>; handleGridKey: (event: KeyboardEvent<HTMLElement>, row: number, col: number, lineId: string) => void; issue: LineIssue; line: PurchaseDraftLine; removeLine: (id: string) => void; rowIndex: number; selectArticle: (lineId: string, article: Article) => void; selected: boolean; setActiveAutocomplete: (id: string) => void; setSelectedLineId: (id: string) => void; stockByArticle: Map<string, number>; suggestions: Article[]; updateLine: (patch: Partial<PurchaseDraftLine>) => void }) {
+  const { action, activeAutocomplete, article, categoryById, currencyCode, formById, handleGridKey, issue, line, removeLine, rowIndex, selectArticle, selected, setActiveAutocomplete, setSelectedLineId, stockByArticle, suggestions, updateLine } = props;
   return <Fragment><tr className={`erp-grid-row line-${issue.level} ${selected ? 'selected' : ''}`} onClick={() => setSelectedLineId(line.id)}>
     <td><span className={`line-indicator ${issue.level}`}></span></td>
     <ArticleCell activeAutocomplete={activeAutocomplete} article={article} formById={formById} line={line} rowIndex={rowIndex} selectArticle={selectArticle} setActiveAutocomplete={setActiveAutocomplete} setSelectedLineId={setSelectedLineId} suggestions={suggestions} updateLine={updateLine} handleGridKey={handleGridKey} />
@@ -243,7 +258,7 @@ function PurchaseGridRow(props: { activeAutocomplete: string; article?: Article;
     <td><input className="input compact-input numeric-cell" data-grid-cell={`${rowIndex}-5`} type="number" min="0" step="0.01" placeholder="PV" value={line.sellingUnitPrice} onKeyDown={(event) => handleGridKey(event, rowIndex, 5, line.id)} onChange={(event) => updateLine({ sellingUnitPrice: event.target.value })} /></td>
     <td className="numeric-text"><strong>{formatMoney(lineTotal(line), currencyCode)}</strong></td>
     <td className="article-readonly"><span>{categoryById.get(article?.categoryId ?? '') ?? '-'}</span><span>{formById.get(article?.formId ?? '') ?? '-'}</span><span>Stock: {article ? (stockByArticle.get(article.articleId) ?? article.stockAvailable ?? 0) : '-'}</span><span>Min: {article?.defaultStockMin ?? '-'}</span></td>
-    <td><button className="ghost-button compact-button" type="button" onClick={() => removeLine(line.id)}>X</button></td>
+    <td>{action ?? <button className="ghost-button compact-button" type="button" onClick={() => removeLine(line.id)}>X</button>}</td>
   </tr>{issue.level !== 'valid' && <tr className="line-message-row"><td className={`line-message ${issue.level}`} colSpan={10}>{issue.message}</td></tr>}</Fragment>;
 }
 
@@ -283,5 +298,5 @@ function ArticleCell({ activeAutocomplete, formById, handleGridKey, line, rowInd
 
 function QuickEntryRow(props: { activeAutocomplete: string; article?: Article; categoryById: Map<string, string>; commitQuickLine: () => void; currencyCode: string; formById: Map<string, string>; handleGridKey: (event: KeyboardEvent<HTMLElement>, row: number, col: number, lineId: string) => void; issue: LineIssue; line: PurchaseDraftLine; rowIndex: number; selectArticle: (lineId: string, article: Article) => void; setActiveAutocomplete: (id: string) => void; setSelectedLineId: (id: string) => void; stockByArticle: Map<string, number>; suggestions: Article[]; updateQuickLine: (patch: Partial<PurchaseDraftLine>) => void }) {
   const { activeAutocomplete, categoryById, commitQuickLine, currencyCode, formById, handleGridKey, issue, line, rowIndex, selectArticle, setActiveAutocomplete, setSelectedLineId, stockByArticle, suggestions, updateQuickLine } = props;
-  return <PurchaseGridRow activeAutocomplete={activeAutocomplete} article={props.article} categoryById={categoryById} currencyCode={currencyCode} formById={formById} handleGridKey={handleGridKey} issue={issue} line={line} removeLine={() => updateQuickLine(newLine())} rowIndex={rowIndex} selectArticle={selectArticle} selected={false} setActiveAutocomplete={setActiveAutocomplete} setSelectedLineId={setSelectedLineId} stockByArticle={stockByArticle} suggestions={suggestions} updateLine={updateQuickLine} />;
+  return <PurchaseGridRow action={<button className="ghost-button compact-button" type="button" disabled={issue.blocksSave} onClick={commitQuickLine}>Ajouter</button>} activeAutocomplete={activeAutocomplete} article={props.article} categoryById={categoryById} currencyCode={currencyCode} formById={formById} handleGridKey={handleGridKey} issue={issue} line={line} removeLine={() => updateQuickLine(newLine())} rowIndex={rowIndex} selectArticle={selectArticle} selected={false} setActiveAutocomplete={setActiveAutocomplete} setSelectedLineId={setSelectedLineId} stockByArticle={stockByArticle} suggestions={suggestions} updateLine={updateQuickLine} />;
 }
