@@ -248,7 +248,37 @@ function PurchaseGridRow(props: { activeAutocomplete: string; article?: Article;
 }
 
 function ArticleCell({ activeAutocomplete, formById, handleGridKey, line, rowIndex, selectArticle, setActiveAutocomplete, setSelectedLineId, suggestions, updateLine }: { activeAutocomplete: string; article?: Article; formById: Map<string, string>; handleGridKey: (event: KeyboardEvent<HTMLElement>, row: number, col: number, lineId: string) => void; line: PurchaseDraftLine; rowIndex: number; selectArticle: (lineId: string, article: Article) => void; setActiveAutocomplete: (id: string) => void; setSelectedLineId: (id: string) => void; suggestions: Article[]; updateLine: (patch: Partial<PurchaseDraftLine>) => void }) {
-  return <td className="autocomplete-cell sticky-article-cell"><input className="input compact-input" data-grid-cell={`${rowIndex}-0`} placeholder="Article..." value={line.articleQuery} onFocus={() => { setSelectedLineId(line.id); setActiveAutocomplete(line.id); }} onKeyDown={(event) => handleGridKey(event, rowIndex, 0, line.id)} onChange={(event) => updateLine({ articleQuery: event.target.value, articleId: '' })} />{activeAutocomplete === line.id && <div className="autocomplete-menu">{suggestions.map((suggestion) => <button type="button" key={suggestion.articleId} onMouseDown={(event) => { event.preventDefault(); selectArticle(line.id, suggestion); }}><strong>{suggestion.articleCode}</strong><span>{suggestion.commercialName}</span><small>{formById.get(suggestion.formId ?? '') ?? '-'} | {suggestion.dosage ?? '-'}</small></button>)}</div>}</td>;
+  const isOpen = activeAutocomplete === line.id;
+
+  return <td className="autocomplete-cell sticky-article-cell">
+    <input
+      className="input compact-input"
+      data-grid-cell={`${rowIndex}-0`}
+      placeholder="Code, nom, DCI..."
+      value={line.articleQuery}
+      onBlur={() => window.setTimeout(() => setActiveAutocomplete(''), 120)}
+      onFocus={() => { setSelectedLineId(line.id); setActiveAutocomplete(line.id); }}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' && isOpen && suggestions[0]) {
+          event.preventDefault();
+          selectArticle(line.id, suggestions[0]);
+          return;
+        }
+        handleGridKey(event, rowIndex, 0, line.id);
+      }}
+      onChange={(event) => {
+        setActiveAutocomplete(line.id);
+        updateLine({ articleQuery: event.target.value, articleId: '' });
+      }}
+    />
+    {isOpen && suggestions.length > 0 && <div className="autocomplete-menu">
+      {suggestions.map((suggestion) => <button type="button" key={suggestion.articleId} onMouseDown={(event) => { event.preventDefault(); selectArticle(line.id, suggestion); }}>
+        <strong>{suggestion.articleCode}</strong>
+        <span>{suggestion.commercialName}</span>
+        <small>{formById.get(suggestion.formId ?? '') ?? '-'} | {suggestion.dosage ?? '-'}</small>
+      </button>)}
+    </div>}
+  </td>;
 }
 
 function QuickEntryRow(props: { activeAutocomplete: string; article?: Article; categoryById: Map<string, string>; commitQuickLine: () => void; currencyCode: string; formById: Map<string, string>; handleGridKey: (event: KeyboardEvent<HTMLElement>, row: number, col: number, lineId: string) => void; issue: LineIssue; line: PurchaseDraftLine; rowIndex: number; selectArticle: (lineId: string, article: Article) => void; setActiveAutocomplete: (id: string) => void; setSelectedLineId: (id: string) => void; stockByArticle: Map<string, number>; suggestions: Article[]; updateQuickLine: (patch: Partial<PurchaseDraftLine>) => void }) {
