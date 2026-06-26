@@ -484,17 +484,28 @@ details.nav-group .nav-link {
   justify-content: space-between;
 }
 
+.inventory-filters {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
 .lots-filters .input,
-.stock-filters .input {
+.stock-filters .input,
+.inventory-filters .input {
   max-width: 220px;
 }
 
-.stock-date-input {
+.stock-date-input,
+.inventory-date-input {
   max-width: 170px;
 }
 
 .lots-filters .ghost-button,
-.stock-filters .ghost-button {
+.stock-filters .ghost-button,
+.inventory-filters .ghost-button,
+.inventory-actions .ghost-button {
   background: var(--surface);
   border: 1px solid var(--line);
   color: var(--text);
@@ -505,7 +516,11 @@ details.nav-group .nav-link {
 .lots-filters .ghost-button:hover,
 .lots-filters .export-menu[open] summary,
 .stock-filters .ghost-button:hover,
-.stock-filters .export-menu[open] summary {
+.stock-filters .export-menu[open] summary,
+.inventory-filters .ghost-button:hover,
+.inventory-filters .export-menu[open] summary,
+.inventory-actions .ghost-button:hover,
+.inventory-actions .export-menu[open] summary {
   background: var(--surface-soft);
   border-color: var(--primary);
   color: var(--text);
@@ -525,6 +540,44 @@ details.nav-group .nav-link {
 
 .stock-kpis {
   grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.inventory-sticky-header {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  position: sticky;
+  top: 0;
+  z-index: 25;
+}
+
+.inventory-sticky-header div {
+  display: grid;
+  gap: 3px;
+}
+
+.inventory-sticky-header span {
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.inventory-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.inventory-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .purchase-filters .ghost-button {
@@ -655,6 +708,14 @@ details.nav-group .nav-link {
   min-width: 1180px;
 }
 
+.inventories-table {
+  min-width: 980px;
+}
+
+.inventory-count-table {
+  min-width: 1180px;
+}
+
 .purchase-table tbody tr {
   background: var(--surface);
 }
@@ -664,6 +725,11 @@ details.nav-group .nav-link {
 }
 
 .stocks-table tbody tr {
+  background: var(--surface);
+}
+
+.inventories-table tbody tr,
+.inventory-count-table tbody tr {
   background: var(--surface);
 }
 
@@ -677,6 +743,10 @@ details.nav-group .nav-link {
 .stocks-table td,
 .stocks-detail-table th,
 .stocks-detail-table td,
+.inventories-table th,
+.inventories-table td,
+.inventory-count-table th,
+.inventory-count-table td,
 .purchase-detail-table th,
 .purchase-detail-table td {
   padding: 6px 8px;
@@ -688,6 +758,8 @@ details.nav-group .nav-link {
 .lots-detail-table th,
 .stocks-table th,
 .stocks-detail-table th,
+.inventories-table th,
+.inventory-count-table th,
 .purchase-detail-table th {
   font-size: .72rem;
 }
@@ -701,9 +773,21 @@ details.nav-group .nav-link {
   font-size: .9rem;
 }
 
+.inventories-table td,
+.inventory-count-table td {
+  color: var(--text);
+  font-size: .9rem;
+}
+
 .purchase-table .compact-button,
 .lots-table .compact-button,
 .stocks-table .compact-button {
+  min-height: 28px;
+  padding: 4px 8px;
+}
+
+.inventories-table .compact-button,
+.inventory-count-table .compact-button {
   min-height: 28px;
   padding: 4px 8px;
 }
@@ -714,6 +798,50 @@ details.nav-group .nav-link {
   display: block;
   font-size: .75rem;
   margin-top: 2px;
+}
+
+.inventory-count-table small {
+  color: var(--muted);
+  display: block;
+  font-size: .75rem;
+  margin-top: 2px;
+}
+
+.inventory-picker-cell {
+  position: relative;
+}
+
+.inventory-picker-popover {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 2px;
+  left: 6px;
+  max-height: 280px;
+  min-width: 520px;
+  overflow: auto;
+  padding: 6px;
+  position: absolute;
+  top: calc(100% + 4px);
+  z-index: 80;
+}
+
+.inventory-picker-popover button {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  gap: 2px;
+  padding: 7px 8px;
+  text-align: left;
+}
+
+.inventory-picker-popover button:hover {
+  background: var(--surface-soft);
 }
 
 .lots-cell .ghost-button + .ghost-button,
@@ -734,6 +862,10 @@ details.nav-group .nav-link {
   margin: 16px 0 8px;
 }
 
+.inventory-detail-page .breadcrumb {
+  margin-bottom: 10px;
+}
+
 [data-theme='dark'] .purchase-filters .ghost-button {
   background: #111827;
   border-color: #334155;
@@ -752,6 +884,13 @@ details.nav-group .nav-link {
   color: var(--text);
 }
 
+[data-theme='dark'] .inventory-filters .ghost-button,
+[data-theme='dark'] .inventory-actions .ghost-button {
+  background: #111827;
+  border-color: #334155;
+  color: var(--text);
+}
+
 [data-theme='dark'] .purchase-filters .ghost-button:hover,
 [data-theme='dark'] .purchase-filters .export-menu[open] summary {
   background: #163235;
@@ -762,7 +901,11 @@ details.nav-group .nav-link {
 [data-theme='dark'] .lots-filters .ghost-button:hover,
 [data-theme='dark'] .lots-filters .export-menu[open] summary,
 [data-theme='dark'] .stock-filters .ghost-button:hover,
-[data-theme='dark'] .stock-filters .export-menu[open] summary {
+[data-theme='dark'] .stock-filters .export-menu[open] summary,
+[data-theme='dark'] .inventory-filters .ghost-button:hover,
+[data-theme='dark'] .inventory-filters .export-menu[open] summary,
+[data-theme='dark'] .inventory-actions .ghost-button:hover,
+[data-theme='dark'] .inventory-actions .export-menu[open] summary {
   background: #163235;
   border-color: var(--primary);
   color: var(--text);
@@ -791,7 +934,9 @@ details.nav-group .nav-link {
 [data-theme='dark'] .lots-table th,
 [data-theme='dark'] .lots-detail-table th,
 [data-theme='dark'] .stocks-table th,
-[data-theme='dark'] .stocks-detail-table th {
+[data-theme='dark'] .stocks-detail-table th,
+[data-theme='dark'] .inventories-table th,
+[data-theme='dark'] .inventory-count-table th {
   background: #0b1220;
   border-bottom-color: #334155;
   color: #d7e3ee;
@@ -809,6 +954,11 @@ details.nav-group .nav-link {
   background: #111827;
 }
 
+[data-theme='dark'] .inventories-table tbody tr,
+[data-theme='dark'] .inventory-count-table tbody tr {
+  background: #111827;
+}
+
 [data-theme='dark'] .purchase-table td {
   background: #111827;
   border-bottom-color: #273447;
@@ -818,7 +968,9 @@ details.nav-group .nav-link {
 [data-theme='dark'] .lots-table td,
 [data-theme='dark'] .lots-detail-table td,
 [data-theme='dark'] .stocks-table td,
-[data-theme='dark'] .stocks-detail-table td {
+[data-theme='dark'] .stocks-detail-table td,
+[data-theme='dark'] .inventories-table td,
+[data-theme='dark'] .inventory-count-table td {
   background: #111827;
   border-bottom-color: #273447;
   color: var(--text);
@@ -835,6 +987,12 @@ details.nav-group .nav-link {
 }
 
 [data-theme='dark'] .stocks-table tbody tr:hover td {
+  background: #162033;
+  color: var(--text);
+}
+
+[data-theme='dark'] .inventories-table tbody tr:hover td,
+[data-theme='dark'] .inventory-count-table tbody tr:hover td {
   background: #162033;
   color: var(--text);
 }
@@ -857,6 +1015,13 @@ details.nav-group .nav-link {
   color: var(--text);
 }
 
+[data-theme='dark'] .inventories-table .ghost-button,
+[data-theme='dark'] .inventory-count-table .ghost-button {
+  background: #111827;
+  border-color: #475569;
+  color: var(--text);
+}
+
 [data-theme='dark'] .purchase-table .ghost-button:hover {
   background: #162033;
   border-color: var(--primary);
@@ -870,6 +1035,17 @@ details.nav-group .nav-link {
 [data-theme='dark'] .stocks-table .ghost-button:hover {
   background: #162033;
   border-color: var(--primary);
+}
+
+[data-theme='dark'] .inventories-table .ghost-button:hover,
+[data-theme='dark'] .inventory-count-table .ghost-button:hover {
+  background: #162033;
+  border-color: var(--primary);
+}
+
+[data-theme='dark'] .inventory-picker-popover {
+  background: #111827;
+  border-color: #334155;
 }
 
 [data-theme='dark'] .badge-danger {
