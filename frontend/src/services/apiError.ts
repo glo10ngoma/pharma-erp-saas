@@ -24,6 +24,10 @@ const LABELS: Record<string, string> = {
   INVENTORY_EMPTY: 'Impossible de valider un inventaire vide.',
   INVENTORY_ITEM_NOT_COUNTED: 'Toutes les lignes doivent etre comptees.',
   STOCK_NOT_FOUND: 'Stock introuvable pour ce lot.',
+  TRANSFER_NOT_DRAFT: 'Ce transfert ne peut plus etre modifie.',
+  TRANSFER_EMPTY: 'Impossible de valider un transfert vide.',
+  TRANSFER_SAME_SITE: 'Le site source doit etre different du site destination.',
+  INVALID_TRANSFER_QUANTITY: 'Quantite de transfert invalide.',
 };
 
 export function apiErrorMessage(error: unknown) {

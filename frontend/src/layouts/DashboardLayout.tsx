@@ -49,6 +49,7 @@ export function DashboardLayout() {
         ['/purchases', 'Achats', 'purchases.read'],
         ['/lots', 'Lots', 'lots.read'],
         ['/stocks', 'Stocks', 'stocks.read'],
+        ['/transfers', 'Transferts', 'transfers.read'],
         ['/inventories', 'Inventaires', 'inventories.read'],
       ],
     },

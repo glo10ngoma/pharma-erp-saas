@@ -21,6 +21,9 @@ import { RolesPage } from './modules/roles/RolesPage';
 import { SitesPage } from './modules/sites/SitesPage';
 import { UsersPage } from './modules/users/UsersPage';
 import { StocksPage } from './modules/stocks/StocksPage';
+import { TransferDetailPage } from './modules/transfers/TransferDetailPage';
+import { NewTransferPage } from './modules/transfers/NewTransferPage';
+import { TransfersPage } from './modules/transfers/TransfersPage';
 import { SalesPage } from './modules/sales/SalesPage';
 import { PosPage } from './modules/sales/PosPage';
 import { SaleDetailPage } from './modules/sales/SaleDetailPage';
@@ -65,6 +68,9 @@ export function App() {
               <Route path="/purchases/:id" element={<PurchaseDetailPage />} />
               <Route path="/lots" element={<LotsPage />} />
               <Route path="/stocks" element={<StocksPage />} />
+              <Route path="/transfers" element={<TransfersPage />} />
+              <Route path="/transfers/new" element={<NewTransferPage />} />
+              <Route path="/transfers/:id" element={<TransferDetailPage />} />
               <Route path="/sales" element={<SalesPage />} />
               <Route path="/pos" element={<PosPage />} />
               <Route path="/sales/:id" element={<SaleDetailPage />} />

@@ -20,6 +20,7 @@ const ENTITIES: Record<string, EntityConfig> = {
   administration_routes: { prefix: 'VOI', table: 'administration_routes', column: 'route_code' },
   product_types: { prefix: 'TYP', table: 'product_types', column: 'type_code' },
   purchases: { prefix: 'ACH', table: 'purchases', column: 'purchase_number' },
+  transfers: { prefix: 'TRF', table: 'stock_transfers', column: 'transfer_number' },
   sales: { prefix: 'VEN', table: 'sales', column: 'sale_number' },
   inventories: { prefix: 'INV', table: 'inventory_sessions', column: 'inventory_number' },
   organizations: { prefix: 'ORG', table: 'organizations', column: 'organization_code' },

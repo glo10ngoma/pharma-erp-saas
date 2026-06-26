@@ -32,6 +32,7 @@ import { InventoriesModule } from './inventories/inventories.module';
 import { AccountingModule } from './accounting/accounting.module';
 import { ReportsModule } from './reports/reports.module';
 import { CodeGeneratorModule } from './code-generator/code-generator.module';
+import { TransfersModule } from './transfers/transfers.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { CodeGeneratorModule } from './code-generator/code-generator.module';
     MembershipsModule,
     ReceivablesModule,
     InventoriesModule,
+    TransfersModule,
     AccountingModule,
     ReportsModule,
     CodeGeneratorModule,

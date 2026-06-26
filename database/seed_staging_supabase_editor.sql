@@ -196,7 +196,10 @@ VALUES
   ('sites.update', 'Modifier site', 'Sites', 'Modifier un site', TRUE),
   ('sites.delete', 'Desactiver site', 'Sites', 'Desactiver un site', TRUE),
   ('tenants.read', 'Consulter tenants', 'Tenants', 'Voir les tenants', TRUE),
-  ('transfers.read', 'Consulter transferts', 'Transfers', 'Voir les transferts', TRUE)
+  ('transfers.read', 'Consulter transferts', 'Transfers', 'Voir les transferts', TRUE),
+  ('transfers.create', 'Creer transfert', 'Transfers', 'Creer un transfert brouillon', TRUE),
+  ('transfers.update_draft', 'Modifier transfert brouillon', 'Transfers', 'Ajouter ou supprimer des lignes transfert', TRUE),
+  ('transfers.validate', 'Valider transfert', 'Transfers', 'Valider un transfert et creer les mouvements stock', TRUE)
 ON CONFLICT (permission_code) DO UPDATE
 SET permission_name = EXCLUDED.permission_name,
     module_name = EXCLUDED.module_name,
@@ -257,7 +260,7 @@ JOIN permissions p ON p.permission_code IN (
   'roles.read','roles.create','roles.update','roles.delete','roles.assign_permissions',
   'permissions.read','permissions.create','permissions.update','permissions.delete',
   'sites.read','sites.create','sites.update','sites.delete',
-  'tenants.read','transfers.read'
+  'tenants.read','transfers.read','transfers.create','transfers.update_draft','transfers.validate'
 )
 WHERE t.tenant_code = 'STAGING'
   AND r.role_name = 'ADMIN'

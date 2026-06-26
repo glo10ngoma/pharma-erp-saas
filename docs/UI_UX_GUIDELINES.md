@@ -38,6 +38,8 @@ La page `/purchases/new` - Nouvel Achat - est desormais le modele UI/UX de refer
 - Le resume temps reel affiche les totaux, quantites et indicateurs financiers sans attendre l'enregistrement.
 - Les boutons principaux restent visibles et clairement hierarchises : annuler, enregistrer, valider.
 - Ce modele doit etre applique progressivement aux flux : Ventes / POS, Inventaires, Transferts, Retours et Saisie comptable.
+- Le workflow Inventaire ERP est base sur un prechargement automatique de tous les lots actifs du site.
+- Dans un inventaire, l'utilisateur ne saisit que le stock physique et l'observation ; les ecarts, types et valeurs sont calcules automatiquement.
 
 ## Tableaux
 
@@ -47,13 +49,17 @@ La page `/purchases/new` - Nouvel Achat - est desormais le modele UI/UX de refer
 - Barre de recherche au-dessus des listes.
 - Empty state clair lorsque la liste est vide.
 - Sticky header quand le tableau est long.
+- Les tables longues Stocks, Lots, Inventaires et Transferts doivent avoir des en-tetes sticky.
 - Colonne principale figee lorsque le tableau est large.
 - Scroll horizontal propre sur ecran portable.
+- Les pages de stock, lots et inventaires utilisent des lignes compactes pour afficher plus de donnees sans perdre la lisibilite.
 - Les grilles metier Achats, Ventes et Inventaires doivent rester compactes et eviter le scroll horizontal sur ecran Full HD.
 - Reserver la largeur maximale a la colonne metier principale, par exemple Article ou Produit.
 - Aligner tous les montants a droite.
 - Centrer les quantites.
 - Utiliser uniquement des icones pour les actions de ligne, avec libelle accessible et tooltip.
+- Afficher les donnees principales rapidement ; les calculs lourds et reconstructions historiques doivent etre declenches a la demande.
+- Les selecteurs article/lot partages doivent utiliser `FloatingSearchPopover` pour eviter les popovers coupes par les grilles.
 
 ## Formulaires
 

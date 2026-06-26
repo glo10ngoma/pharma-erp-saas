@@ -30,7 +30,7 @@ export function LotsPage() {
 
   const lots = useQuery({ queryKey: ['lots'], queryFn: async () => (await lotsService.getAll()).data });
   const stocks = useQuery({ queryKey: ['stocks'], queryFn: async () => (await stocksService.getAll()).data });
-  const movements = useQuery({ queryKey: ['stock-movements'], queryFn: async () => (await stocksService.getMovements()).data });
+  const movements = useQuery({ queryKey: ['stock-movements'], queryFn: async () => (await stocksService.getMovements()).data, enabled: Boolean(selectedLotId) });
   const block = useMutation({ mutationFn: (id: string) => lotsService.block(id, 'Blocage manuel'), onSuccess: () => qc.invalidateQueries({ queryKey: ['lots'] }) });
   const unblock = useMutation({ mutationFn: (id: string) => lotsService.unblock(id), onSuccess: () => qc.invalidateQueries({ queryKey: ['lots'] }) });
 

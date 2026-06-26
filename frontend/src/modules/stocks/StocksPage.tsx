@@ -50,13 +50,13 @@ export function StocksPage() {
   const [siteFilter, setSiteFilter] = useState('');
   const [stockDate, setStockDate] = useState(todayIso());
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const isSnapshot = Boolean(stockDate && stockDate !== todayIso());
 
   const stocks = useQuery({ queryKey: ['stocks'], queryFn: async () => (await stocksService.getAll()).data });
-  const movements = useQuery({ queryKey: ['stock-movements'], queryFn: async () => (await stocksService.getMovements()).data });
+  const movements = useQuery({ queryKey: ['stock-movements'], queryFn: async () => (await stocksService.getMovements()).data, enabled: isSnapshot || Boolean(selectedKey) });
   const lots = useQuery({ queryKey: ['lots'], queryFn: async () => (await lotsService.getAll()).data });
   const articles = useQuery({ queryKey: ['articles', 'stock-page'], queryFn: async () => (await articlesService.getAll({ limit: 1000 })).data.items });
 
-  const isSnapshot = Boolean(stockDate && stockDate !== todayIso());
   const lotsById = useMemo(() => new Map((lots.data ?? []).map((lot) => [lot.lotId, lot])), [lots.data]);
   const articlesById = useMemo(() => new Map((articles.data ?? []).map((article) => [article.articleId, article])), [articles.data]);
   const rows = useMemo(() => {
@@ -93,7 +93,7 @@ export function StocksPage() {
     if (format === 'json') downloadJson(`stocks_${stamp}.json`, filteredRows.map((row) => stockExportObject(row, label)));
   }
 
-  const loading = stocks.isLoading || movements.isLoading || lots.isLoading || articles.isLoading;
+  const loading = stocks.isLoading || lots.isLoading || articles.isLoading || (isSnapshot && movements.isLoading);
 
   return (
     <>
@@ -106,7 +106,7 @@ export function StocksPage() {
 
       <div className="stock-snapshot-banner card compact-card">
         <strong>{isSnapshot ? `Stock theorique au ${formatDate(stockDate)}` : 'Stock actuel'}</strong>
-        {isSnapshot && <span>Stock reconstruit a partir des mouvements disponibles.</span>}
+        {isSnapshot && <span>Stock reconstruit a partir des mouvements disponibles. Attention: l'API mouvements retourne actuellement les 200 derniers mouvements.</span>}
       </div>
 
       <div className="stats-grid stock-kpis">

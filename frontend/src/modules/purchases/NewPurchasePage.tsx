@@ -1,7 +1,7 @@
-import { Fragment, FormEvent, KeyboardEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { Fragment, FormEvent, KeyboardEvent, ReactNode, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
+import { FloatingSearchPopover } from '../../components/FloatingSearchPopover';
 import { Article, articlesService } from '../../services/articles.service';
 import { apiErrorMessage } from '../../services/apiError';
 import { codeGeneratorService } from '../../services/codeGenerator.service';
@@ -288,7 +288,7 @@ function PurchaseGridRow(props: { action?: ReactNode; activeAutocomplete: string
   const { action, activeAutocomplete, article, currencyCode, handleGridKey, issue, line, removeLine, rowIndex, selectArticle, selected, setActiveAutocomplete, setSelectedLineId, stockByArticle, suggestions, updateLine } = props;
   return <Fragment><tr className={`erp-grid-row line-${issue.level} ${selected ? 'selected' : ''}`} onClick={() => setSelectedLineId(line.id)}>
     <td><span className={`line-indicator ${issue.level}`}></span></td>
-    <ArticleCell activeAutocomplete={activeAutocomplete} article={article} currencyCode={currencyCode} line={line} rowIndex={rowIndex} selectArticle={selectArticle} setActiveAutocomplete={setActiveAutocomplete} setSelectedLineId={setSelectedLineId} stockByArticle={stockByArticle} suggestions={suggestions} updateLine={updateLine} handleGridKey={handleGridKey} />
+    <SharedArticleCell activeAutocomplete={activeAutocomplete} currencyCode={currencyCode} line={line} rowIndex={rowIndex} selectArticle={selectArticle} setActiveAutocomplete={setActiveAutocomplete} setSelectedLineId={setSelectedLineId} stockByArticle={stockByArticle} suggestions={suggestions} updateLine={updateLine} handleGridKey={handleGridKey} />
     <td><input className="input compact-input" data-grid-cell={`${rowIndex}-1`} placeholder="Lot" value={line.lotNumber} onKeyDown={(event) => handleGridKey(event, rowIndex, 1, line.id)} onChange={(event) => updateLine({ lotNumber: event.target.value })} /></td>
     <td><input className="input compact-input" data-grid-cell={`${rowIndex}-2`} type="date" value={line.expiryDate} onKeyDown={(event) => handleGridKey(event, rowIndex, 2, line.id)} onChange={(event) => updateLine({ expiryDate: event.target.value })} /></td>
     <td><input className="input compact-input numeric-cell" data-grid-cell={`${rowIndex}-3`} type="number" min="0.001" step="0.001" placeholder="Qte" value={line.quantity} onKeyDown={(event) => handleGridKey(event, rowIndex, 3, line.id)} onChange={(event) => updateLine({ quantity: event.target.value })} /></td>
@@ -299,121 +299,36 @@ function PurchaseGridRow(props: { action?: ReactNode; activeAutocomplete: string
   </tr>{issue.level !== 'valid' && <tr className="line-message-row"><td className={`line-message ${issue.level}`} colSpan={9}>{issue.message}</td></tr>}</Fragment>;
 }
 
-function ArticleCell({ activeAutocomplete, currencyCode, handleGridKey, line, rowIndex, selectArticle, setActiveAutocomplete, setSelectedLineId, stockByArticle, suggestions, updateLine }: { activeAutocomplete: string; article?: Article; currencyCode: string; handleGridKey: (event: KeyboardEvent<HTMLElement>, row: number, col: number, lineId: string) => void; line: PurchaseDraftLine; rowIndex: number; selectArticle: (lineId: string, article: Article) => void; setActiveAutocomplete: (id: string) => void; setSelectedLineId: (id: string) => void; stockByArticle: Map<string, number>; suggestions: Article[]; updateLine: (patch: Partial<PurchaseDraftLine>) => void }) {
+function SharedArticleCell({ activeAutocomplete, currencyCode, handleGridKey, line, rowIndex, selectArticle, setActiveAutocomplete, setSelectedLineId, stockByArticle, suggestions, updateLine }: { activeAutocomplete: string; currencyCode: string; handleGridKey: (event: KeyboardEvent<HTMLElement>, row: number, col: number, lineId: string) => void; line: PurchaseDraftLine; rowIndex: number; selectArticle: (lineId: string, article: Article) => void; setActiveAutocomplete: (id: string) => void; setSelectedLineId: (id: string) => void; stockByArticle: Map<string, number>; suggestions: Article[]; updateLine: (patch: Partial<PurchaseDraftLine>) => void }) {
   const isOpen = activeAutocomplete === line.id;
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const popoverRef = useRef<HTMLDivElement | null>(null);
-  const [highlightedIndex, setHighlightedIndex] = useState(0);
-  const [position, setPosition] = useState({ left: 0, top: 0, width: 700 });
-  const visibleSuggestions = suggestions.slice(0, 20);
   const updateArticleQuery = (value: string) => {
     setActiveAutocomplete(line.id);
     updateLine({ articleQuery: value, articleId: '' });
   };
-  const closePopover = () => setActiveAutocomplete('');
-  const chooseArticle = (article: Article) => {
-    selectArticle(line.id, article);
-    setTimeout(() => document.querySelector<HTMLElement>(`[data-grid-cell="${rowIndex}-1"]`)?.focus(), 0);
-  };
-
-  useEffect(() => {
-    if (!isOpen) return;
-    setHighlightedIndex(0);
-  }, [isOpen, line.articleQuery]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const updatePosition = () => {
-      const rect = inputRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const width = Math.min(720, Math.max(650, window.innerWidth - 32));
-      const left = Math.min(Math.max(16, rect.left), Math.max(16, window.innerWidth - width - 16));
-      setPosition({ left, top: rect.bottom + 6, width });
-    };
-    updatePosition();
-    window.addEventListener('resize', updatePosition);
-    window.addEventListener('scroll', updatePosition, true);
-    return () => {
-      window.removeEventListener('resize', updatePosition);
-      window.removeEventListener('scroll', updatePosition, true);
-    };
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const onPointerDown = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (inputRef.current?.contains(target) || popoverRef.current?.contains(target)) return;
-      closePopover();
-    };
-    document.addEventListener('mousedown', onPointerDown);
-    return () => document.removeEventListener('mousedown', onPointerDown);
-  }, [isOpen]);
-
-  const handleArticleKeys = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.key === 'Escape' && isOpen) {
-      event.preventDefault();
-      closePopover();
-      return;
-    }
-    if (event.key === 'ArrowDown' && isOpen) {
-      event.preventDefault();
-      setHighlightedIndex((index) => Math.min(index + 1, Math.max(visibleSuggestions.length - 1, 0)));
-      return;
-    }
-    if (event.key === 'ArrowUp' && isOpen) {
-      event.preventDefault();
-      setHighlightedIndex((index) => Math.max(index - 1, 0));
-      return;
-    }
-    if (event.key === 'Enter' && isOpen && visibleSuggestions[highlightedIndex]) {
-      event.preventDefault();
-      chooseArticle(visibleSuggestions[highlightedIndex]);
-      return;
-    }
-    handleGridKey(event, rowIndex, 0, line.id);
-  };
-
   return <td className="autocomplete-cell sticky-article-cell">
-    <input
-      ref={inputRef}
-      className="input compact-input"
-      data-grid-cell={`${rowIndex}-0`}
+    <FloatingSearchPopover
+      columns={[
+        { header: 'Code', render: (article) => article.articleCode },
+        { header: 'Nom', render: (article) => <strong>{article.commercialName}</strong> },
+        { header: 'DCI', render: (article) => article.dci ?? '-' },
+        { header: 'Dosage', render: (article) => article.dosage ?? '-' },
+        { header: 'Stock', render: (article) => stockByArticle.get(article.articleId) ?? article.stockAvailable ?? 0 },
+        { header: 'Prix vente', render: (article) => formatMoney(article.sellingPrice ?? 0, currencyCode) },
+      ]}
+      dataGridCell={`${rowIndex}-0`}
+      getKey={(article) => article.articleId}
+      onChange={updateArticleQuery}
+      onClose={() => setActiveAutocomplete('')}
+      onFallbackKeyDown={(event) => handleGridKey(event, rowIndex, 0, line.id)}
+      onFocusNext={() => document.querySelector<HTMLElement>(`[data-grid-cell="${rowIndex}-1"]`)?.focus()}
+      onOpen={() => { setSelectedLineId(line.id); setActiveAutocomplete(line.id); }}
+      onSelect={(article) => selectArticle(line.id, article)}
+      open={isOpen}
       placeholder="Code, nom, DCI..."
+      searchPlaceholder="Rechercher (code, nom, DCI, dosage...)"
+      suggestions={suggestions}
       value={line.articleQuery}
-      onClick={() => { setSelectedLineId(line.id); setActiveAutocomplete(line.id); }}
-      onFocus={() => { setSelectedLineId(line.id); setActiveAutocomplete(line.id); }}
-      onMouseDown={() => { setSelectedLineId(line.id); setActiveAutocomplete(line.id); }}
-      onKeyDown={handleArticleKeys}
-      onChange={(event) => updateArticleQuery(event.target.value)}
-      onInput={(event) => updateArticleQuery(event.currentTarget.value)}
     />
-    {isOpen && createPortal(
-      <div ref={popoverRef} className="article-popover floating-article-popover" style={{ left: position.left, top: position.top, width: position.width }}>
-        <input
-          className="input compact-input article-popover-search"
-          placeholder="Rechercher (code, nom, DCI, dosage...)"
-          value={line.articleQuery}
-          autoFocus
-          onChange={(event) => updateArticleQuery(event.target.value)}
-          onKeyDown={handleArticleKeys}
-        />
-        <div className="article-popover-list">
-          <div className="article-popover-head"><span>Code</span><span>Nom</span><span>DCI</span><span>Dosage</span><span>Stock</span><span>Prix vente</span></div>
-          {visibleSuggestions.length === 0 && <div className="article-popover-empty">Aucun article trouve</div>}
-          {visibleSuggestions.map((suggestion, index) => <button className={`article-popover-option ${index === highlightedIndex ? 'selected' : ''}`} type="button" key={suggestion.articleId} onMouseEnter={() => setHighlightedIndex(index)} onClick={() => chooseArticle(suggestion)}>
-            <span>{suggestion.articleCode}</span>
-            <strong>{suggestion.commercialName}</strong>
-            <span>{suggestion.dci ?? '-'}</span>
-            <span>{suggestion.dosage ?? '-'}</span>
-            <span>{stockByArticle.get(suggestion.articleId) ?? suggestion.stockAvailable ?? 0}</span>
-            <span>{formatMoney(suggestion.sellingPrice ?? 0, currencyCode)}</span>
-          </button>)}
-        </div>
-        <div className="article-popover-footer"><span>↑ ↓ pour naviguer • Entrée pour sélectionner • Échap pour fermer</span><strong>{visibleSuggestions.length ? `1 - ${visibleSuggestions.length} sur ${suggestions.length}` : `0 sur ${suggestions.length}`}</strong></div>
-      </div>,
-      document.body,
-    )}
   </td>;
 }
 

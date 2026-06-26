@@ -708,6 +708,10 @@ details.nav-group .nav-link {
   min-width: 1180px;
 }
 
+.transfers-table {
+  min-width: 980px;
+}
+
 .inventories-table {
   min-width: 980px;
 }
@@ -728,6 +732,10 @@ details.nav-group .nav-link {
   background: var(--surface);
 }
 
+.transfers-table tbody tr {
+  background: var(--surface);
+}
+
 .inventories-table tbody tr,
 .inventory-count-table tbody tr {
   background: var(--surface);
@@ -743,6 +751,8 @@ details.nav-group .nav-link {
 .stocks-table td,
 .stocks-detail-table th,
 .stocks-detail-table td,
+.transfers-table th,
+.transfers-table td,
 .inventories-table th,
 .inventories-table td,
 .inventory-count-table th,
@@ -758,6 +768,7 @@ details.nav-group .nav-link {
 .lots-detail-table th,
 .stocks-table th,
 .stocks-detail-table th,
+.transfers-table th,
 .inventories-table th,
 .inventory-count-table th,
 .purchase-detail-table th {
@@ -768,7 +779,8 @@ details.nav-group .nav-link {
 .lots-table td,
 .lots-detail-table td,
 .stocks-table td,
-.stocks-detail-table td {
+.stocks-detail-table td,
+.transfers-table td {
   color: var(--text);
   font-size: .9rem;
 }
@@ -786,10 +798,29 @@ details.nav-group .nav-link {
   padding: 4px 8px;
 }
 
+.transfers-table .compact-button {
+  min-height: 28px;
+  padding: 4px 8px;
+}
+
 .inventories-table .compact-button,
 .inventory-count-table .compact-button {
   min-height: 28px;
   padding: 4px 8px;
+}
+
+.inventories-table .ghost-button,
+.inventory-count-table .ghost-button {
+  border-color: var(--line);
+  color: var(--text);
+  margin-top: 0;
+  width: auto;
+}
+
+.inventories-table .ghost-button:hover,
+.inventory-count-table .ghost-button:hover {
+  background: var(--surface-soft);
+  border-color: var(--primary);
 }
 
 .lots-cell small,
@@ -798,6 +829,61 @@ details.nav-group .nav-link {
   display: block;
   font-size: .75rem;
   margin-top: 2px;
+}
+
+.transfers-filters,
+.transfer-fields {
+  align-items: end;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(220px, 1.4fr) minmax(160px, .6fr) auto;
+}
+
+.transfer-fields {
+  grid-template-columns: .9fr 1.2fr 1.2fr .8fr 1.4fr;
+}
+
+.transfer-sticky-header {
+  grid-template-columns: repeat(6, minmax(110px, 1fr));
+}
+
+.transfer-grid-wrap {
+  max-height: calc(100vh - 370px);
+}
+
+.transfer-lines-table {
+  min-width: 1050px;
+}
+
+.transfer-lines-table th,
+.transfer-lines-table td {
+  padding: 4px 6px;
+  vertical-align: middle;
+}
+
+.transfer-lines-table th {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.transfer-lines-table td:nth-child(4),
+.transfer-lines-table td:nth-child(5),
+.transfer-lines-table th:nth-child(4),
+.transfer-lines-table th:nth-child(5) {
+  text-align: center;
+}
+
+.transfer-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.lots-table th,
+.stocks-table th,
+.transfers-table th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .inventory-count-table small {
@@ -935,6 +1021,7 @@ details.nav-group .nav-link {
 [data-theme='dark'] .lots-detail-table th,
 [data-theme='dark'] .stocks-table th,
 [data-theme='dark'] .stocks-detail-table th,
+[data-theme='dark'] .transfers-table th,
 [data-theme='dark'] .inventories-table th,
 [data-theme='dark'] .inventory-count-table th {
   background: #0b1220;
@@ -954,6 +1041,10 @@ details.nav-group .nav-link {
   background: #111827;
 }
 
+[data-theme='dark'] .transfers-table tbody tr {
+  background: #111827;
+}
+
 [data-theme='dark'] .inventories-table tbody tr,
 [data-theme='dark'] .inventory-count-table tbody tr {
   background: #111827;
@@ -969,6 +1060,7 @@ details.nav-group .nav-link {
 [data-theme='dark'] .lots-detail-table td,
 [data-theme='dark'] .stocks-table td,
 [data-theme='dark'] .stocks-detail-table td,
+[data-theme='dark'] .transfers-table td,
 [data-theme='dark'] .inventories-table td,
 [data-theme='dark'] .inventory-count-table td {
   background: #111827;
@@ -987,6 +1079,11 @@ details.nav-group .nav-link {
 }
 
 [data-theme='dark'] .stocks-table tbody tr:hover td {
+  background: #162033;
+  color: var(--text);
+}
+
+[data-theme='dark'] .transfers-table tbody tr:hover td {
   background: #162033;
   color: var(--text);
 }
@@ -1015,6 +1112,12 @@ details.nav-group .nav-link {
   color: var(--text);
 }
 
+[data-theme='dark'] .transfers-table .ghost-button {
+  background: #111827;
+  border-color: #475569;
+  color: var(--text);
+}
+
 [data-theme='dark'] .inventories-table .ghost-button,
 [data-theme='dark'] .inventory-count-table .ghost-button {
   background: #111827;
@@ -1033,6 +1136,11 @@ details.nav-group .nav-link {
 }
 
 [data-theme='dark'] .stocks-table .ghost-button:hover {
+  background: #162033;
+  border-color: var(--primary);
+}
+
+[data-theme='dark'] .transfers-table .ghost-button:hover {
   background: #162033;
   border-color: var(--primary);
 }
