@@ -465,6 +465,21 @@ details.nav-group .nav-link {
   justify-content: space-between;
 }
 
+.purchase-filters .ghost-button {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--text);
+  margin-top: 0;
+  width: auto;
+}
+
+.purchase-filters .ghost-button:hover,
+.purchase-filters .export-menu[open] summary {
+  background: var(--surface-soft);
+  border-color: var(--primary);
+  color: var(--text);
+}
+
 .export-actions {
   align-items: center;
   display: flex;
@@ -484,10 +499,6 @@ details.nav-group .nav-link {
 
 .export-menu summary::-webkit-details-marker {
   display: none;
-}
-
-.export-menu[open] summary {
-  background: var(--surface-soft);
 }
 
 .export-menu-panel {
@@ -574,6 +585,10 @@ details.nav-group .nav-link {
   min-width: 920px;
 }
 
+.purchase-table tbody tr {
+  background: var(--surface);
+}
+
 .purchase-table th,
 .purchase-table td,
 .purchase-detail-table th,
@@ -588,12 +603,72 @@ details.nav-group .nav-link {
 }
 
 .purchase-table td {
+  color: var(--text);
   font-size: .9rem;
 }
 
 .purchase-table .compact-button {
   min-height: 28px;
   padding: 4px 8px;
+}
+
+[data-theme='dark'] .purchase-filters .ghost-button {
+  background: #111827;
+  border-color: #334155;
+  color: var(--text);
+}
+
+[data-theme='dark'] .purchase-filters .ghost-button:hover,
+[data-theme='dark'] .purchase-filters .export-menu[open] summary {
+  background: #163235;
+  border-color: var(--primary);
+  color: var(--text);
+}
+
+[data-theme='dark'] .export-menu-panel {
+  background: #111827;
+  border-color: #334155;
+}
+
+[data-theme='dark'] .export-menu-panel button {
+  background: #111827;
+  color: var(--text);
+}
+
+[data-theme='dark'] .export-menu-panel button:hover:not(:disabled) {
+  background: #162033;
+}
+
+[data-theme='dark'] .purchase-table th {
+  background: #0b1220;
+  border-bottom-color: #334155;
+  color: #d7e3ee;
+}
+
+[data-theme='dark'] .purchase-table tbody tr {
+  background: #111827;
+}
+
+[data-theme='dark'] .purchase-table td {
+  background: #111827;
+  border-bottom-color: #273447;
+  color: var(--text);
+}
+
+[data-theme='dark'] .purchase-table tbody tr:hover td {
+  background: #162033;
+  color: var(--text);
+}
+
+[data-theme='dark'] .purchase-table .ghost-button {
+  background: #111827;
+  border-color: #475569;
+  color: var(--text);
+}
+
+[data-theme='dark'] .purchase-table .ghost-button:hover {
+  background: #162033;
+  border-color: var(--primary);
 }
 
 .quantity-cell {
