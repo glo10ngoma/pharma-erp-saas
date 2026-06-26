@@ -477,11 +477,24 @@ details.nav-group .nav-link {
   justify-content: space-between;
 }
 
-.lots-filters .input {
+.stock-filters {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.lots-filters .input,
+.stock-filters .input {
   max-width: 220px;
 }
 
-.lots-filters .ghost-button {
+.stock-date-input {
+  max-width: 170px;
+}
+
+.lots-filters .ghost-button,
+.stock-filters .ghost-button {
   background: var(--surface);
   border: 1px solid var(--line);
   color: var(--text);
@@ -490,10 +503,28 @@ details.nav-group .nav-link {
 }
 
 .lots-filters .ghost-button:hover,
-.lots-filters .export-menu[open] summary {
+.lots-filters .export-menu[open] summary,
+.stock-filters .ghost-button:hover,
+.stock-filters .export-menu[open] summary {
   background: var(--surface-soft);
   border-color: var(--primary);
   color: var(--text);
+}
+
+.stock-snapshot-banner {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.stock-snapshot-banner span {
+  color: var(--muted);
+  font-size: .9rem;
+}
+
+.stock-kpis {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .purchase-filters .ghost-button {
@@ -620,11 +651,19 @@ details.nav-group .nav-link {
   min-width: 1180px;
 }
 
+.stocks-table {
+  min-width: 1180px;
+}
+
 .purchase-table tbody tr {
   background: var(--surface);
 }
 
 .lots-table tbody tr {
+  background: var(--surface);
+}
+
+.stocks-table tbody tr {
   background: var(--surface);
 }
 
@@ -634,6 +673,10 @@ details.nav-group .nav-link {
 .lots-table td,
 .lots-detail-table th,
 .lots-detail-table td,
+.stocks-table th,
+.stocks-table td,
+.stocks-detail-table th,
+.stocks-detail-table td,
 .purchase-detail-table th,
 .purchase-detail-table td {
   padding: 6px 8px;
@@ -643,31 +686,38 @@ details.nav-group .nav-link {
 .purchase-table th,
 .lots-table th,
 .lots-detail-table th,
+.stocks-table th,
+.stocks-detail-table th,
 .purchase-detail-table th {
   font-size: .72rem;
 }
 
 .purchase-table td,
 .lots-table td,
-.lots-detail-table td {
+.lots-detail-table td,
+.stocks-table td,
+.stocks-detail-table td {
   color: var(--text);
   font-size: .9rem;
 }
 
 .purchase-table .compact-button,
-.lots-table .compact-button {
+.lots-table .compact-button,
+.stocks-table .compact-button {
   min-height: 28px;
   padding: 4px 8px;
 }
 
-.lots-cell small {
+.lots-cell small,
+.stocks-cell small {
   color: var(--muted);
   display: block;
   font-size: .75rem;
   margin-top: 2px;
 }
 
-.lots-cell .ghost-button + .ghost-button {
+.lots-cell .ghost-button + .ghost-button,
+.stocks-cell .ghost-button + .ghost-button {
   margin-left: 6px;
 }
 
@@ -677,6 +727,10 @@ details.nav-group .nav-link {
 }
 
 .lot-detail h3 {
+  margin: 16px 0 8px;
+}
+
+.stock-detail h3 {
   margin: 16px 0 8px;
 }
 
@@ -692,6 +746,12 @@ details.nav-group .nav-link {
   color: var(--text);
 }
 
+[data-theme='dark'] .stock-filters .ghost-button {
+  background: #111827;
+  border-color: #334155;
+  color: var(--text);
+}
+
 [data-theme='dark'] .purchase-filters .ghost-button:hover,
 [data-theme='dark'] .purchase-filters .export-menu[open] summary {
   background: #163235;
@@ -700,7 +760,9 @@ details.nav-group .nav-link {
 }
 
 [data-theme='dark'] .lots-filters .ghost-button:hover,
-[data-theme='dark'] .lots-filters .export-menu[open] summary {
+[data-theme='dark'] .lots-filters .export-menu[open] summary,
+[data-theme='dark'] .stock-filters .ghost-button:hover,
+[data-theme='dark'] .stock-filters .export-menu[open] summary {
   background: #163235;
   border-color: var(--primary);
   color: var(--text);
@@ -727,7 +789,9 @@ details.nav-group .nav-link {
 }
 
 [data-theme='dark'] .lots-table th,
-[data-theme='dark'] .lots-detail-table th {
+[data-theme='dark'] .lots-detail-table th,
+[data-theme='dark'] .stocks-table th,
+[data-theme='dark'] .stocks-detail-table th {
   background: #0b1220;
   border-bottom-color: #334155;
   color: #d7e3ee;
@@ -741,6 +805,10 @@ details.nav-group .nav-link {
   background: #111827;
 }
 
+[data-theme='dark'] .stocks-table tbody tr {
+  background: #111827;
+}
+
 [data-theme='dark'] .purchase-table td {
   background: #111827;
   border-bottom-color: #273447;
@@ -748,7 +816,9 @@ details.nav-group .nav-link {
 }
 
 [data-theme='dark'] .lots-table td,
-[data-theme='dark'] .lots-detail-table td {
+[data-theme='dark'] .lots-detail-table td,
+[data-theme='dark'] .stocks-table td,
+[data-theme='dark'] .stocks-detail-table td {
   background: #111827;
   border-bottom-color: #273447;
   color: var(--text);
@@ -760,6 +830,11 @@ details.nav-group .nav-link {
 }
 
 [data-theme='dark'] .lots-table tbody tr:hover td {
+  background: #162033;
+  color: var(--text);
+}
+
+[data-theme='dark'] .stocks-table tbody tr:hover td {
   background: #162033;
   color: var(--text);
 }
@@ -776,12 +851,23 @@ details.nav-group .nav-link {
   color: var(--text);
 }
 
+[data-theme='dark'] .stocks-table .ghost-button {
+  background: #111827;
+  border-color: #475569;
+  color: var(--text);
+}
+
 [data-theme='dark'] .purchase-table .ghost-button:hover {
   background: #162033;
   border-color: var(--primary);
 }
 
 [data-theme='dark'] .lots-table .ghost-button:hover {
+  background: #162033;
+  border-color: var(--primary);
+}
+
+[data-theme='dark'] .stocks-table .ghost-button:hover {
   background: #162033;
   border-color: var(--primary);
 }
