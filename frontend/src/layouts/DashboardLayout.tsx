@@ -92,6 +92,13 @@ export function DashboardLayout() {
         ['/reports', 'Dashboard BI', 'reports.dashboard'],
       ],
     },
+    {
+      title: 'Parametres',
+      icon: 'PM',
+      links: [
+        ['/settings/exchange-rate', 'Taux de change', 'settings.exchange_rate.read'],
+      ],
+    },
   ], []);
 
   useEffect(() => {

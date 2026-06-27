@@ -10,6 +10,18 @@ BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+CREATE TABLE IF NOT EXISTS tenant_settings (
+  tenant_setting_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  tenant_id UUID NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+  setting_key VARCHAR(100) NOT NULL,
+  setting_value TEXT NOT NULL,
+  updated_by UUID REFERENCES users(user_id),
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(tenant_id, setting_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tenant_settings_tenant_key ON tenant_settings(tenant_id, setting_key);
+
 CREATE TEMP TABLE demo_product_data (
   article_code TEXT,
   commercial_name TEXT,
@@ -140,6 +152,21 @@ ON CONFLICT (currency_code) DO UPDATE
 SET currency_name = EXCLUDED.currency_name,
     is_default = EXCLUDED.is_default;
 
+INSERT INTO tenant_settings (
+  tenant_id,
+  setting_key,
+  setting_value
+)
+SELECT
+  t.tenant_id,
+  'USD_CDF_RATE',
+  '2800'
+FROM tenants t
+WHERE t.tenant_code = 'PHARMACIE_DEMO'
+ON CONFLICT (tenant_id, setting_key) DO UPDATE
+SET setting_value = EXCLUDED.setting_value,
+    updated_at = CURRENT_TIMESTAMP;
+
 INSERT INTO payment_methods(method_code, method_name, is_active)
 VALUES ('CASH', 'Cash', TRUE)
 ON CONFLICT (method_code) DO UPDATE
@@ -164,6 +191,22 @@ VALUES ('ADMIN', 'Administrateur systeme', TRUE)
 ON CONFLICT (role_name) DO UPDATE
 SET description = EXCLUDED.description,
     is_active = EXCLUDED.is_active;
+
+INSERT INTO permissions (
+  permission_code,
+  permission_name,
+  module_name,
+  description,
+  is_system_permission
+)
+VALUES
+  ('settings.exchange_rate.read', 'Consulter taux de change', 'Settings', 'Voir le taux USD/CDF du tenant', TRUE),
+  ('settings.exchange_rate.update', 'Modifier taux de change', 'Settings', 'Modifier le taux USD/CDF du tenant', TRUE)
+ON CONFLICT (permission_code) DO UPDATE
+SET permission_name = EXCLUDED.permission_name,
+    module_name = EXCLUDED.module_name,
+    description = EXCLUDED.description,
+    is_system_permission = EXCLUDED.is_system_permission;
 
 INSERT INTO role_permissions(role_id, permission_id)
 SELECT r.role_id, p.permission_id

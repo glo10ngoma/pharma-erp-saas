@@ -7,6 +7,18 @@
 
 BEGIN;
 
+CREATE TABLE IF NOT EXISTS tenant_settings (
+  tenant_setting_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  tenant_id UUID NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+  setting_key VARCHAR(100) NOT NULL,
+  setting_value TEXT NOT NULL,
+  updated_by UUID REFERENCES users(user_id),
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(tenant_id, setting_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tenant_settings_tenant_key ON tenant_settings(tenant_id, setting_key);
+
 INSERT INTO tenants (
   tenant_code,
   tenant_name,
@@ -162,6 +174,8 @@ VALUES
   ('reports.expiry', 'Consulter rapports peremption', 'Reports', 'Voir les lots expires et proches peremption', TRUE),
   ('reports.margins', 'Consulter rapports marges', 'Reports', 'Voir les marges brutes estimees', TRUE),
   ('reports.top_products', 'Consulter top produits', 'Reports', 'Voir les produits les plus vendus', TRUE),
+  ('settings.exchange_rate.read', 'Consulter taux de change', 'Settings', 'Voir le taux USD/CDF du tenant', TRUE),
+  ('settings.exchange_rate.update', 'Modifier taux de change', 'Settings', 'Modifier le taux USD/CDF du tenant', TRUE),
   ('users.read', 'Consulter utilisateurs', 'Users', 'Voir les utilisateurs du tenant', TRUE),
   ('users.create', 'Creer utilisateur', 'Users', 'Creer un utilisateur du tenant', TRUE),
   ('users.update', 'Modifier utilisateur', 'Users', 'Modifier un utilisateur du tenant', TRUE),
@@ -304,6 +318,8 @@ JOIN permissions p ON p.permission_code IN (
   'reports.expiry',
   'reports.margins',
   'reports.top_products',
+  'settings.exchange_rate.read',
+  'settings.exchange_rate.update',
   'users.read',
   'users.create',
   'users.update',
@@ -338,6 +354,21 @@ VALUES
 ON CONFLICT (currency_code) DO UPDATE
 SET currency_name = EXCLUDED.currency_name,
     is_default = EXCLUDED.is_default;
+
+INSERT INTO tenant_settings (
+  tenant_id,
+  setting_key,
+  setting_value
+)
+SELECT
+  t.tenant_id,
+  'USD_CDF_RATE',
+  '2800'
+FROM tenants t
+WHERE t.tenant_code = 'DEMO'
+ON CONFLICT (tenant_id, setting_key) DO UPDATE
+SET setting_value = EXCLUDED.setting_value,
+    updated_at = CURRENT_TIMESTAMP;
 
 INSERT INTO payment_methods(method_code, method_name, is_active)
 VALUES ('CASH', 'Cash', TRUE)

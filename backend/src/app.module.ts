@@ -33,6 +33,7 @@ import { AccountingModule } from './accounting/accounting.module';
 import { ReportsModule } from './reports/reports.module';
 import { CodeGeneratorModule } from './code-generator/code-generator.module';
 import { TransfersModule } from './transfers/transfers.module';
+import { SettingsModule } from './settings/settings.module';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { TransfersModule } from './transfers/transfers.module';
     AccountingModule,
     ReportsModule,
     CodeGeneratorModule,
+    SettingsModule,
     UsersModule,
     RolesModule,
     PermissionsModule,

@@ -49,6 +49,7 @@ async function bootstrap() {
     .addTag('inventories')
     .addTag('accounting')
     .addTag('reports')
+    .addTag('settings')
     .addBearerAuth()
     .build();
 

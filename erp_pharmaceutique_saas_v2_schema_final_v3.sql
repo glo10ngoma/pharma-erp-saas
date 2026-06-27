@@ -987,6 +987,16 @@ CREATE TABLE IF NOT EXISTS tenant_usage_logs (
     UNIQUE(tenant_id, usage_date)
 );
 
+CREATE TABLE IF NOT EXISTS tenant_settings (
+    tenant_setting_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+    setting_key VARCHAR(100) NOT NULL,
+    setting_value TEXT NOT NULL,
+    updated_by UUID REFERENCES users(user_id),
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(tenant_id, setting_key)
+);
+
 -- 2. AJOUT tenant_id AUX TABLES METIER
 
 ALTER TABLE sites ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(tenant_id);
@@ -1040,6 +1050,7 @@ ALTER TABLE notifications ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES ten
 -- 3. INDEX TENANT
 
 CREATE INDEX IF NOT EXISTS idx_tenants_status ON tenants(subscription_status);
+CREATE INDEX IF NOT EXISTS idx_tenant_settings_tenant_key ON tenant_settings(tenant_id, setting_key);
 CREATE INDEX IF NOT EXISTS idx_sites_tenant ON sites(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_articles_tenant ON articles(tenant_id);
@@ -1151,6 +1162,11 @@ INSERT INTO permissions(permission_code, permission_name, module_name, descripti
 ('saas.billing.read','Consulter facturation SaaS','SaaS','Voir les factures SaaS',TRUE),
 ('saas.billing.manage','Gérer facturation SaaS','SaaS','Gérer paiements et factures SaaS',TRUE),
 ('saas.usage.read','Consulter usage SaaS','SaaS','Voir l’utilisation par tenant',TRUE)
+ON CONFLICT (permission_code) DO NOTHING;
+
+INSERT INTO permissions(permission_code, permission_name, module_name, description, is_system_permission) VALUES
+('settings.exchange_rate.read','Consulter taux de change','Settings','Voir le taux USD/CDF du tenant',TRUE),
+('settings.exchange_rate.update','Modifier taux de change','Settings','Modifier le taux USD/CDF du tenant',TRUE)
 ON CONFLICT (permission_code) DO NOTHING;
 
 -- 8. VUES SAAS

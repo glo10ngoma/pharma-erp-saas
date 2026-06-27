@@ -33,6 +33,7 @@ WITH v1_permissions(permission_code) AS (
     ('accounting.trial_balance'), ('accounting.general_ledger'),
     ('reports.dashboard'), ('reports.sales'), ('reports.stock'), ('reports.cash'),
     ('reports.receivables'), ('reports.expiry'), ('reports.margins'), ('reports.top_products'),
+    ('settings.exchange_rate.read'), ('settings.exchange_rate.update'),
     ('tenants.read'),
     ('transfers.read'), ('transfers.create'), ('transfers.update_draft'), ('transfers.validate'),
     ('users.read'), ('users.create'), ('users.update'), ('users.delete'),
@@ -114,6 +115,7 @@ v1_permissions(permission_code) AS (
     ('accounting.trial_balance'), ('accounting.general_ledger'),
     ('reports.dashboard'), ('reports.sales'), ('reports.stock'), ('reports.cash'),
     ('reports.receivables'), ('reports.expiry'), ('reports.margins'), ('reports.top_products'),
+    ('settings.exchange_rate.read'), ('settings.exchange_rate.update'),
     ('tenants.read'),
     ('transfers.read'), ('transfers.create'), ('transfers.update_draft'), ('transfers.validate'),
     ('users.read'), ('users.create'), ('users.update'), ('users.delete'),
@@ -145,7 +147,9 @@ SELECT
   u.email AS admin_email,
   COUNT(DISTINCT p.permission_code) AS assigned_permissions,
   BOOL_OR(p.permission_code = 'reports.dashboard') AS has_reports_dashboard,
-  BOOL_OR(p.permission_code = 'reports.top_products') AS has_reports_top_products
+  BOOL_OR(p.permission_code = 'reports.top_products') AS has_reports_top_products,
+  BOOL_OR(p.permission_code = 'settings.exchange_rate.read') AS has_exchange_rate_read,
+  BOOL_OR(p.permission_code = 'settings.exchange_rate.update') AS has_exchange_rate_update
 FROM tenants t
 JOIN roles r ON r.tenant_id = t.tenant_id AND r.role_name = 'ADMIN'
 LEFT JOIN users u ON u.tenant_id = t.tenant_id AND lower(u.email) = lower('admin@staging.local')

@@ -43,6 +43,7 @@ import { GeneralLedgerPage } from './modules/accounting/GeneralLedgerPage';
 import { TrialBalancePage } from './modules/accounting/TrialBalancePage';
 import { ReportsDashboardPage } from './modules/reports/ReportsDashboardPage';
 import { ProfilePage } from './modules/profile/ProfilePage';
+import { ExchangeRatePage } from './modules/settings/ExchangeRatePage';
 
 const queryClient = new QueryClient();
 
@@ -91,6 +92,7 @@ export function App() {
               <Route path="/accounting/general-ledger" element={<GeneralLedgerPage />} />
               <Route path="/accounting/trial-balance" element={<TrialBalancePage />} />
               <Route path="/reports" element={<ReportsDashboardPage />} />
+              <Route path="/settings/exchange-rate" element={<ExchangeRatePage />} />
               <Route path="/users" element={<UsersPage />} />
               <Route path="/roles" element={<RolesPage />} />
               <Route path="/permissions" element={<PermissionsPage />} />

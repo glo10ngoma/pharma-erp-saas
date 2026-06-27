@@ -10,6 +10,7 @@ import { insuranceService } from '../../services/insurance.service';
 import { lotsService } from '../../services/lots.service';
 import { referenceService } from '../../services/reference.service';
 import { salesService } from '../../services/sales.service';
+import { settingsService } from '../../services/settings.service';
 import { sitesService } from '../../services/sites.service';
 import { stocksService } from '../../services/stocks.service';
 import { formatDate } from '../../utils/date';
@@ -24,6 +25,7 @@ type PosForm = {
 };
 
 const initialForm = (): PosForm => ({ siteId: '', saleType: 'CASH', customerId: '', exchangeRate: '1', membershipId: '' });
+const POS_USD_CDF_FALLBACK_RATE = 2800;
 
 export function PosPage() {
   const navigate = useNavigate();
@@ -35,7 +37,8 @@ export function PosPage() {
   const [articlePopoverOpen, setArticlePopoverOpen] = useState(false);
   const [quantity, setQuantity] = useState('1');
   const [quantityArticle, setQuantityArticle] = useState<Article | null>(null);
-  const [amountPaid, setAmountPaid] = useState('');
+  const [paidUsd, setPaidUsd] = useState('');
+  const [paidFc, setPaidFc] = useState('');
   const [selectedLineId, setSelectedLineId] = useState('');
   const [clientError, setClientError] = useState('');
   const [cashMode, setCashMode] = useState(() => localStorage.getItem('posCashMode') === 'true');
@@ -51,6 +54,7 @@ export function PosPage() {
   const customers = useQuery({ queryKey: ['customers'], queryFn: async () => (await referenceService.customers.getAll()).data });
   const memberships = useQuery({ queryKey: ['customer-memberships', form.customerId], queryFn: async () => (await insuranceService.memberships.getByCustomer(form.customerId)).data, enabled: Boolean(form.customerId) });
   const currentCashSession = useQuery({ queryKey: ['cash-current', form.siteId], queryFn: async () => (await cashService.getCurrentSession(form.siteId)).data, enabled: Boolean(form.siteId) });
+  const exchangeRateQuery = useQuery({ queryKey: ['settings', 'exchange-rate'], queryFn: async () => (await settingsService.getExchangeRate()).data });
 
   const currentSite = useMemo(() => (sites.data ?? []).find((site) => site.siteId === form.siteId), [form.siteId, sites.data]);
   const sellableLotById = useMemo(() => {
@@ -116,20 +120,30 @@ export function PosPage() {
   const items = sale?.items ?? [];
   const currencyCode = sale?.currencyCode ?? 'USD';
   const currencySymbol = sale?.currencySymbol;
+  const loadedExchangeRate = Number(exchangeRateQuery.data?.rate);
+  const currentExchangeRate = Number.isFinite(loadedExchangeRate) && loadedExchangeRate > 0 ? loadedExchangeRate : POS_USD_CDF_FALLBACK_RATE;
+  const storedSaleExchangeRate = Number(sale?.exchangeRate);
+  const saleExchangeRate = Number.isFinite(storedSaleExchangeRate) && storedSaleExchangeRate > 0 ? storedSaleExchangeRate : currentExchangeRate;
   const subtotal = Number(sale?.subtotal ?? sale?.totalAmount ?? 0);
   const discount = Number(sale?.discountAmount ?? 0);
   const total = Number(sale?.totalAmount ?? 0);
   const patientPayable = Number(sale?.customerPayableAmount ?? total);
   const insuranceAmount = Number(sale?.insuranceCoveredAmount ?? 0);
-  const paid = Number(amountPaid || 0);
-  const changeDue = Math.max(0, paid - patientPayable);
+  const paidUsdAmount = Number(paidUsd || 0);
+  const paidFcAmount = Number(paidFc || 0);
+  const paidEquivalentFc = paidFcAmount + paidUsdAmount * saleExchangeRate;
+  const paidEquivalentUsd = paidEquivalentFc / saleExchangeRate;
+  const patientPayableFc = patientPayable * saleExchangeRate;
+  const changeDueFc = Math.max(0, paidEquivalentFc - patientPayableFc);
+  const changeDueUsd = changeDueFc / saleExchangeRate;
   const quantityTotal = items.reduce((sum: number, item: any) => sum + Number(item.quantity ?? 0), 0);
 
   const createDraft = useMutation({
-    mutationFn: async () => (await salesService.create({ siteId: form.siteId, saleType: form.saleType, customerId: form.customerId || undefined, exchangeRate: 1 })).data,
+    mutationFn: async () => (await salesService.create({ siteId: form.siteId, saleType: form.saleType, customerId: form.customerId || undefined, exchangeRate: currentExchangeRate })).data,
     onSuccess: (created) => {
       setSale(created);
-      setAmountPaid(String(created.customerPayableAmount ?? created.totalAmount ?? 0));
+      setPaidUsd('');
+      setPaidFc('');
       setTimeout(() => focusArticleSearch(), 0);
     },
   });
@@ -138,7 +152,8 @@ export function PosPage() {
       salesService.addItemFefo(sale.saleId, { articleId, quantity: lineQuantity }),
     onSuccess: (response) => {
       setSale(response.data);
-      setAmountPaid(String(response.data.customerPayableAmount ?? response.data.totalAmount ?? 0));
+      setPaidUsd('');
+      setPaidFc('');
       setArticleQuery('');
       setQuantity('1');
       setQuantityArticle(null);
@@ -155,18 +170,20 @@ export function PosPage() {
     mutationFn: (itemId: string) => salesService.removeItem(sale.saleId, itemId),
     onSuccess: (response) => {
       setSale(response.data);
-      setAmountPaid(String(response.data.customerPayableAmount ?? response.data.totalAmount ?? 0));
+      setPaidUsd('');
+      setPaidFc('');
     },
   });
   const applyInsurance = useMutation({
     mutationFn: () => salesService.applyInsurance(sale.saleId, { membershipId: form.membershipId }),
     onSuccess: (response) => {
       setSale(response.data);
-      setAmountPaid(String(response.data.customerPayableAmount));
+      setPaidUsd('');
+      setPaidFc('');
     },
   });
   const validate = useMutation({
-    mutationFn: (overrideAmount?: number) => salesService.validate(sale.saleId, { amountPaid: Number(overrideAmount ?? amountPaid ?? 0) }),
+    mutationFn: (overrideAmount?: number) => salesService.validate(sale.saleId, { amountPaid: Number(overrideAmount ?? paidEquivalentUsd ?? 0) }),
     onSuccess: async (response) => {
       setSale(response.data);
       await qc.invalidateQueries({ queryKey: ['sales'] });
@@ -188,9 +205,10 @@ export function PosPage() {
 
   useEffect(() => {
     if (!form.siteId || sale || createDraft.isPending || createDraft.isSuccess) return;
+    if (exchangeRateQuery.isLoading) return;
     if (form.saleType === 'INSURANCE' && !form.customerId) return;
     createDraft.mutate();
-  }, [form.customerId, form.saleType, form.siteId, sale, createDraft.isPending, createDraft.isSuccess]);
+  }, [exchangeRateQuery.isLoading, form.customerId, form.saleType, form.siteId, sale, createDraft.isPending, createDraft.isSuccess]);
 
   useEffect(() => {
     if (quantityArticle) setTimeout(() => quantityInputRef.current?.focus(), 0);
@@ -261,7 +279,7 @@ export function PosPage() {
     setClientError('');
     addArticleQuick(quantityArticle, requested);
   }
-  function canValidate(amount = paid) {
+  function canValidate(amount = paidEquivalentUsd) {
     return Boolean(sale?.saleId && sale.status === 'DRAFT' && items.length > 0 && !validate.isPending && amount >= patientPayable);
   }
   function closeQuantityBox() {
@@ -274,7 +292,8 @@ export function PosPage() {
     setArticleQuery('');
     setQuantity('1');
     setQuantityArticle(null);
-    setAmountPaid('');
+    setPaidUsd('');
+    setPaidFc('');
     setSelectedLineId('');
     setClientError('');
     setForm((current) => ({ ...current, saleType: 'CASH', customerId: '', membershipId: '', exchangeRate: '1' }));
@@ -303,8 +322,9 @@ export function PosPage() {
     setArticlePopoverOpen(false);
   }
   function quickCheckout() {
-    const amount = amountPaid ? Number(amountPaid) : patientPayable;
-    if (!amountPaid) setAmountPaid(String(patientPayable));
+    const hasPayment = Boolean(paidUsd || paidFc);
+    const amount = hasPayment ? paidEquivalentUsd : patientPayable;
+    if (!hasPayment) setPaidFc(String(Math.round(patientPayableFc)));
     if (!canValidate(amount)) {
       setClientError(amount < patientPayable ? 'Paiement insuffisant.' : 'Aucune vente a encaisser.');
       playBeep('error');
@@ -359,6 +379,7 @@ export function PosPage() {
         </div>
       </div>
       {showError && <p className="form-error">{error}</p>}
+      {exchangeRateQuery.isError && <p className="form-error">Taux USD/CDF non charge. Fallback demo utilise : 1 USD = {formatMoney(POS_USD_CDF_FALLBACK_RATE, 'CDF')}.</p>}
 
       <form className="card compact-card pos-header-grid" onSubmit={startSale}>
         <label><span>Vente no</span><input className="input compact-input" value={sale?.saleNumber ?? 'Auto'} disabled /></label>
@@ -366,8 +387,8 @@ export function PosPage() {
         <label><span>Type</span><select className="input compact-input" value={form.saleType} disabled={Boolean(sale)} onChange={(event) => update('saleType', event.target.value as PosForm['saleType'])}><option value="CASH">CASH</option><option value="INSURANCE">INSURANCE</option></select></label>
         <label><span>Assurance</span><select className="input compact-input" value={form.membershipId} disabled={form.saleType !== 'INSURANCE' || !sale || sale.status !== 'DRAFT'} onChange={(event) => update('membershipId', event.target.value)}><option value="">Membership / Plan</option>{(memberships.data ?? []).filter((membership) => membership.isActive).map((membership) => <option key={membership.membershipId} value={membership.membershipId}>{membership.organizationName} - {membership.planName} ({membership.coveragePercent}%)</option>)}</select></label>
         <label><span>Site</span><input className="input compact-input" value={currentSite?.siteName ?? form.siteId ?? 'Site utilisateur'} disabled /></label>
-        <label><span>Devise</span><input className="input compact-input" value="USD" disabled /></label>
-        <label><span>Taux</span><input className="input compact-input" value="1" disabled /></label>
+        <label><span>Devise</span><input className="input compact-input" value="USD / FC" disabled /></label>
+        <label><span>Taux</span><input className="input compact-input" value={`1 USD = ${formatMoney(saleExchangeRate, 'CDF')}`} disabled /></label>
         {!sale ? <span className="badge badge-warning">{createDraft.isPending ? 'Preparation...' : 'En attente'}</span> : <span className={`badge ${sale.status === 'VALIDATED' ? 'badge-success' : 'badge-warning'}`}>{sale.status}</span>}
       </form>
 
@@ -381,7 +402,7 @@ export function PosPage() {
               { header: 'DCI', render: (article) => article.dci ?? '-' },
               { header: 'Dosage', render: (article) => article.dosage ?? '-' },
               { header: 'Stock', render: (article) => stockByArticle.get(article.articleId) ?? article.stockAvailable ?? 0 },
-              { header: 'Prix vente', render: (article) => formatMoney(article.sellingPrice ?? 0, currencyCode, currencySymbol) },
+              { header: 'Prix vente', render: (article) => <PriceDual amountUsd={Number(article.sellingPrice ?? 0)} rate={saleExchangeRate} /> },
               { header: 'Lot FEFO', render: (article) => fefoByArticle.get(article.articleId)?.lot ?? '-' },
             ]}
             getKey={(article) => article.articleId}
@@ -410,8 +431,8 @@ export function PosPage() {
                 <td>{item.lotNumber ?? '-'}</td>
                 <td>{item.expiryDate ? formatDate(item.expiryDate) : '-'}</td>
                 <td className="quantity-cell">{item.quantity}</td>
-                <td className="numeric-text">{formatMoney(item.unitPrice, currencyCode, currencySymbol)}</td>
-                <td className="numeric-text"><strong>{formatMoney(item.lineTotal, currencyCode, currencySymbol)}</strong></td>
+                <td className="numeric-text"><PriceDual amountUsd={Number(item.unitPrice ?? 0)} rate={saleExchangeRate} /></td>
+                <td className="numeric-text"><strong><PriceDual amountUsd={Number(item.lineTotal ?? 0)} rate={saleExchangeRate} /></strong></td>
                 <td><button aria-label="Supprimer ligne" className="ghost-button compact-button row-action-button icon-only danger" type="button" disabled={sale?.status !== 'DRAFT' || removeItem.isPending} onClick={(event) => { event.stopPropagation(); removeItem.mutate(item.saleItemId); }}><TrashIcon /></button></td>
               </tr>
             ))}</tbody>
@@ -424,22 +445,25 @@ export function PosPage() {
         <div className="pos-summary-grid">
           <Summary label="Articles" value={String(items.length)} />
           <Summary label="Qte totale" value={String(quantityTotal)} />
-          <Summary label="Sous-total" value={formatMoney(subtotal, currencyCode, currencySymbol)} />
-          <Summary label="Remise" value={formatMoney(discount, currencyCode, currencySymbol)} />
-          <Summary label="Total" value={formatMoney(total, currencyCode, currencySymbol)} strong />
-          <Summary label="Part assurance" value={formatMoney(insuranceAmount, currencyCode, currencySymbol)} />
-          <Summary label="Part patient" value={formatMoney(patientPayable, currencyCode, currencySymbol)} strong />
-          <label className="pos-paid-field"><span>Paye</span><input ref={paymentInputRef} className="input compact-input numeric-cell" type="number" min="0" step="0.01" value={amountPaid} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); quickCheckout(); } }} onChange={(event) => setAmountPaid(event.target.value)} /></label>
-          <Summary label="Monnaie" value={formatMoney(changeDue, currencyCode, currencySymbol)} strong />
+          <Summary label="Sous-total USD" value={formatMoney(subtotal, 'USD', currencySymbol)} />
+          <Summary label="Total FC" value={formatMoney(total * saleExchangeRate, 'CDF')} strong />
+          <Summary label="Part patient USD" value={formatMoney(patientPayable, 'USD', currencySymbol)} />
+          <Summary label="Part patient FC" value={formatMoney(patientPayableFc, 'CDF')} strong />
+          <Summary label="Part assurance" value={`${formatMoney(insuranceAmount, 'USD', currencySymbol)} / ${formatMoney(insuranceAmount * saleExchangeRate, 'CDF')}`} />
+          <label className="pos-paid-field pos-paid-fc"><span>Paye FC</span><input ref={paymentInputRef} className="input compact-input numeric-cell" type="number" min="0" step="1" value={paidFc} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); quickCheckout(); } }} onChange={(event) => setPaidFc(event.target.value)} /></label>
+          <label className="pos-paid-field"><span>Paye USD</span><input className="input compact-input numeric-cell" type="number" min="0" step="0.01" value={paidUsd} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); quickCheckout(); } }} onChange={(event) => setPaidUsd(event.target.value)} /></label>
+          <Summary label="Rendu FC" value={formatMoney(changeDueFc, 'CDF')} strong />
+          <Summary label="Rendu USD" value={formatMoney(changeDueUsd, 'USD', currencySymbol)} />
         </div>
         <div className="page-actions pos-checkout-actions">
           <button className="ghost-button compact-button" type="button" disabled={!sale || sale.status !== 'DRAFT'} onClick={() => cancel.mutate()}>Annuler vente</button>
           <button className="ghost-button compact-button" type="button" disabled={!sale} onClick={printDraft}>Imprimer facture</button>
           <div className="pos-checkout-total">
             <span>Total a encaisser</span>
-            <strong>{formatMoney(patientPayable, currencyCode, currencySymbol)}</strong>
+            <strong>{formatMoney(patientPayableFc, 'CDF')}</strong>
+            <small>{formatMoney(patientPayable, 'USD', currencySymbol)}</small>
           </div>
-          <button className="button pos-checkout-button" type="button" disabled={!canValidate(amountPaid ? paid : patientPayable)} onClick={quickCheckout}>{validate.isPending ? 'ENCAISSEMENT...' : 'ENCAISSER'}</button>
+          <button className="button pos-checkout-button" type="button" disabled={!canValidate((paidUsd || paidFc) ? paidEquivalentUsd : patientPayable)} onClick={quickCheckout}>{validate.isPending ? 'ENCAISSEMENT...' : 'ENCAISSER'}</button>
         </div>
       </section>
 
@@ -448,9 +472,13 @@ export function PosPage() {
         <p>Facture {sale?.saleNumber ?? '-'}</p>
         <p>Date: {sale?.saleDate ? formatDate(sale.saleDate) : '-'}</p>
         <p>Client: {(customers.data ?? []).find((customer) => customer.customerId === form.customerId)?.customerName ?? 'Comptoir'}</p>
-        <table><tbody>{items.map((item: any) => <tr key={item.saleItemId}><td>{item.commercialName}</td><td>{item.quantity}</td><td>{formatMoney(item.lineTotal, currencyCode, currencySymbol)}</td></tr>)}</tbody></table>
-        <h2>Total: {formatMoney(total, currencyCode, currencySymbol)}</h2>
-        <p>Paye: {formatMoney(paid, currencyCode, currencySymbol)}</p>
+        <p>Taux utilise: 1 USD = {formatMoney(saleExchangeRate, 'CDF')}</p>
+        <table><tbody>{items.map((item: any) => <tr key={item.saleItemId}><td>{item.commercialName}</td><td>{item.quantity}</td><td>{formatMoney(Number(item.lineTotal ?? 0) * saleExchangeRate, 'CDF')}</td><td>{formatMoney(item.lineTotal, 'USD', currencySymbol)}</td></tr>)}</tbody></table>
+        <h2>Total FC: {formatMoney(total * saleExchangeRate, 'CDF')}</h2>
+        <p>Total USD: {formatMoney(total, 'USD', currencySymbol)}</p>
+        <p>Paye FC: {formatMoney(paidFcAmount, 'CDF')}</p>
+        <p>Paye USD: {formatMoney(paidUsdAmount, 'USD', currencySymbol)}</p>
+        <p>Monnaie a rendre FC: {formatMoney(changeDueFc, 'CDF')}</p>
         <p>Merci pour votre confiance.</p>
       </div>
 
@@ -535,6 +563,15 @@ function findExactArticle(raw: string, articles: Article[]) {
   return articles.find((article) =>
     [article.articleCode, article.barcode].some((candidate) => String(candidate ?? '').trim().toLowerCase() === value),
   ) ?? null;
+}
+
+function PriceDual({ amountUsd, rate }: { amountUsd: number; rate: number }) {
+  return (
+    <span className="money-dual">
+      <span>{formatMoney(amountUsd, 'USD')}</span>
+      <small>≈ {formatMoney(amountUsd * rate, 'CDF')}</small>
+    </span>
+  );
 }
 
 function Summary({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
