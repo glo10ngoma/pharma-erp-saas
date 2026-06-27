@@ -1930,7 +1930,7 @@ details.nav-group .nav-link {
   align-items: center;
   display: grid;
   gap: 8px;
-  grid-template-columns: minmax(360px, 1fr) 90px auto;
+  grid-template-columns: minmax(360px, 1fr) auto;
 }
 
 .pos-article-input {
@@ -2026,6 +2026,98 @@ details.nav-group .nav-link {
   display: grid;
   gap: 4px;
   padding: 8px;
+}
+
+.pos-checkout-actions {
+  align-items: stretch;
+  gap: 10px;
+}
+
+.pos-checkout-total {
+  align-items: flex-end;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  justify-items: end;
+  min-width: 190px;
+  padding: 8px 12px;
+}
+
+.pos-checkout-total span {
+  color: var(--muted);
+  font-size: .74rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.pos-checkout-total strong {
+  color: var(--primary-dark);
+  font-size: 1.25rem;
+}
+
+.pos-checkout-button {
+  font-size: 1.05rem;
+  font-weight: 900;
+  min-height: 54px;
+  min-width: 190px;
+  padding: 12px 22px;
+}
+
+.pos-quantity-panel {
+  width: min(520px, 100%);
+}
+
+.pos-cash-mode-active .sidebar {
+  display: none;
+}
+
+.pos-cash-mode-active .content {
+  padding: 12px;
+  width: 100%;
+}
+
+.pos-cash-mode-active .layout {
+  display: block;
+}
+
+.pos-page-cash-mode {
+  gap: 10px;
+}
+
+.pos-page-cash-mode .breadcrumb {
+  display: none;
+}
+
+.pos-page-cash-mode .card {
+  border-radius: 8px;
+}
+
+.pos-page-cash-mode .pos-article-input,
+.pos-page-cash-mode .pos-paid-field .input {
+  font-size: 1.15rem;
+  min-height: 52px;
+}
+
+.pos-page-cash-mode .pos-checkout-button {
+  font-size: 1.28rem;
+  min-height: 68px;
+  min-width: 240px;
+}
+
+.pos-page-cash-mode .pos-checkout-total strong {
+  font-size: 1.55rem;
+}
+
+.pos-page-cash-mode .compact-button,
+.pos-page-cash-mode .ghost-button {
+  min-height: 42px;
+  padding: 9px 14px;
+}
+
+.pos-page-cash-mode .pos-lines-table th,
+.pos-page-cash-mode .pos-lines-table td {
+  padding: 9px 10px;
 }
 
 .sales-filters {

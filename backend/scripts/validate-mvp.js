@@ -71,7 +71,7 @@ async function articles() {
       defaultStockMax: 20,
     },
   });
-  const list = await api('/articles');
+  const list = await api(`/articles?search=${encodeURIComponent(article.articleCode)}`);
   context.article = article;
   return Boolean(list.items.find((item) => item.articleId === article.articleId));
 }

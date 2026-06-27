@@ -1,4 +1,4 @@
-import { KeyboardEvent, ReactNode, useEffect, useRef, useState } from 'react';
+import { KeyboardEvent, MutableRefObject, ReactNode, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 type Column<T> = {
@@ -13,6 +13,7 @@ type Props<T> = {
   footerLabel?: string;
   getKey: (item: T) => string;
   inputClassName?: string;
+  inputRef?: MutableRefObject<HTMLInputElement | null>;
   onChange: (value: string) => void;
   onClose: () => void;
   onFallbackKeyDown?: (event: KeyboardEvent<HTMLElement>) => void;
@@ -33,6 +34,7 @@ export function FloatingSearchPopover<T>({
   footerLabel = 'Haut/Bas pour naviguer - Entree pour selectionner - Echap pour fermer',
   getKey,
   inputClassName = 'input compact-input',
+  inputRef: externalInputRef,
   onChange,
   onClose,
   onFallbackKeyDown,
@@ -117,7 +119,10 @@ export function FloatingSearchPopover<T>({
 
   return <>
     <input
-      ref={inputRef}
+      ref={(node) => {
+        inputRef.current = node;
+        if (externalInputRef) externalInputRef.current = node;
+      }}
       className={inputClassName}
       data-grid-cell={dataGridCell}
       placeholder={placeholder}
