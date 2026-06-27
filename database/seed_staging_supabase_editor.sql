@@ -422,11 +422,15 @@ SELECT
   s.site_code,
   r.role_name,
   u.email AS admin_email,
-  COUNT(DISTINCT a.article_id) AS demo_articles
+  COUNT(DISTINCT a.article_id) AS demo_articles,
+  BOOL_OR(p.permission_code = 'settings.exchange_rate.read') AS has_exchange_rate_read,
+  BOOL_OR(p.permission_code = 'settings.exchange_rate.update') AS has_exchange_rate_update
 FROM tenants t
 LEFT JOIN sites s ON s.tenant_id = t.tenant_id AND s.site_code = 'STG-MAIN'
 LEFT JOIN roles r ON r.tenant_id = t.tenant_id AND r.role_name = 'ADMIN'
 LEFT JOIN users u ON u.tenant_id = t.tenant_id AND u.email = 'admin@staging.local'
 LEFT JOIN articles a ON a.tenant_id = t.tenant_id AND a.article_code LIKE 'STG-%'
+LEFT JOIN role_permissions rp ON rp.role_id = r.role_id
+LEFT JOIN permissions p ON p.permission_id = rp.permission_id
 WHERE t.tenant_code = 'STAGING'
 GROUP BY t.tenant_code, s.site_code, r.role_name, u.email;

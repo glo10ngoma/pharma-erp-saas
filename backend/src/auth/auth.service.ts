@@ -39,8 +39,10 @@ export class AuthService {
     };
   }
 
-  me(user: AuthUser) {
-    return this.toProfile(user);
+  async me(user: AuthUser) {
+    const freshUser = await this.repository.findActiveUserById(user.userId, user.tenantId);
+    if (!freshUser) throw new UnauthorizedException('INVALID_CREDENTIALS');
+    return this.toProfile(freshUser);
   }
 
   async changePassword(user: AuthUser, dto: ChangePasswordDto) {

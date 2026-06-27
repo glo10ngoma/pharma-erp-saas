@@ -81,6 +81,58 @@ export class AuthRepository {
     };
   }
 
+  async findActiveUserById(userId: string, tenantId: string): Promise<Omit<UserWithSecurity, 'passwordHash'> | null> {
+    const result = await this.db.query<{
+      user_id: string;
+      tenant_id: string;
+      site_id: string | null;
+      role_name: string | null;
+      full_name: string;
+      email: string | null;
+      username: string;
+      permissions: string[] | null;
+    }>(
+      `
+      SELECT
+        u.user_id,
+        u.tenant_id,
+        u.site_id,
+        r.role_name,
+        u.full_name,
+        u.email,
+        u.username,
+        COALESCE(array_agg(DISTINCT p.permission_code) FILTER (WHERE p.permission_code IS NOT NULL), '{}') AS permissions
+      FROM users u
+      LEFT JOIN roles r ON r.role_id = u.role_id
+      LEFT JOIN role_permissions rp ON rp.role_id = r.role_id
+      LEFT JOIN permissions p ON p.permission_id = rp.permission_id
+      LEFT JOIN tenants t ON t.tenant_id = u.tenant_id
+      WHERE u.user_id = $1
+        AND u.tenant_id = $2
+        AND u.is_active = true
+        AND COALESCE(t.is_active, true) = true
+        AND COALESCE(t.subscription_status, 'ACTIVE') <> 'SUSPENDED'
+      GROUP BY u.user_id, u.tenant_id, u.site_id, r.role_name, u.full_name, u.email, u.username
+      LIMIT 1
+      `,
+      [userId, tenantId],
+    );
+
+    const user = result.rows[0];
+    if (!user) return null;
+
+    return {
+      userId: user.user_id,
+      tenantId: user.tenant_id,
+      siteId: user.site_id ?? undefined,
+      role: user.role_name ?? 'USER',
+      fullName: user.full_name,
+      email: user.email ?? undefined,
+      username: user.username,
+      permissions: user.permissions ?? [],
+    };
+  }
+
   async findActiveUserSecurityById(userId: string, tenantId: string): Promise<{ userId: string; passwordHash: string } | null> {
     const result = await this.db.query<{ user_id: string; password_hash: string }>(
       `SELECT user_id, password_hash
