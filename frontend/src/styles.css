@@ -2779,6 +2779,99 @@ details.nav-group .nav-link {
   color: var(--text);
 }
 
+.finance-kpi-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  margin-bottom: 10px;
+}
+
+.finance-kpi-card {
+  min-height: 78px;
+  padding: 12px;
+}
+
+.finance-kpi-success {
+  border-color: rgba(21, 128, 61, .28);
+}
+
+.finance-kpi-warning {
+  border-color: rgba(180, 83, 9, .32);
+}
+
+.finance-kpi-danger {
+  border-color: rgba(180, 35, 24, .32);
+}
+
+.finance-create-form,
+.finance-filters {
+  align-items: end;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 10px;
+}
+
+.finance-filters-wide {
+  grid-template-columns: minmax(260px, 1.5fr) repeat(5, minmax(130px, 1fr));
+}
+
+.finance-filter-note {
+  align-self: center;
+  font-size: .78rem;
+  font-weight: 800;
+}
+
+.finance-export-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.finance-table-wrap {
+  max-height: calc(100vh - 330px);
+  overflow: auto;
+}
+
+.finance-table {
+  min-width: 980px;
+}
+
+.finance-table th {
+  background: var(--surface-soft);
+  font-size: .72rem;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.finance-table th,
+.finance-table td {
+  padding: 7px 9px;
+  vertical-align: middle;
+}
+
+.finance-table tbody tr {
+  background: var(--surface);
+}
+
+.finance-table tbody tr:hover td {
+  background: var(--surface-soft);
+}
+
+.finance-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+.finance-detail-modal {
+  max-width: 960px;
+}
+
 [data-theme='dark'] .fefo-alert.warning {
   background: rgba(245, 158, 11, .13);
   border-color: #f59e0b;
@@ -2805,6 +2898,22 @@ details.nav-group .nav-link {
   color: var(--text);
 }
 
+[data-theme='dark'] .finance-table th {
+  background: #0b1220;
+  border-bottom-color: #334155;
+  color: #d7e3ee;
+}
+
+[data-theme='dark'] .finance-table td {
+  background: #111827;
+  border-bottom-color: #273447;
+  color: var(--text);
+}
+
+[data-theme='dark'] .finance-table tbody tr:hover td {
+  background: #162033;
+}
+
 @media (max-width: 900px) {
   .page-heading {
     display: block;
@@ -2816,6 +2925,13 @@ details.nav-group .nav-link {
   }
 
   .fefo-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .finance-kpi-grid,
+  .finance-create-form,
+  .finance-filters,
+  .finance-filters-wide {
     grid-template-columns: 1fr;
   }
 }
