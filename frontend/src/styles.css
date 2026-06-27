@@ -126,6 +126,17 @@ p {
   min-width: 24px;
 }
 
+.nav-group-button {
+  background: transparent;
+  border: 0;
+  font-family: inherit;
+  text-align: left;
+}
+
+.nav-group-button:hover {
+  color: #d9fffa;
+}
+
 details.nav-group .nav-link {
   margin: 4px 0 0;
 }

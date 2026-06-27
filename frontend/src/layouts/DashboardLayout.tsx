@@ -129,26 +129,31 @@ export function DashboardLayout() {
           {groups.map((group) => {
             const visibleLinks = group.links.filter(([, , permission]) => !permission || permissions.includes(permission));
             if (visibleLinks.length === 0) return null;
+            if (group.title === 'Parametres') {
+              return (
+                <div className="nav-group" key={group.title}>
+                  <button className="nav-group-title nav-group-button" type="button" onClick={() => navigate(visibleLinks[0][0])}>
+                    <span>{group.icon}</span> {group.title}
+                  </button>
+                  {visibleLinks.map(([to, label]) => (
+                    <Link className="nav-link" key={to} to={to}>
+                      {label}
+                    </Link>
+                  ))}
+                </div>
+              );
+            }
             return (
-            <details className="nav-group" key={group.title} open>
-              <summary
-                className="nav-group-title"
-                onClick={(event) => {
-                  if (group.title === 'Parametres' && visibleLinks[0]) {
-                    event.preventDefault();
-                    navigate(visibleLinks[0][0]);
-                  }
-                }}
-              >
-                <span>{group.icon}</span> {group.title}
-              </summary>
-              {visibleLinks.map(([to, label]) => (
+              <details className="nav-group" key={group.title} open>
+                <summary className="nav-group-title"><span>{group.icon}</span> {group.title}</summary>
+                {visibleLinks.map(([to, label]) => (
                   <Link className="nav-link" key={to} to={to}>
                     {label}
                   </Link>
-              ))}
-            </details>
-          );})}
+                ))}
+              </details>
+            );
+          })}
         </nav>
         <button className="ghost-button" onClick={logout}>
           Deconnexion
