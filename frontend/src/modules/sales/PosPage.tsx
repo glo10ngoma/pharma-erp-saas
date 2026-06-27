@@ -39,6 +39,7 @@ export function PosPage() {
   const [quantityArticle, setQuantityArticle] = useState<Article | null>(null);
   const [paidUsd, setPaidUsd] = useState('');
   const [paidFc, setPaidFc] = useState('');
+  const [exactPayment, setExactPayment] = useState(false);
   const [selectedLineId, setSelectedLineId] = useState('');
   const [clientError, setClientError] = useState('');
   const [cashMode, setCashMode] = useState(() => localStorage.getItem('posCashMode') === 'true');
@@ -144,6 +145,7 @@ export function PosPage() {
       setSale(created);
       setPaidUsd('');
       setPaidFc('');
+      setExactPayment(false);
       setTimeout(() => focusArticleSearch(), 0);
     },
   });
@@ -154,6 +156,7 @@ export function PosPage() {
       setSale(response.data);
       setPaidUsd('');
       setPaidFc('');
+      setExactPayment(false);
       setArticleQuery('');
       setQuantity('1');
       setQuantityArticle(null);
@@ -172,6 +175,7 @@ export function PosPage() {
       setSale(response.data);
       setPaidUsd('');
       setPaidFc('');
+      setExactPayment(false);
     },
   });
   const applyInsurance = useMutation({
@@ -180,6 +184,7 @@ export function PosPage() {
       setSale(response.data);
       setPaidUsd('');
       setPaidFc('');
+      setExactPayment(false);
     },
   });
   const validate = useMutation({
@@ -294,6 +299,7 @@ export function PosPage() {
     setQuantityArticle(null);
     setPaidUsd('');
     setPaidFc('');
+    setExactPayment(false);
     setSelectedLineId('');
     setClientError('');
     setForm((current) => ({ ...current, saleType: 'CASH', customerId: '', membershipId: '', exchangeRate: '1' }));
@@ -323,8 +329,13 @@ export function PosPage() {
   }
   function quickCheckout() {
     const hasPayment = Boolean(paidUsd || paidFc);
-    const amount = hasPayment ? paidEquivalentUsd : patientPayable;
-    if (!hasPayment) setPaidFc(String(Math.round(patientPayableFc)));
+    if (!hasPayment && !exactPayment) {
+      setClientError('Saisissez le montant recu ou utilisez Paiement exact.');
+      playBeep('error');
+      if (items.length > 0) focusPayment();
+      return;
+    }
+    const amount = paidEquivalentUsd;
     if (!canValidate(amount)) {
       setClientError(amount < patientPayable ? 'Paiement insuffisant.' : 'Aucune vente a encaisser.');
       playBeep('error');
@@ -333,6 +344,13 @@ export function PosPage() {
     }
     setClientError('');
     validate.mutate(amount);
+  }
+  function applyExactPayment() {
+    setPaidUsd('');
+    setPaidFc(String(Math.ceil(patientPayableFc)));
+    setExactPayment(true);
+    setClientError('');
+    setTimeout(() => focusPayment(), 0);
   }
   function playBeep(kind: 'success' | 'error' | 'sale') {
     try {
@@ -417,6 +435,7 @@ export function PosPage() {
             placeholder="Scanner code-barres ou rechercher article..."
             searchPlaceholder="Rechercher (code, nom, DCI, dosage, barcode...)"
             suggestions={articleSuggestions}
+            maxVisible={50}
             value={articleQuery}
           />
           {form.saleType === 'INSURANCE' && <button className="ghost-button compact-button" type="button" disabled={!form.membershipId || items.length === 0 || applyInsurance.isPending || sale?.status !== 'DRAFT'} onClick={() => applyInsurance.mutate()}>{applyInsurance.isPending ? 'Application...' : 'Appliquer assurance'}</button>}
@@ -450,20 +469,21 @@ export function PosPage() {
           <Summary label="Part patient USD" value={formatMoney(patientPayable, 'USD', currencySymbol)} />
           <Summary label="Part patient FC" value={formatMoney(patientPayableFc, 'CDF')} strong />
           <Summary label="Part assurance" value={`${formatMoney(insuranceAmount, 'USD', currencySymbol)} / ${formatMoney(insuranceAmount * saleExchangeRate, 'CDF')}`} />
-          <label className="pos-paid-field pos-paid-fc"><span>Paye FC</span><input ref={paymentInputRef} className="input compact-input numeric-cell" type="number" min="0" step="1" value={paidFc} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); quickCheckout(); } }} onChange={(event) => setPaidFc(event.target.value)} /></label>
-          <label className="pos-paid-field"><span>Paye USD</span><input className="input compact-input numeric-cell" type="number" min="0" step="0.01" value={paidUsd} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); quickCheckout(); } }} onChange={(event) => setPaidUsd(event.target.value)} /></label>
+          <label className="pos-paid-field pos-paid-fc"><span>Paye FC</span><input ref={paymentInputRef} className="input compact-input numeric-cell" type="number" min="0" step="1" value={paidFc} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); quickCheckout(); } }} onChange={(event) => { setPaidFc(event.target.value); setExactPayment(false); }} /></label>
+          <label className="pos-paid-field"><span>Paye USD</span><input className="input compact-input numeric-cell" type="number" min="0" step="0.01" value={paidUsd} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); quickCheckout(); } }} onChange={(event) => { setPaidUsd(event.target.value); setExactPayment(false); }} /></label>
           <Summary label="Rendu FC" value={formatMoney(changeDueFc, 'CDF')} strong />
           <Summary label="Rendu USD" value={formatMoney(changeDueUsd, 'USD', currencySymbol)} />
         </div>
         <div className="page-actions pos-checkout-actions">
-          <button className="ghost-button compact-button" type="button" disabled={!sale || sale.status !== 'DRAFT'} onClick={() => cancel.mutate()}>Annuler vente</button>
-          <button className="ghost-button compact-button" type="button" disabled={!sale} onClick={printDraft}>Imprimer facture</button>
+          <button className="ghost-button compact-button pos-secondary-action pos-danger-action" type="button" disabled={!sale || sale.status !== 'DRAFT'} onClick={() => cancel.mutate()}>Annuler vente</button>
+          <button className="ghost-button compact-button pos-secondary-action pos-print-action" type="button" disabled={!sale} onClick={printDraft}>Imprimer facture</button>
+          <button className="ghost-button compact-button pos-secondary-action pos-exact-action" type="button" disabled={!sale || sale.status !== 'DRAFT' || items.length === 0} onClick={applyExactPayment}>Paiement exact</button>
           <div className="pos-checkout-total">
             <span>Total a encaisser</span>
             <strong>{formatMoney(patientPayableFc, 'CDF')}</strong>
             <small>{formatMoney(patientPayable, 'USD', currencySymbol)}</small>
           </div>
-          <button className="button pos-checkout-button" type="button" disabled={!canValidate((paidUsd || paidFc) ? paidEquivalentUsd : patientPayable)} onClick={quickCheckout}>{validate.isPending ? 'ENCAISSEMENT...' : 'ENCAISSER'}</button>
+          <button className="button pos-checkout-button" type="button" disabled={!sale?.saleId || sale.status !== 'DRAFT' || items.length === 0 || validate.isPending || Boolean((paidUsd || paidFc || exactPayment) && !canValidate(paidEquivalentUsd))} onClick={quickCheckout}>{validate.isPending ? 'ENCAISSEMENT...' : 'ENCAISSER'}</button>
         </div>
       </section>
 

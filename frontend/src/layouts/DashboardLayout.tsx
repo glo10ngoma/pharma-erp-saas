@@ -126,18 +126,29 @@ export function DashboardLayout() {
           {theme === 'dark' ? 'Theme light' : 'Theme dark'}
         </button>
         <nav>
-          {groups.map((group) => (
+          {groups.map((group) => {
+            const visibleLinks = group.links.filter(([, , permission]) => !permission || permissions.includes(permission));
+            if (visibleLinks.length === 0) return null;
+            return (
             <details className="nav-group" key={group.title} open>
-              <summary className="nav-group-title"><span>{group.icon}</span> {group.title}</summary>
-              {group.links
-                .filter(([, , permission]) => !permission || permissions.includes(permission))
-                .map(([to, label]) => (
+              <summary
+                className="nav-group-title"
+                onClick={(event) => {
+                  if (group.title === 'Parametres' && visibleLinks[0]) {
+                    event.preventDefault();
+                    navigate(visibleLinks[0][0]);
+                  }
+                }}
+              >
+                <span>{group.icon}</span> {group.title}
+              </summary>
+              {visibleLinks.map(([to, label]) => (
                   <Link className="nav-link" key={to} to={to}>
                     {label}
                   </Link>
-                ))}
+              ))}
             </details>
-          ))}
+          );})}
         </nav>
         <button className="ghost-button" onClick={logout}>
           Deconnexion

@@ -22,6 +22,7 @@ type Props<T> = {
   onSelect: (item: T) => void;
   open: boolean;
   placeholder: string;
+  maxVisible?: number;
   searchPlaceholder: string;
   suggestions: T[];
   value: string;
@@ -43,6 +44,7 @@ export function FloatingSearchPopover<T>({
   onSelect,
   open,
   placeholder,
+  maxVisible = 50,
   searchPlaceholder,
   suggestions,
   value,
@@ -51,7 +53,7 @@ export function FloatingSearchPopover<T>({
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [position, setPosition] = useState({ left: 0, top: 0, width: 700 });
-  const visibleSuggestions = suggestions.slice(0, 20);
+  const visibleSuggestions = suggestions.slice(0, maxVisible);
 
   useEffect(() => {
     if (!open) return;
@@ -151,7 +153,7 @@ export function FloatingSearchPopover<T>({
             {columns.map((column) => <span key={column.header}>{column.render(suggestion)}</span>)}
           </button>)}
         </div>
-        <div className="article-popover-footer"><span>{footerLabel}</span><strong>{visibleSuggestions.length ? `1 - ${visibleSuggestions.length} sur ${suggestions.length}` : `0 sur ${suggestions.length}`}</strong></div>
+        <div className="article-popover-footer"><span>{footerLabel}</span><strong>{visibleSuggestions.length ? `${visibleSuggestions.length} sur ${suggestions.length}` : `0 sur ${suggestions.length}`}</strong></div>
       </div>,
       document.body,
     )}
