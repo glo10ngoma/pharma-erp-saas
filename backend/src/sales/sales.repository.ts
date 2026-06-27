@@ -98,13 +98,44 @@ export class SalesRepository {
     let remaining = dto.quantity;
     for (const lot of available.rows) {
       if (remaining <= 0) break;
-      const take = Math.min(remaining, Number(lot.quantity_available));
-      const price = Number(lot.selling_price);
-      await this.db.query(
-        `INSERT INTO sale_items (tenant_id, sale_id, article_id, lot_id, quantity, unit_price, patient_amount, line_total)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$7)`,
-        [user.tenantId, saleId, dto.articleId, lot.lot_id, take, price, take * price],
+      const existing = await this.db.query<{ sale_item_id: string; quantity: string }>(
+        `SELECT sale_item_id, quantity
+         FROM sale_items
+         WHERE tenant_id=$1 AND sale_id=$2 AND article_id=$3 AND lot_id=$4
+         ORDER BY sale_item_id`,
+        [user.tenantId, saleId, dto.articleId, lot.lot_id],
       );
+      const existingQuantity = existing.rows.reduce((sum, item) => sum + Number(item.quantity ?? 0), 0);
+      const stillAvailable = Number(lot.quantity_available) - existingQuantity;
+      if (stillAvailable <= 0) continue;
+
+      const take = Math.min(remaining, stillAvailable);
+      const price = Number(lot.selling_price);
+      if (existing.rows[0]) {
+        const nextQuantity = existingQuantity + take;
+        await this.db.query(
+          `UPDATE sale_items
+           SET quantity=$5,
+               unit_price=$6,
+               patient_amount=$7,
+               line_total=$7
+           WHERE tenant_id=$1 AND sale_id=$2 AND sale_item_id=$3 AND lot_id=$4`,
+          [user.tenantId, saleId, existing.rows[0].sale_item_id, lot.lot_id, nextQuantity, price, nextQuantity * price],
+        );
+        if (existing.rows.length > 1) {
+          await this.db.query(
+            `DELETE FROM sale_items
+             WHERE tenant_id=$1 AND sale_id=$2 AND lot_id=$3 AND article_id=$4 AND sale_item_id <> $5`,
+            [user.tenantId, saleId, lot.lot_id, dto.articleId, existing.rows[0].sale_item_id],
+          );
+        }
+      } else {
+        await this.db.query(
+          `INSERT INTO sale_items (tenant_id, sale_id, article_id, lot_id, quantity, unit_price, patient_amount, line_total)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$7)`,
+          [user.tenantId, saleId, dto.articleId, lot.lot_id, take, price, take * price],
+        );
+      }
       remaining -= take;
     }
     if (remaining > 0) throw new Error('STOCK_INSUFFICIENT');
