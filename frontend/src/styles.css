@@ -1912,6 +1912,29 @@ details.nav-group .nav-link {
   color: var(--muted);
 }
 
+.pos-header-action {
+  background: #fff;
+  border: 1px solid #b7c7c3;
+  color: var(--text);
+  font-weight: 900;
+  min-width: 142px;
+  width: auto;
+}
+
+.pos-header-action:hover {
+  background: #eef7f5;
+  border-color: var(--primary);
+  color: var(--primary-dark);
+}
+
+.pos-customer-display-button {
+  border-color: rgba(15, 118, 110, .45);
+}
+
+.pos-mode-button {
+  border-color: rgba(37, 99, 235, .38);
+}
+
 .pos-header-grid {
   align-items: end;
   display: grid;
@@ -2458,6 +2481,26 @@ details.nav-group .nav-link {
 [data-theme='dark'] .pos-page-cash-mode .pos-toolbar {
   background: #111827;
   border-color: #334155;
+}
+
+[data-theme='dark'] .pos-header-action {
+  background: #111827;
+  border-color: #334155;
+  color: #e5e7eb;
+}
+
+[data-theme='dark'] .pos-header-action:hover {
+  background: #172033;
+  border-color: #14b8a6;
+  color: #f8fafc;
+}
+
+[data-theme='dark'] .pos-customer-display-button {
+  border-color: rgba(45, 212, 191, .45);
+}
+
+[data-theme='dark'] .pos-mode-button {
+  border-color: rgba(96, 165, 250, .45);
 }
 
 [data-theme='dark'] .pos-cash-total strong {

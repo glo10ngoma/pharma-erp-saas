@@ -425,10 +425,10 @@ export function PosPage() {
           <p className="muted">Caisse rapide FEFO : scanner, quantite, encaisser.</p>
         </div>
         <div className="pos-cash-status">
-          <button className="ghost-button compact-button" type="button" onClick={openCustomerDisplay}>
+          <button className="ghost-button compact-button pos-header-action pos-customer-display-button" type="button" onClick={openCustomerDisplay}>
             Affichage client
           </button>
-          <button className="ghost-button compact-button" type="button" onClick={() => setCashMode((value) => !value)}>
+          <button className="ghost-button compact-button pos-header-action pos-mode-button" type="button" onClick={() => setCashMode((value) => !value)}>
             {cashMode ? 'Quitter mode caisse' : 'Mode caisse'}
           </button>
           <span className={`badge ${currentCashSession.data ? 'badge-success' : 'badge-warning'}`}>{currentCashSession.data ? 'Caisse ouverte' : 'Caisse non ouverte'}</span>
