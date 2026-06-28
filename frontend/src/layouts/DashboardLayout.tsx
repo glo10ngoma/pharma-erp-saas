@@ -78,13 +78,19 @@ export function DashboardLayout() {
       ],
     },
     {
-      title: 'Assurances & creances',
+      title: 'Assurances & Creances',
       icon: 'AS',
       links: [
+        ['/insurance/dashboard', 'Tableau de bord', 'receivables.read'],
+        ['/insurance/receivables', 'Creances', 'receivables.read'],
+        ['/insurance/batches', 'Bordereaux', 'receivables.read'],
+        ['/insurance/payments', 'Paiements', 'receivables.pay'],
+        ['/insurance/disputes', 'Litiges', 'receivables.read'],
+        ['/insurance/reminders', 'Relances', 'receivables.read'],
+        ['/insurance/history', 'Historique', 'receivables.read'],
         ['/organizations', 'Organisations', 'organizations.read'],
         ['/insurance-plans', 'Plans assurance', 'insurance_plans.read'],
         ['/memberships', 'Memberships', 'memberships.read'],
-        ['/receivables', 'Creances', 'receivables.read'],
       ],
     },
     {

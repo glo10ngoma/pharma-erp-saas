@@ -110,6 +110,14 @@ La page `/purchases/new` - Nouvel Achat - est desormais le modele UI/UX de refer
 - Les pages Fournisseurs et Vendeurs affichent un etat propre lorsque les donnees disponibles sont insuffisantes.
 - Les calculs V1.1 restent en lecture seule et n'ecrivent jamais dans les modules metier.
 
+## Assurance Et Creances
+
+- Le module Assurance & Creances doit couvrir le cycle : vente assurance, creance, bordereau, envoi, paiement, rapprochement et cloture.
+- Les paiements assurance reutilisent l'endpoint de paiement de creance existant afin de conserver comptabilite, audit et regles backend.
+- Les bordereaux, litiges et relances V2.0 peuvent etre pilotes en frontend tant que le schema dedie n'existe pas ; l'UI doit clairement rester compatible avec les donnees existantes.
+- Les tableaux assurance utilisent les memes standards : KPI, filtres, exports, impression, recherche et headers sticky.
+- Les alertes assurance prioritaires sont : creance >30 jours, >60 jours, >90 jours, litige ouvert et bordereau a envoyer.
+
 ## Formulaires
 
 - Labels clairs pour chaque champ.

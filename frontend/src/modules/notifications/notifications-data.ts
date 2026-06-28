@@ -30,6 +30,8 @@ export type NotificationState = Record<string, { read?: boolean; deleted?: boole
 
 const todayIso = new Date().toISOString();
 const storageKey = 'pharmaerp.notificationState.v1';
+const insuranceBatchesKey = 'pharmaerp.insuranceBatches.v2';
+const insuranceDisputesKey = 'pharmaerp.insuranceDisputes.v2';
 
 export function useGeneratedNotifications(state: NotificationState = {}, enabled = true) {
   const queries = useQueries({
@@ -107,6 +109,18 @@ function buildNotifications({ stocks, lots, inventories, receivables, sessions, 
   for (const receivable of receivables) {
     const balance = Number(receivable.balance || 0);
     if (balance >= 100) rows.push(notification('receivable-high', receivable.receivableId, 'WARNING', 'ASSURANCE', 'Creance importante', `${receivable.organizationName || 'Assurance'} doit encore ${formatMoney(balance, receivable.currencyCode || 'USD')}.`, '-', '/reports/insurance-report', 'Ouvrir Assurance'));
+    const age = ageDays(receivable.dueDate || receivable.issueDate || receivable.createdAt);
+    if (balance > 0 && age > 90) rows.push(notification('receivable-90', receivable.receivableId, 'CRITICAL', 'ASSURANCE', 'Creance >90 jours', `${receivable.organizationName || 'Assurance'} - ${receivable.customerName || 'client'} : ${formatMoney(balance, receivable.currencyCode || 'USD')}.`, '-', '/insurance/reminders', 'Ouvrir Relances'));
+    else if (balance > 0 && age > 60) rows.push(notification('receivable-60', receivable.receivableId, 'WARNING', 'ASSURANCE', 'Creance >60 jours', `${receivable.organizationName || 'Assurance'} - relance importante.`, '-', '/insurance/reminders', 'Ouvrir Relances'));
+    else if (balance > 0 && age > 30) rows.push(notification('receivable-30', receivable.receivableId, 'WARNING', 'ASSURANCE', 'Creance >30 jours', `${receivable.organizationName || 'Assurance'} - relance simple.`, '-', '/insurance/reminders', 'Ouvrir Relances'));
+  }
+
+  for (const dispute of readLocal<{ id: string; type: string; status: string }>(insuranceDisputesKey)) {
+    if (dispute.status !== 'CLOSED') rows.push(notification('dispute-open', dispute.id, 'WARNING', 'ASSURANCE', 'Litige ouvert', `${dispute.type} en attente de resolution.`, '-', '/insurance/disputes', 'Ouvrir Litiges'));
+  }
+
+  for (const batch of readLocal<{ id: string; number: string; status: string; amount: number }>(insuranceBatchesKey)) {
+    if (batch.status === 'DRAFT') rows.push(notification('batch-send', batch.id, 'INFO', 'ASSURANCE', 'Bordereau a envoyer', `${batch.number} est pret pour envoi assurance.`, '-', '/insurance/batches', 'Ouvrir Bordereaux'));
   }
 
   for (const inventory of inventories) {
@@ -160,6 +174,21 @@ function daysUntil(date: string) {
 
 function daysBetween(start: Date, end: Date) {
   return Math.floor((end.getTime() - start.getTime()) / 86400000);
+}
+
+function ageDays(date?: string | null) {
+  if (!date) return 0;
+  const start = new Date(date);
+  if (Number.isNaN(start.getTime())) return 0;
+  return Math.max(0, daysBetween(start, new Date()));
+}
+
+function readLocal<T>(key: string): T[] {
+  try {
+    return JSON.parse(localStorage.getItem(key) || '[]') as T[];
+  } catch {
+    return [];
+  }
 }
 
 function priorityRank(priority: NotificationPriority) {

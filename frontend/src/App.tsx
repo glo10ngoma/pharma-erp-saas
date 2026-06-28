@@ -37,6 +37,15 @@ import { OrganizationsPage } from './modules/insurance/OrganizationsPage';
 import { InsurancePlansPage } from './modules/insurance/InsurancePlansPage';
 import { MembershipsPage } from './modules/insurance/MembershipsPage';
 import { ReceivablesPage } from './modules/insurance/ReceivablesPage';
+import {
+  InsuranceBatchesPage,
+  InsuranceDashboardPage,
+  InsuranceDisputesPage,
+  InsuranceHistoryPage,
+  InsurancePaymentsPage,
+  InsuranceReceivablesV2Page,
+  InsuranceRemindersPage,
+} from './modules/insurance-v2/InsuranceV2Pages';
 import { InventoriesPage } from './modules/inventories/InventoriesPage';
 import { InventoryDetailPage } from './modules/inventories/InventoryDetailPage';
 import { AccountsPage } from './modules/accounting/AccountsPage';
@@ -115,6 +124,13 @@ export function App() {
               <Route path="/insurance-plans" element={<InsurancePlansPage />} />
               <Route path="/memberships" element={<MembershipsPage />} />
               <Route path="/receivables" element={<ReceivablesPage />} />
+              <Route path="/insurance/dashboard" element={<InsuranceDashboardPage />} />
+              <Route path="/insurance/receivables" element={<InsuranceReceivablesV2Page />} />
+              <Route path="/insurance/batches" element={<InsuranceBatchesPage />} />
+              <Route path="/insurance/payments" element={<InsurancePaymentsPage />} />
+              <Route path="/insurance/disputes" element={<InsuranceDisputesPage />} />
+              <Route path="/insurance/reminders" element={<InsuranceRemindersPage />} />
+              <Route path="/insurance/history" element={<InsuranceHistoryPage />} />
               <Route path="/inventories" element={<InventoriesPage />} />
               <Route path="/inventories/:id" element={<InventoryDetailPage />} />
               <Route path="/accounting/accounts" element={<AccountsPage />} />
