@@ -186,9 +186,11 @@ SET tenant_id = EXCLUDED.tenant_id,
     phone = EXCLUDED.phone,
     is_active = EXCLUDED.is_active;
 
-INSERT INTO roles(role_name, description, is_active)
-VALUES ('ADMIN', 'Administrateur systeme', TRUE)
-ON CONFLICT (role_name) DO UPDATE
+INSERT INTO roles(tenant_id, role_name, description, is_active)
+SELECT t.tenant_id, 'ADMIN', 'Administrateur systeme', TRUE
+FROM tenants t
+WHERE t.tenant_code = 'PHARMACIE_DEMO'
+ON CONFLICT (tenant_id, role_name) DO UPDATE
 SET description = EXCLUDED.description,
     is_active = EXCLUDED.is_active;
 
@@ -211,8 +213,10 @@ SET permission_name = EXCLUDED.permission_name,
 INSERT INTO role_permissions(role_id, permission_id)
 SELECT r.role_id, p.permission_id
 FROM roles r
+JOIN tenants t ON t.tenant_id = r.tenant_id
 CROSS JOIN permissions p
-WHERE r.role_name = 'ADMIN'
+WHERE t.tenant_code = 'PHARMACIE_DEMO'
+  AND r.role_name = 'ADMIN'
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 INSERT INTO users(
@@ -230,7 +234,7 @@ SELECT
   TRUE
 FROM tenants t
 JOIN sites s ON s.tenant_id = t.tenant_id AND s.site_code = 'PHD-KIN'
-JOIN roles r ON r.role_name = 'ADMIN'
+JOIN roles r ON r.tenant_id = t.tenant_id AND r.role_name = 'ADMIN'
 WHERE t.tenant_code = 'PHARMACIE_DEMO'
 ON CONFLICT (username) DO UPDATE
 SET tenant_id = EXCLUDED.tenant_id,

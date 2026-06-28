@@ -218,9 +218,8 @@ SELECT
   TRUE
 FROM tenants t
 WHERE t.tenant_code = 'DEMO'
-ON CONFLICT (role_name) DO UPDATE
+ON CONFLICT (tenant_id, role_name) DO UPDATE
 SET
-  tenant_id = EXCLUDED.tenant_id,
   description = EXCLUDED.description,
   is_active = EXCLUDED.is_active;
 

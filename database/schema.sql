@@ -38,7 +38,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 CREATE TABLE roles (
     role_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    role_name VARCHAR(100) NOT NULL UNIQUE,
+    role_name VARCHAR(100) NOT NULL,
     description TEXT,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -1002,6 +1002,8 @@ CREATE TABLE IF NOT EXISTS tenant_settings (
 ALTER TABLE sites ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(tenant_id);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(tenant_id);
 ALTER TABLE roles ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(tenant_id);
+ALTER TABLE roles DROP CONSTRAINT IF EXISTS roles_role_name_key;
+ALTER TABLE roles ADD CONSTRAINT roles_tenant_id_role_name_key UNIQUE (tenant_id, role_name);
 ALTER TABLE permissions ADD COLUMN IF NOT EXISTS is_system_permission BOOLEAN NOT NULL DEFAULT TRUE;
 
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(tenant_id);

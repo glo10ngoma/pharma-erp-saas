@@ -74,9 +74,8 @@ SELECT
   TRUE
 FROM tenants t
 WHERE t.tenant_code = 'STAGING'
-ON CONFLICT (role_name) DO UPDATE
-SET tenant_id = EXCLUDED.tenant_id,
-    description = EXCLUDED.description,
+ON CONFLICT (tenant_id, role_name) DO UPDATE
+SET description = EXCLUDED.description,
     is_active = TRUE;
 
 WITH staging_admin_role AS (
