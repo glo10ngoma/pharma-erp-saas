@@ -3651,6 +3651,50 @@ details.nav-group .nav-link {
   font-weight: 700;
 }
 
+.analytics-chart-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.analytics-chart-card {
+  min-height: 330px;
+}
+
+.analytics-chart-card h2 {
+  margin-top: 0;
+}
+
+.analytics-alert-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.analytics-alert {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+}
+
+.analytics-alert strong {
+  color: var(--text);
+}
+
+.analytics-alert span {
+  color: var(--muted);
+}
+
+.analytics-alert-success {
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.analytics-alert-warning {
+  border-color: rgba(245, 158, 11, 0.45);
+}
+
 [data-theme='dark'] .notification-bell {
   background: #172033;
   border-color: #4b647b;

@@ -44,6 +44,15 @@ import { JournalsPage } from './modules/accounting/JournalsPage';
 import { EntriesPage } from './modules/accounting/EntriesPage';
 import { GeneralLedgerPage } from './modules/accounting/GeneralLedgerPage';
 import { TrialBalancePage } from './modules/accounting/TrialBalancePage';
+import {
+  AnalyticsAbcPage,
+  AnalyticsDormantProductsPage,
+  AnalyticsMarginsPage,
+  AnalyticsOverviewPage,
+  AnalyticsSellersPage,
+  AnalyticsStockRotationPage,
+  AnalyticsSuppliersPage,
+} from './modules/analytics/AnalyticsPages';
 import { NotificationsPage } from './modules/notifications/NotificationsPage';
 import { ReportsDashboardPage } from './modules/reports/ReportsDashboardPage';
 import { ReportsIndexPage } from './modules/reports/ReportsIndexPage';
@@ -113,6 +122,13 @@ export function App() {
               <Route path="/accounting/entries" element={<EntriesPage />} />
               <Route path="/accounting/general-ledger" element={<GeneralLedgerPage />} />
               <Route path="/accounting/trial-balance" element={<TrialBalancePage />} />
+              <Route path="/analytics" element={<AnalyticsOverviewPage />} />
+              <Route path="/analytics/abc" element={<AnalyticsAbcPage />} />
+              <Route path="/analytics/stock-rotation" element={<AnalyticsStockRotationPage />} />
+              <Route path="/analytics/dormant-products" element={<AnalyticsDormantProductsPage />} />
+              <Route path="/analytics/margins" element={<AnalyticsMarginsPage />} />
+              <Route path="/analytics/suppliers" element={<AnalyticsSuppliersPage />} />
+              <Route path="/analytics/sellers" element={<AnalyticsSellersPage />} />
               <Route path="/notifications" element={<NotificationsPage />} />
               <Route path="/reports" element={<ReportsIndexPage />} />
               <Route path="/reports/dashboard" element={<ReportsDashboardPage />} />

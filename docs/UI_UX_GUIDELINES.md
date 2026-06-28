@@ -101,6 +101,15 @@ La page `/purchases/new` - Nouvel Achat - est desormais le modele UI/UX de refer
 - Le badge du header affiche les notifications non lues et ne doit pas masquer la navigation principale.
 - Les notifications restent exportables en Excel, CSV et JSON ; le PDF reste desactive tant que non pret.
 
+## Analyses Avancees
+
+- Le groupe `Analyses` transforme les donnees en decision : classer, prioriser, recommander et alerter.
+- Les analyses doivent toujours combiner KPI, graphique, tableau compact et export.
+- Les pages ABC/Pareto classent les produits selon leur contribution au chiffre d'affaires.
+- Les analyses de rotation et produits dormants doivent aider a reduire immobilisation stock, ruptures et pertes.
+- Les pages Fournisseurs et Vendeurs affichent un etat propre lorsque les donnees disponibles sont insuffisantes.
+- Les calculs V1.1 restent en lecture seule et n'ecrivent jamais dans les modules metier.
+
 ## Formulaires
 
 - Labels clairs pour chaque champ.

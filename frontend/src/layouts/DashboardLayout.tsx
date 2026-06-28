@@ -120,6 +120,19 @@ export function DashboardLayout() {
         ['/reports/margins-report', 'Marges', 'reports.margins'],
       ],
     },
+    {
+      title: 'Analyses',
+      icon: 'AN',
+      links: [
+        ['/analytics', 'Vue ensemble', 'reports.dashboard'],
+        ['/analytics/abc', 'ABC / Pareto', 'reports.sales'],
+        ['/analytics/stock-rotation', 'Rotation stocks', 'reports.stock'],
+        ['/analytics/dormant-products', 'Produits dormants', 'reports.stock'],
+        ['/analytics/margins', 'Marges', 'reports.margins'],
+        ['/analytics/suppliers', 'Fournisseurs', 'purchases.read'],
+        ['/analytics/sellers', 'Vendeurs', 'reports.sales'],
+      ],
+    },
   ], [permissions]);
 
   useEffect(() => {
