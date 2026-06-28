@@ -6,16 +6,33 @@ import { BusinessErrorFilter } from './common/filters/business-error.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const isProduction = process.env.APP_ENV === 'production' || process.env.NODE_ENV === 'production';
 
   app.setGlobalPrefix('api/v1');
   const allowedOrigins = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || '')
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
+
+  if (isProduction && allowedOrigins.length === 0) {
+    throw new Error('CORS_ORIGINS_REQUIRED_IN_PRODUCTION');
+  }
+
   app.enableCors({
     origin: allowedOrigins.length ? allowedOrigins : true,
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
+
+  app.use((_req: any, res: any, next: () => void) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    next();
+  });
+
   app.useGlobalFilters(new BusinessErrorFilter());
 
   app.useGlobalPipes(new ValidationPipe({

@@ -9,12 +9,21 @@ import { AuthRepository } from './auth.repository';
   imports: [
     JwtModule.registerAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_SECRET') || 'change_me',
-        signOptions: {
-          expiresIn: config.get<string>('JWT_EXPIRES_IN') || '1d',
-        },
-      }),
+      useFactory: (config: ConfigService) => {
+        const secret = config.get<string>('JWT_SECRET') || '';
+        const env = config.get<string>('APP_ENV') || process.env.NODE_ENV || 'development';
+
+        if (env === 'production' && (!secret || secret === 'change_me')) {
+          throw new Error('JWT_SECRET_REQUIRED_IN_PRODUCTION');
+        }
+
+        return {
+          secret: secret || 'change_me',
+          signOptions: {
+            expiresIn: config.get<string>('JWT_EXPIRES_IN') || '1d',
+          },
+        };
+      },
     }),
   ],
   controllers: [AuthController],

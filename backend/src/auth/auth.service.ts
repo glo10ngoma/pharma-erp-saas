@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { AuthUser } from '../common/types/auth-user';
@@ -8,18 +8,33 @@ import { LoginDto } from './dto/login.dto';
 
 @Injectable()
 export class AuthService {
+  private readonly loginAttempts = new Map<string, { count: number; firstAttemptAt: number }>();
+  private readonly maxLoginAttempts = 10;
+  private readonly loginWindowMs = 15 * 60 * 1000;
+
   constructor(
     private readonly repository: AuthRepository,
     private readonly jwtService: JwtService,
   ) {}
 
   async login(dto: LoginDto) {
+    const loginKey = dto.email.trim().toLowerCase();
+    this.assertLoginAllowed(loginKey);
+
     const user = await this.repository.findActiveUserByEmail(dto.email);
 
-    if (!user) throw new UnauthorizedException('INVALID_CREDENTIALS');
+    if (!user) {
+      this.recordFailedLogin(loginKey);
+      throw new UnauthorizedException('INVALID_CREDENTIALS');
+    }
 
     const passwordOk = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!passwordOk) throw new UnauthorizedException('INVALID_CREDENTIALS');
+    if (!passwordOk) {
+      this.recordFailedLogin(loginKey);
+      throw new UnauthorizedException('INVALID_CREDENTIALS');
+    }
+
+    this.loginAttempts.delete(loginKey);
 
     const profile: AuthUser = {
       userId: user.userId,
@@ -75,5 +90,35 @@ export class AuthService {
       role: user.role,
       permissions: user.permissions,
     };
+  }
+
+  private assertLoginAllowed(loginKey: string) {
+    const current = this.loginAttempts.get(loginKey);
+    if (!current) return;
+
+    const now = Date.now();
+    if (now - current.firstAttemptAt > this.loginWindowMs) {
+      this.loginAttempts.delete(loginKey);
+      return;
+    }
+
+    if (current.count >= this.maxLoginAttempts) {
+      throw new HttpException('LOGIN_RATE_LIMITED', HttpStatus.TOO_MANY_REQUESTS);
+    }
+  }
+
+  private recordFailedLogin(loginKey: string) {
+    const now = Date.now();
+    const current = this.loginAttempts.get(loginKey);
+
+    if (!current || now - current.firstAttemptAt > this.loginWindowMs) {
+      this.loginAttempts.set(loginKey, { count: 1, firstAttemptAt: now });
+      return;
+    }
+
+    this.loginAttempts.set(loginKey, {
+      count: current.count + 1,
+      firstAttemptAt: current.firstAttemptAt,
+    });
   }
 }
