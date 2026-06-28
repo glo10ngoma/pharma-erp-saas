@@ -160,7 +160,7 @@ export function ArticlesPage() {
                   <td>{article.barcode || '-'}</td>
                   <td className="quantity-cell">{article.defaultStockMin}</td>
                   <td><ActiveBadge active={article.isActive} /></td>
-                  <td><button className="ghost-button compact-button" onClick={() => setDetailArticle(article)}>Voir</button></td>
+                  <td><button className="ghost-button compact-button article-view-button" onClick={() => setDetailArticle(article)}>Voir</button></td>
                 </tr>
               ))}</tbody>
             </table>

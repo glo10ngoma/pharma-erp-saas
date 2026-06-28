@@ -1947,6 +1947,27 @@ details.nav-group .nav-link {
   gap: 4px;
 }
 
+.pos-client-field {
+  position: relative;
+}
+
+.pos-counter-customer-button {
+  background: #f8fafc;
+  border: 1px solid #9aaebe;
+  color: #102033;
+  justify-self: start;
+  margin-top: 0;
+  min-height: 28px;
+  padding: 5px 9px;
+  width: auto;
+}
+
+.pos-counter-customer-button:hover {
+  background: #e8f1f4;
+  border-color: var(--primary);
+  color: #07111f;
+}
+
 .pos-header-grid span,
 .pos-paid-field span {
   color: var(--muted);
@@ -2499,6 +2520,18 @@ details.nav-group .nav-link {
   border-color: rgba(45, 212, 191, .45);
 }
 
+[data-theme='dark'] .pos-counter-customer-button {
+  background: #172033;
+  border-color: #4b647b;
+  color: #e5edf5;
+}
+
+[data-theme='dark'] .pos-counter-customer-button:hover {
+  background: #1f3148;
+  border-color: #6aaed6;
+  color: #ffffff;
+}
+
 [data-theme='dark'] .pos-mode-button {
   border-color: rgba(96, 165, 250, .45);
 }
@@ -2959,6 +2992,20 @@ details.nav-group .nav-link {
   max-height: calc(100vh - 360px);
 }
 
+.articles-table .article-view-button {
+  background: #f8fafc;
+  border: 1px solid #9aaebe;
+  color: #102033;
+  margin-top: 0;
+  width: auto;
+}
+
+.articles-table .article-view-button:hover {
+  background: #e8f1f4;
+  border-color: var(--primary);
+  color: #07111f;
+}
+
 .article-detail-modal {
   max-width: 1040px;
 }
@@ -3148,6 +3195,18 @@ details.nav-group .nav-link {
 
 [data-theme='dark'] .reference-table tbody tr:hover td {
   background: #162033;
+}
+
+[data-theme='dark'] .articles-table .article-view-button {
+  background: #172033;
+  border-color: #4b647b;
+  color: #e5edf5;
+}
+
+[data-theme='dark'] .articles-table .article-view-button:hover {
+  background: #1f3148;
+  border-color: #6aaed6;
+  color: #ffffff;
 }
 
 @media (max-width: 900px) {

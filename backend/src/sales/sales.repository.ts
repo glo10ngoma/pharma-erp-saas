@@ -5,6 +5,7 @@ import { DatabaseService } from '../database/database.service';
 import { AddSaleItemFefoDto } from './dto/add-sale-item-fefo.dto';
 import { ApplyInsuranceDto } from './dto/apply-insurance.dto';
 import { CreateSaleDto } from './dto/create-sale.dto';
+import { UpdateSaleDraftDto } from './dto/update-sale-draft.dto';
 import { ValidateSaleDto } from './dto/validate-sale.dto';
 
 type SaleRow = { sale_id: string; tenant_id: string; sale_number: string; sale_date: Date; customer_id: string | null; customer_name: string | null; organization_id?: string | null; organization_name?: string | null; membership_id?: string | null; plan_name?: string | null; coverage_percent?: string | null; site_id: string; site_name: string | null; currency_id: string; currency_code: string | null; currency_symbol: string | null; exchange_rate: string; subtotal: string; discount_amount?: string; insurance_covered_amount?: string; customer_payable_amount?: string; credit_amount?: string; total_amount: string; sale_type: string; status: string; created_by: string | null; created_at: Date; validated_at: Date | null };
@@ -77,6 +78,39 @@ export class SalesRepository {
       [user.tenantId, number, dto.siteId, dto.customerId ?? null, currencyId, user.userId, dto.saleType ?? 'CASH', dto.exchangeRate ?? 1],
     );
     return this.findOne(user, r.rows[0].sale_id);
+  }
+
+  async updateDraft(user: AuthUser, saleId: string, dto: UpdateSaleDraftDto) {
+    const sale = await this.findOne(user, saleId);
+    if (!sale) return null;
+    if (sale.status !== 'DRAFT') throw new Error('SALE_NOT_DRAFT');
+
+    const nextSaleType = dto.saleType ?? sale.saleType;
+    const nextCustomerId = dto.customerId === undefined ? sale.customerId : dto.customerId;
+    if (nextSaleType === 'INSURANCE' && !nextCustomerId) throw new Error('CUSTOMER_REQUIRED_FOR_INSURANCE');
+    if (nextCustomerId) await this.assertCustomer(user, nextCustomerId);
+
+    await this.db.query(
+      `UPDATE sales
+       SET customer_id=$3,
+           sale_type=$4,
+           organization_id=NULL,
+           membership_id=NULL,
+           insurance_covered_amount=0,
+           credit_amount=0,
+           customer_payable_amount=total_amount
+       WHERE tenant_id=$1 AND sale_id=$2`,
+      [user.tenantId, saleId, nextCustomerId ?? null, nextSaleType],
+    );
+    await this.db.query(
+      `UPDATE sale_items
+       SET coverage_percent=0,
+           covered_amount=0,
+           patient_amount=line_total
+       WHERE tenant_id=$1 AND sale_id=$2`,
+      [user.tenantId, saleId],
+    );
+    return this.findOne(user, saleId);
   }
 
   async addItemFefo(user: AuthUser, saleId: string, dto: AddSaleItemFefoDto) {
@@ -397,6 +431,14 @@ export class SalesRepository {
   private async assertArticle(user: AuthUser, articleId: string) {
     const r = await this.db.query<{ total: string }>(`SELECT COUNT(*)::int AS total FROM articles WHERE tenant_id=$1 AND article_id=$2 AND is_active=true`, [user.tenantId, articleId]);
     if (Number(r.rows[0]?.total ?? 0) !== 1) throw new Error('ARTICLE_NOT_IN_TENANT');
+  }
+
+  private async assertCustomer(user: AuthUser, customerId: string) {
+    const r = await this.db.query<{ total: string }>(
+      `SELECT COUNT(*)::int AS total FROM customers WHERE tenant_id=$1 AND customer_id=$2 AND is_active=true`,
+      [user.tenantId, customerId],
+    );
+    if (Number(r.rows[0]?.total ?? 0) !== 1) throw new Error('CUSTOMER_NOT_IN_TENANT');
   }
 
   private toSale(row: SaleRow) { return { saleId: row.sale_id, tenantId: row.tenant_id, saleNumber: row.sale_number, saleDate: row.sale_date, customerId: row.customer_id, customerName: row.customer_name, organizationId: row.organization_id ?? null, organizationName: row.organization_name ?? null, membershipId: row.membership_id ?? null, planName: row.plan_name ?? null, coveragePercent: row.coverage_percent === null || row.coverage_percent === undefined ? null : Number(row.coverage_percent), siteId: row.site_id, siteName: row.site_name, currencyId: row.currency_id, currencyCode: row.currency_code, currencySymbol: row.currency_symbol, exchangeRate: Number(row.exchange_rate), subtotal: Number(row.subtotal), discountAmount: Number(row.discount_amount ?? 0), insuranceCoveredAmount: Number(row.insurance_covered_amount ?? 0), customerPayableAmount: Number(row.customer_payable_amount ?? row.total_amount), creditAmount: Number(row.credit_amount ?? 0), totalAmount: Number(row.total_amount), saleType: row.sale_type, status: row.status, createdBy: row.created_by, createdAt: row.created_at, validatedAt: row.validated_at }; }

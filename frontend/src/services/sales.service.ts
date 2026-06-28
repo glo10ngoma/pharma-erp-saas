@@ -8,6 +8,7 @@ export const salesService = {
   getAll: () => apiClient.get<Sale[]>('/sales'),
   getById: (id: string) => apiClient.get<Sale>(`/sales/${id}`),
   create: (payload: Record<string, unknown>) => apiClient.post<Sale>('/sales', payload),
+  updateDraft: (saleId: string, payload: Record<string, unknown>) => apiClient.patch<Sale>(`/sales/${saleId}`, payload),
   addItemFefo: (saleId: string, payload: Record<string, unknown>) => apiClient.post<Sale>(`/sales/${saleId}/items/fefo`, payload),
   removeItem: (saleId: string, itemId: string) => apiClient.delete<Sale>(`/sales/${saleId}/items/${itemId}`),
   applyInsurance: (saleId: string, payload: Record<string, unknown>) => apiClient.post<Sale>(`/sales/${saleId}/apply-insurance`, payload),

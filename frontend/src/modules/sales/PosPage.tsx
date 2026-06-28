@@ -8,7 +8,7 @@ import { apiErrorMessage } from '../../services/apiError';
 import { cashService } from '../../services/cash.service';
 import { insuranceService } from '../../services/insurance.service';
 import { lotsService } from '../../services/lots.service';
-import { referenceService } from '../../services/reference.service';
+import { CustomerItem, referenceService } from '../../services/reference.service';
 import { salesService } from '../../services/sales.service';
 import { settingsService } from '../../services/settings.service';
 import { sitesService } from '../../services/sites.service';
@@ -34,6 +34,8 @@ export function PosPage() {
   const [sale, setSale] = useState<any>(null);
   const [articleQuery, setArticleQuery] = useState('');
   const [articlePopoverOpen, setArticlePopoverOpen] = useState(false);
+  const [customerQuery, setCustomerQuery] = useState('');
+  const [customerPopoverOpen, setCustomerPopoverOpen] = useState(false);
   const [quantity, setQuantity] = useState('1');
   const [quantityArticle, setQuantityArticle] = useState<Article | null>(null);
   const [paidUsd, setPaidUsd] = useState('');
@@ -46,7 +48,7 @@ export function PosPage() {
   const scanInputRef = useRef<HTMLInputElement | null>(null);
   const quantityInputRef = useRef<HTMLInputElement | null>(null);
   const paymentInputRef = useRef<HTMLInputElement | null>(null);
-  const customerSelectRef = useRef<HTMLSelectElement | null>(null);
+  const customerInputRef = useRef<HTMLInputElement | null>(null);
   const saleTypeSelectRef = useRef<HTMLSelectElement | null>(null);
   const membershipSelectRef = useRef<HTMLSelectElement | null>(null);
   const audioRef = useRef<AudioContext | null>(null);
@@ -61,6 +63,7 @@ export function PosPage() {
   const exchangeRateQuery = useQuery({ queryKey: ['settings', 'exchange-rate'], queryFn: async () => (await settingsService.getExchangeRate()).data });
 
   const currentSite = useMemo(() => (sites.data ?? []).find((site) => site.siteId === form.siteId), [form.siteId, sites.data]);
+  const selectedCustomer = useMemo(() => (customers.data ?? []).find((customer) => customer.customerId === form.customerId), [customers.data, form.customerId]);
   const sellableLotById = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
     return new Map((lots.data ?? [])
@@ -120,6 +123,15 @@ export function PosPage() {
         .some((value) => String(value ?? '').toLowerCase().includes(query)),
     ), articleQuery);
   }, [articleQuery, posArticles]);
+  const customerSuggestions = useMemo(() => {
+    const query = customerQuery.trim().toLowerCase();
+    const rows = customers.data ?? [];
+    if (!query) return rows.slice(0, 80);
+    return rows.filter((customer) =>
+      [customer.customerCode, customer.customerName, customer.phone]
+        .some((value) => String(value ?? '').toLowerCase().includes(query)),
+    );
+  }, [customerQuery, customers.data]);
 
   const items = sale?.items ?? [];
   const currencyCode = sale?.currencyCode ?? 'USD';
@@ -191,6 +203,21 @@ export function PosPage() {
       setExactPayment(false);
     },
   });
+  const updateDraft = useMutation({
+    mutationFn: (payload: Record<string, unknown>) => salesService.updateDraft(sale.saleId, payload),
+    onSuccess: (response) => {
+      setSale(response.data);
+      setPaidUsd('');
+      setPaidFc('');
+      setExactPayment(false);
+      setClientError('');
+      setTimeout(() => focusArticleSearch(), 0);
+    },
+    onError: () => {
+      playBeep('error');
+      setTimeout(() => focusArticleSearch(), 0);
+    },
+  });
   const validate = useMutation({
     mutationFn: (overrideAmount?: number) => salesService.validate(sale.saleId, { amountPaid: Number(overrideAmount ?? paidEquivalentUsd ?? 0) }),
     onSuccess: async (response) => {
@@ -250,8 +277,8 @@ export function PosPage() {
       if (event.key === 'F2') { event.preventDefault(); focusArticleSearch(); setArticlePopoverOpen(true); }
       if (event.key === 'F3') { event.preventDefault(); applyExactPayment(); }
       if (event.key === 'F4') { event.preventDefault(); openQuantityForCurrentScan(); }
-      if (event.key === 'F5') { event.preventDefault(); customerSelectRef.current?.focus(); }
-      if (event.key === 'F6') { event.preventDefault(); (form.saleType === 'INSURANCE' ? membershipSelectRef.current : saleTypeSelectRef.current)?.focus(); }
+      if (event.key === 'F5') { event.preventDefault(); openCustomerSearch(); }
+      if (event.key === 'F6') { event.preventDefault(); toggleSaleType(); }
       if (event.key === 'F8') { event.preventDefault(); prepareNextSale(); }
       if (event.key === 'F9') { event.preventDefault(); printDraft(); }
       if (event.key === 'F10') { event.preventDefault(); quickCheckout(); }
@@ -270,6 +297,13 @@ export function PosPage() {
 
   function update<K extends keyof PosForm>(key: K, value: PosForm[K]) {
     setForm((current) => ({ ...current, [key]: value, ...(key === 'saleType' && value === 'CASH' ? { membershipId: '' } : {}) }));
+  }
+  function patchDraft(nextForm: Partial<Pick<PosForm, 'customerId' | 'saleType'>>) {
+    if (!sale?.saleId || sale.status !== 'DRAFT') return;
+    updateDraft.mutate({
+      customerId: nextForm.customerId === '' ? null : nextForm.customerId,
+      saleType: nextForm.saleType ?? form.saleType,
+    });
   }
   function focusArticleSearch() {
     scanInputRef.current?.focus();
@@ -295,6 +329,39 @@ export function PosPage() {
     if (!sale?.saleId) { setClientError('Vente en preparation. Reessayez dans un instant.'); return; }
     addArticleQuick(article, 1);
     setArticlePopoverOpen(false);
+  }
+  function openCustomerSearch() {
+    if (!customerPopoverOpen) setCustomerQuery('');
+    setCustomerPopoverOpen(true);
+    setTimeout(() => customerInputRef.current?.focus(), 0);
+  }
+  function selectCustomer(customer: CustomerItem) {
+    setForm((current) => ({ ...current, customerId: customer.customerId, membershipId: '' }));
+    setCustomerQuery(customer.customerName);
+    setCustomerPopoverOpen(false);
+    patchDraft({ customerId: customer.customerId });
+    setTimeout(() => focusArticleSearch(), 0);
+  }
+  function resetCounterCustomer() {
+    const nextSaleType = form.saleType === 'INSURANCE' ? 'CASH' : form.saleType;
+    setForm((current) => ({ ...current, customerId: '', membershipId: '', saleType: nextSaleType }));
+    setCustomerQuery('');
+    setCustomerPopoverOpen(false);
+    patchDraft({ customerId: '', saleType: nextSaleType });
+    setTimeout(() => focusArticleSearch(), 0);
+  }
+  function setSaleType(nextSaleType: PosForm['saleType']) {
+    if (nextSaleType === 'INSURANCE' && !form.customerId) {
+      setClientError('Veuillez selectionner un client assure.');
+      playBeep('error');
+      setTimeout(() => focusArticleSearch(), 0);
+      return;
+    }
+    setForm((current) => ({ ...current, saleType: nextSaleType, membershipId: nextSaleType === 'CASH' ? '' : current.membershipId }));
+    patchDraft({ saleType: nextSaleType, customerId: form.customerId });
+  }
+  function toggleSaleType() {
+    setSaleType(form.saleType === 'CASH' ? 'INSURANCE' : 'CASH');
   }
   function handleArticleKeys(event: KeyboardEvent<HTMLElement>) {
     if (event.key === 'Enter') {
@@ -412,7 +479,7 @@ export function PosPage() {
     window.print();
   }
 
-  const mutationError = createDraft.error || addItem.error || removeItem.error || applyInsurance.error || validate.error || cancel.error;
+  const mutationError = createDraft.error || addItem.error || removeItem.error || applyInsurance.error || updateDraft.error || validate.error || cancel.error;
   const showError = Boolean(clientError || mutationError);
   const error = clientError || (mutationError ? apiErrorMessage(mutationError) : '');
 
@@ -449,14 +516,45 @@ export function PosPage() {
 
       <form className="card compact-card pos-header-grid" onSubmit={startSale}>
         <label><span>Vente no</span><input className="input compact-input" value={sale?.saleNumber ?? 'Auto'} disabled /></label>
-        <label><span>Client</span><select ref={customerSelectRef} className="input compact-input" value={form.customerId} disabled={Boolean(sale)} onChange={(event) => update('customerId', event.target.value)} required={form.saleType === 'INSURANCE'}><option value="">Client comptoir</option>{(customers.data ?? []).map((customer) => <option key={customer.customerId} value={customer.customerId}>{customer.customerName}</option>)}</select></label>
-        <label><span>Type</span><select ref={saleTypeSelectRef} className="input compact-input" value={form.saleType} disabled={Boolean(sale)} onChange={(event) => update('saleType', event.target.value as PosForm['saleType'])}><option value="CASH">CASH</option><option value="INSURANCE">INSURANCE</option></select></label>
+        <label className="pos-client-field">
+          <span>Client</span>
+          <FloatingSearchPopover
+            columns={[
+              { header: 'Code', render: (customer) => customer.customerCode },
+              { header: 'Nom', render: (customer) => <strong>{customer.customerName}</strong> },
+              { header: 'Telephone', render: (customer) => customer.phone ?? '-' },
+            ]}
+            getKey={(customer) => customer.customerId}
+            inputClassName="input compact-input"
+            inputRef={customerInputRef}
+            onChange={setCustomerQuery}
+            onClose={() => setCustomerPopoverOpen(false)}
+            onFallbackKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                setCustomerPopoverOpen(false);
+                focusArticleSearch();
+              }
+            }}
+            onFocusNext={focusArticleSearch}
+            onOpen={openCustomerSearch}
+            onSelect={selectCustomer}
+            open={customerPopoverOpen}
+            placeholder="Client comptoir"
+            searchPlaceholder="Rechercher client (code, nom, telephone...)"
+            suggestions={customerSuggestions}
+            value={customerPopoverOpen ? customerQuery : selectedCustomer?.customerName ?? 'Client comptoir'}
+          />
+          {form.customerId && <button className="ghost-button compact-button pos-counter-customer-button" type="button" onClick={resetCounterCustomer}>Client comptoir</button>}
+        </label>
+        <label><span>Type</span><select ref={saleTypeSelectRef} className="input compact-input" value={form.saleType} disabled={sale?.status && sale.status !== 'DRAFT'} onChange={(event) => setSaleType(event.target.value as PosForm['saleType'])}><option value="CASH">CASH</option><option value="INSURANCE">ASSURANCE</option></select></label>
         <label><span>Assurance</span><select ref={membershipSelectRef} className="input compact-input" value={form.membershipId} disabled={form.saleType !== 'INSURANCE' || !sale || sale.status !== 'DRAFT'} onChange={(event) => update('membershipId', event.target.value)}><option value="">Membership / Plan</option>{(memberships.data ?? []).filter((membership) => membership.isActive).map((membership) => <option key={membership.membershipId} value={membership.membershipId}>{membership.organizationName} - {membership.planName} ({membership.coveragePercent}%)</option>)}</select></label>
         <label><span>Site</span><input className="input compact-input" value={currentSite?.siteName ?? form.siteId ?? 'Site utilisateur'} disabled /></label>
         <label><span>Devise</span><input className="input compact-input" value="USD / FC" disabled /></label>
         <label><span>Taux</span><input className="input compact-input" value={`1 USD = ${formatMoney(saleExchangeRate, 'CDF')}`} disabled /></label>
         {!sale ? <span className="badge badge-warning">{createDraft.isPending ? 'Preparation...' : 'En attente'}</span> : <span className={`badge ${sale.status === 'VALIDATED' ? 'badge-success' : 'badge-warning'}`}>{sale.status}</span>}
       </form>
+      {form.saleType === 'INSURANCE' && !form.customerId && <p className="form-error">Veuillez selectionner un client assure.</p>}
 
       <section className="card compact-card pos-workspace">
         <div className="pos-search-row">
