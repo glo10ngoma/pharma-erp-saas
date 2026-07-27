@@ -25,6 +25,28 @@ export function DashboardLayout() {
       ],
     },
     {
+      title: 'Vente',
+      icon: 'VN',
+      links: [
+        ['/pos', 'POS', 'sales.create'],
+        ['/sales', 'Ventes', 'sales.read'],
+        ['/cash', 'Caisse', 'cash_registers.read'],
+      ],
+    },
+    {
+      title: 'Stock',
+      icon: 'ST',
+      links: [
+        ['/purchases', 'Achats', 'purchases.read'],
+        ['/stocks', 'Stocks', 'stocks.read'],
+        ['/inventories', 'Inventaires', 'inventories.read'],
+        ['/transfers', 'Transferts', 'transfers.read'],
+        ['/lots', 'Lots', 'lots.read'],
+        ['/fefo/highlight', 'Produits a mettre en avant', 'lots.read'],
+        ['/fefo/rotation', 'Rotation des rayons', 'lots.read'],
+      ],
+    },
+    {
       title: 'Administration',
       icon: 'AD',
       links: [
@@ -53,28 +75,6 @@ export function DashboardLayout() {
         ['/product-types', 'Types produits', 'product_types.read'],
         ['/suppliers', 'Fournisseurs', 'suppliers.read'],
         ['/customers', 'Clients', 'customers.read'],
-      ],
-    },
-    {
-      title: 'Stock',
-      icon: 'ST',
-      links: [
-        ['/purchases', 'Achats', 'purchases.read'],
-        ['/lots', 'Lots', 'lots.read'],
-        ['/fefo/highlight', 'Produits a mettre en avant', 'lots.read'],
-        ['/fefo/rotation', 'Rotation des rayons', 'lots.read'],
-        ['/stocks', 'Stocks', 'stocks.read'],
-        ['/transfers', 'Transferts', 'transfers.read'],
-        ['/inventories', 'Inventaires', 'inventories.read'],
-      ],
-    },
-    {
-      title: 'Vente',
-      icon: 'VN',
-      links: [
-        ['/pos', 'POS', 'sales.create'],
-        ['/sales', 'Ventes', 'sales.read'],
-        ['/cash', 'Caisse', 'cash_registers.read'],
       ],
     },
     {
