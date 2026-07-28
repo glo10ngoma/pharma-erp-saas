@@ -121,6 +121,8 @@ export function App() {
                 <Route path="/pos" element={<PosPage />} />
                 <Route path="/sales/:id" element={<SaleDetailPage />} />
                 <Route path="/cash" element={<CashPage />} />
+                <Route path="/cash/movements" element={<CashPage />} />
+                <Route path="/cash/settlement-differences" element={<CashPage />} />
                 <Route path="/organizations" element={<OrganizationsPage />} />
                 <Route path="/insurance-plans" element={<InsurancePlansPage />} />
                 <Route path="/memberships" element={<MembershipsPage />} />

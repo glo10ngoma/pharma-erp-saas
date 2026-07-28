@@ -3935,6 +3935,290 @@ details.nav-group .nav-link {
   color: #991b1b;
 }
 
+.cash-shell {
+  display: grid;
+  gap: 18px;
+}
+
+.cash-shell-top {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.cash-selectors {
+  display: grid;
+  flex: 1;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.cash-session-indicator {
+  display: grid;
+  gap: 6px;
+  min-width: 220px;
+}
+
+.cash-subnav {
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 14px;
+}
+
+.cash-subnav-link {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  font-weight: 700;
+  padding: 9px 14px;
+  text-decoration: none;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.cash-subnav-link:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.cash-subnav-link.active {
+  background: color-mix(in srgb, var(--primary) 14%, var(--panel));
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.cash-toolbar {
+  margin-bottom: 16px;
+}
+
+.cash-dashboard-session-header,
+.cash-section-title {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.cash-dashboard-session-header h2,
+.cash-section-title h2,
+.cash-chart-card h3,
+.cash-balance-card h3,
+.cash-card-form h3 {
+  margin: 0;
+}
+
+.cash-inline-form {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.cash-session-summary-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.cash-session-fact {
+  display: grid;
+  gap: 6px;
+}
+
+.cash-session-fact span,
+.cash-metric-card span,
+.cash-alert span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.cash-balance-grid,
+.cash-chart-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.cash-kpi-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.cash-kpi-grid-secondary .cash-metric-card:nth-child(-n + 4) {
+  border-color: rgba(15, 118, 110, 0.28);
+}
+
+.cash-action-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.cash-quick-actions {
+  display: grid;
+  gap: 14px;
+}
+
+.cash-quick-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cash-balance-hero-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.cash-balance-hero-card {
+  display: grid;
+  gap: 12px;
+  min-height: 260px;
+}
+
+.cash-balance-hero-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cash-balance-hero-currency {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.cash-balance-hero-label {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.cash-balance-hero-amount {
+  color: var(--text);
+  font-size: clamp(1.9rem, 2.6vw, 2.7rem);
+  line-height: 1.05;
+}
+
+.cash-balance-hero-details {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
+
+.cash-balance-hero-details div {
+  display: grid;
+  gap: 4px;
+}
+
+.cash-balance-hero-details span {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.cash-balance-hero-details strong {
+  color: var(--text);
+  font-size: 0.96rem;
+}
+
+.cash-card-form {
+  align-content: start;
+}
+
+.cash-metric-card {
+  min-height: 110px;
+}
+
+.cash-metric-card strong,
+.cash-session-fact strong,
+.cash-alert strong {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.cash-balance-card .detail-grid {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.cash-chart-card {
+  min-height: 360px;
+}
+
+.cash-alert-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.cash-alert {
+  border-width: 1px;
+}
+
+.cash-alert-warning {
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.cash-alert-danger {
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.cash-alert-success {
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.cash-filter-grid {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 2fr repeat(5, minmax(120px, 1fr));
+  margin-bottom: 14px;
+}
+
+.cash-pagination {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  padding-top: 14px;
+}
+
+.cash-sessions-filter-grid {
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+}
+
+.cash-sessions-table .status-badge {
+  white-space: nowrap;
+}
+
+.success-badge {
+  background: #dcfce7;
+  border: 1px solid #86efac;
+  color: #166534;
+}
+
+.warning-badge {
+  background: #ffedd5;
+  border: 1px solid #fdba74;
+  color: #9a3412;
+}
+
+.danger-badge {
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+}
+
 [data-theme='dark'] .insurance-alert.warning {
   background: rgba(120, 53, 15, 0.45);
   border-color: #f59e0b;
@@ -3977,6 +4261,44 @@ details.nav-group .nav-link {
   color: #fecaca;
 }
 
+[data-theme='dark'] .cash-subnav-link {
+  background: rgba(15, 23, 42, 0.72);
+}
+
+[data-theme='dark'] .cash-subnav-link.active {
+  background: rgba(37, 99, 235, 0.18);
+}
+
+[data-theme='dark'] .cash-alert-warning {
+  background: rgba(245, 158, 11, 0.08);
+}
+
+[data-theme='dark'] .cash-alert-danger {
+  background: rgba(239, 68, 68, 0.08);
+}
+
+[data-theme='dark'] .cash-alert-success {
+  background: rgba(16, 185, 129, 0.08);
+}
+
+[data-theme='dark'] .success-badge {
+  background: rgba(22, 101, 52, 0.35);
+  border-color: #4ade80;
+  color: #dcfce7;
+}
+
+[data-theme='dark'] .warning-badge {
+  background: rgba(120, 53, 15, 0.35);
+  border-color: #f59e0b;
+  color: #fed7aa;
+}
+
+[data-theme='dark'] .danger-badge {
+  background: rgba(127, 29, 29, 0.35);
+  border-color: #ef4444;
+  color: #fecaca;
+}
+
 @media (max-width: 760px) {
   .report-print-header {
     display: grid;
@@ -3988,6 +4310,22 @@ details.nav-group .nav-link {
 
   .report-actions {
     margin-left: 0;
+  }
+
+  .cash-filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cash-balance-hero-grid,
+  .cash-sessions-filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cash-shell-top,
+  .cash-dashboard-session-header,
+  .cash-section-title,
+  .cash-pagination {
+    align-items: stretch;
   }
 }
 
