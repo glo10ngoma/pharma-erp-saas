@@ -10,13 +10,20 @@ type ArticleRow = {
   article_code: string;
   commercial_name: string;
   dci: string | null;
+  dci_id: string | null;
   category_id: string | null;
   sub_category_id: string | null;
   form_id: string | null;
   route_id: string | null;
   product_type_id: string | null;
   dosage: string | null;
+  dosage_id: string | null;
+  packaging: string | null;
+  units_per_package: string | null;
+  sales_unit_id: string | null;
+  packaging_unit_id: string | null;
   atc_code: string | null;
+  atc_id: string | null;
   barcode: string | null;
   prescription_required: boolean;
   default_stock_min: string;
@@ -48,6 +55,8 @@ export class ArticlesRepository {
         a.article_code ILIKE $${params.length}
         OR a.commercial_name ILIKE $${params.length}
         OR a.dci ILIKE $${params.length}
+        OR a.dosage ILIKE $${params.length}
+        OR a.atc_code ILIKE $${params.length}
         OR a.barcode ILIKE $${params.length}
       )`);
     }
@@ -65,13 +74,20 @@ export class ArticlesRepository {
         a.article_code,
         a.commercial_name,
         a.dci,
+        a.dci_id,
         a.category_id,
         a.sub_category_id,
         a.form_id,
         a.route_id,
         a.product_type_id,
         a.dosage,
+        a.dosage_id,
+        a.packaging,
+        a.units_per_package,
+        a.sales_unit_id,
+        a.packaging_unit_id,
         a.atc_code,
+        a.atc_id,
         a.barcode,
         a.prescription_required,
         a.default_stock_min,
@@ -107,9 +123,9 @@ export class ArticlesRepository {
     const result = await this.db.query<ArticleRow>(
       `
       SELECT
-        a.article_id, a.article_code, a.commercial_name, a.dci, a.category_id,
-        a.sub_category_id, a.form_id, a.route_id, a.product_type_id, a.dosage,
-        a.atc_code, a.barcode, a.prescription_required, a.default_stock_min,
+        a.article_id, a.article_code, a.commercial_name, a.dci, a.dci_id, a.category_id,
+        a.sub_category_id, a.form_id, a.route_id, a.product_type_id, a.dosage, a.dosage_id,
+        a.packaging, a.units_per_package, a.sales_unit_id, a.packaging_unit_id, a.atc_code, a.atc_id, a.barcode, a.prescription_required, a.default_stock_min,
         a.default_stock_max, a.is_active, 0::numeric AS stock_available,
         NULL::numeric AS selling_price
       FROM articles a
@@ -122,27 +138,35 @@ export class ArticlesRepository {
   }
 
   async create(user: AuthUser, dto: CreateArticleDto) {
-    await this.assertReferences(user, dto);
+    const refs = await this.resolveReferenceValues(user, dto);
     const result = await this.db.query<ArticleRow>(
       `
       INSERT INTO articles (
         tenant_id, article_code, commercial_name, dci, category_id, sub_category_id,
-        form_id, route_id, product_type_id, dosage, atc_code, prescription_required, barcode,
+        form_id, route_id, product_type_id, dosage, packaging, units_per_package, atc_code,
+        prescription_required, barcode, sales_unit_id, packaging_unit_id, dosage_id, dci_id, atc_id,
         default_stock_min, default_stock_max
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
       RETURNING
         article_id,
         article_code,
         commercial_name,
         dci,
+        dci_id,
         category_id,
         sub_category_id,
         form_id,
         route_id,
         product_type_id,
         dosage,
+        dosage_id,
+        packaging,
+        units_per_package,
+        sales_unit_id,
+        packaging_unit_id,
         atc_code,
+        atc_id,
         barcode,
         prescription_required,
         default_stock_min,
@@ -161,10 +185,17 @@ export class ArticlesRepository {
         dto.formId ?? null,
         dto.routeId ?? null,
         dto.productTypeId ?? null,
-        dto.dosage ?? null,
-        dto.atcCode ?? null,
+        refs.dosage,
+        refs.packaging,
+        dto.unitsPerPackage ?? null,
+        refs.atcCode,
         dto.prescriptionRequired ?? false,
         dto.barcode ?? null,
+        dto.salesUnitId ?? null,
+        dto.packagingUnitId ?? null,
+        dto.dosageId ?? null,
+        dto.dciId ?? null,
+        dto.atcId ?? null,
         dto.defaultStockMin ?? 0,
         dto.defaultStockMax ?? null,
       ],
@@ -182,15 +213,30 @@ export class ArticlesRepository {
       formId: dto.formId ?? current.formId ?? undefined,
       routeId: dto.routeId ?? current.routeId ?? undefined,
       productTypeId: dto.productTypeId ?? current.productTypeId ?? undefined,
+      salesUnitId: dto.salesUnitId ?? current.salesUnitId ?? undefined,
+      packagingUnitId: dto.packagingUnitId ?? current.packagingUnitId ?? undefined,
+      dosageId: dto.dosageId ?? current.dosageId ?? undefined,
+      dciId: dto.dciId ?? current.dciId ?? undefined,
+      atcId: dto.atcId ?? current.atcId ?? undefined,
+    });
+    const refs = await this.resolveReferenceValues(user, {
+      ...current,
+      ...dto,
+      salesUnitId: dto.salesUnitId ?? current.salesUnitId ?? undefined,
+      packagingUnitId: dto.packagingUnitId ?? current.packagingUnitId ?? undefined,
+      dosageId: dto.dosageId ?? current.dosageId ?? undefined,
+      dciId: dto.dciId ?? current.dciId ?? undefined,
+      atcId: dto.atcId ?? current.atcId ?? undefined,
     });
 
     await this.db.query(
       `
       UPDATE articles SET
         article_code=$3, commercial_name=$4, dci=$5, category_id=$6, sub_category_id=$7,
-        form_id=$8, route_id=$9, product_type_id=$10, dosage=$11, atc_code=$12,
-        prescription_required=$13, barcode=$14, default_stock_min=$15,
-        default_stock_max=$16, updated_at=CURRENT_TIMESTAMP
+        form_id=$8, route_id=$9, product_type_id=$10, dosage=$11, packaging=$12,
+        units_per_package=$13, atc_code=$14, prescription_required=$15, barcode=$16, default_stock_min=$17,
+        default_stock_max=$18, sales_unit_id=$19, packaging_unit_id=$20, dosage_id=$21, dci_id=$22, atc_id=$23,
+        updated_at=CURRENT_TIMESTAMP
       WHERE tenant_id=$1 AND article_id=$2
       `,
       [
@@ -198,18 +244,25 @@ export class ArticlesRepository {
         articleId,
         dto.articleCode ?? current.articleCode,
         dto.commercialName ?? current.commercialName,
-        dto.dci ?? current.dci,
+        refs.dci,
         dto.categoryId ?? current.categoryId,
         dto.subCategoryId ?? current.subCategoryId,
         dto.formId ?? current.formId,
         dto.routeId ?? current.routeId,
         dto.productTypeId ?? current.productTypeId,
-        dto.dosage ?? current.dosage,
-        dto.atcCode ?? current.atcCode,
+        refs.dosage,
+        refs.packaging,
+        dto.unitsPerPackage ?? current.unitsPerPackage,
+        refs.atcCode,
         dto.prescriptionRequired ?? current.prescriptionRequired,
         dto.barcode ?? current.barcode,
         dto.defaultStockMin ?? current.defaultStockMin,
         dto.defaultStockMax ?? current.defaultStockMax,
+        dto.salesUnitId ?? current.salesUnitId,
+        dto.packagingUnitId ?? current.packagingUnitId,
+        dto.dosageId ?? current.dosageId,
+        dto.dciId ?? current.dciId,
+        dto.atcId ?? current.atcId,
       ],
     );
     return this.findOne(user, articleId);
@@ -225,13 +278,18 @@ export class ArticlesRepository {
 
   private async assertReferences(
     user: AuthUser,
-    refs: Pick<CreateArticleDto, 'categoryId' | 'subCategoryId' | 'formId' | 'routeId' | 'productTypeId'>,
+    refs: Pick<CreateArticleDto, 'categoryId' | 'subCategoryId' | 'formId' | 'routeId' | 'productTypeId' | 'salesUnitId' | 'packagingUnitId' | 'dosageId' | 'dciId' | 'atcId'>,
   ) {
     const checks: Array<[string, string, string, string]> = [];
     if (refs.categoryId) checks.push(['categories', 'category_id', refs.categoryId, 'CATEGORY_NOT_IN_TENANT']);
     if (refs.formId) checks.push(['galenic_forms', 'form_id', refs.formId, 'FORM_NOT_IN_TENANT']);
     if (refs.routeId) checks.push(['administration_routes', 'route_id', refs.routeId, 'ROUTE_NOT_IN_TENANT']);
     if (refs.productTypeId) checks.push(['product_types', 'product_type_id', refs.productTypeId, 'PRODUCT_TYPE_NOT_IN_TENANT']);
+    if (refs.salesUnitId) checks.push(['product_units', 'product_unit_id', refs.salesUnitId, 'SALES_UNIT_NOT_IN_TENANT']);
+    if (refs.packagingUnitId) checks.push(['product_units', 'product_unit_id', refs.packagingUnitId, 'PACKAGING_UNIT_NOT_IN_TENANT']);
+    if (refs.dosageId) checks.push(['dosages', 'dosage_id', refs.dosageId, 'DOSAGE_NOT_IN_TENANT']);
+    if (refs.dciId) checks.push(['active_ingredients', 'active_ingredient_id', refs.dciId, 'DCI_NOT_IN_TENANT']);
+    if (refs.atcId) checks.push(['atc_codes', 'atc_id', refs.atcId, 'ATC_NOT_IN_TENANT']);
 
     for (const [table, column, id, error] of checks) {
       const result = await this.db.query<{ total: string }>(
@@ -253,19 +311,80 @@ export class ArticlesRepository {
     }
   }
 
+  private async resolveReferenceValues(
+    user: AuthUser,
+    dto: {
+      dci?: string | null;
+      dosage?: string | null;
+      atcCode?: string | null;
+      packaging?: string | null;
+      salesUnitId?: string;
+      dciId?: string;
+      dosageId?: string;
+      atcId?: string;
+      packagingUnitId?: string;
+    },
+  ) {
+    let dci = dto.dci ?? null;
+    let dosage = dto.dosage ?? null;
+    let atcCode = dto.atcCode ?? null;
+    let packaging = dto.packaging ?? null;
+
+    if (dto.dciId) {
+      const result = await this.db.query<{ canonical_name: string }>(
+        `SELECT canonical_name FROM active_ingredients WHERE tenant_id=$1 AND active_ingredient_id=$2 LIMIT 1`,
+        [user.tenantId, dto.dciId],
+      );
+      dci = result.rows[0]?.canonical_name ?? dci;
+    }
+
+    if (dto.dosageId) {
+      const result = await this.db.query<{ dosage_label: string }>(
+        `SELECT dosage_label FROM dosages WHERE tenant_id=$1 AND dosage_id=$2 LIMIT 1`,
+        [user.tenantId, dto.dosageId],
+      );
+      dosage = result.rows[0]?.dosage_label ?? dosage;
+    }
+
+    if (dto.atcId) {
+      const result = await this.db.query<{ atc_code: string }>(
+        `SELECT atc_code FROM atc_codes WHERE tenant_id=$1 AND atc_id=$2 LIMIT 1`,
+        [user.tenantId, dto.atcId],
+      );
+      atcCode = result.rows[0]?.atc_code ?? atcCode;
+    }
+
+    if (dto.packagingUnitId) {
+      const result = await this.db.query<{ unit_label: string }>(
+        `SELECT unit_label FROM product_units WHERE tenant_id=$1 AND product_unit_id=$2 LIMIT 1`,
+        [user.tenantId, dto.packagingUnitId],
+      );
+      packaging = result.rows[0]?.unit_label ?? packaging;
+    }
+
+    return { dci, dosage, atcCode, packaging };
+  }
+
   private toArticle(row: ArticleRow) {
     return {
       articleId: row.article_id,
       articleCode: row.article_code,
       commercialName: row.commercial_name,
       dci: row.dci,
+      dciId: row.dci_id,
       categoryId: row.category_id,
       subCategoryId: row.sub_category_id,
       formId: row.form_id,
       routeId: row.route_id,
       productTypeId: row.product_type_id,
       dosage: row.dosage,
+      dosageId: row.dosage_id,
+      packaging: row.packaging,
+      unitsPerPackage: row.units_per_package === null ? null : Number(row.units_per_package),
+      salesUnitId: row.sales_unit_id,
+      packagingUnitId: row.packaging_unit_id,
       atcCode: row.atc_code,
+      atcId: row.atc_id,
       barcode: row.barcode,
       prescriptionRequired: row.prescription_required,
       defaultStockMin: Number(row.default_stock_min),

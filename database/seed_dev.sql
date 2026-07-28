@@ -111,6 +111,14 @@ VALUES
   ('product_types.create', 'Creer type produit', 'ProductTypes', 'Creer un type produit', TRUE),
   ('product_types.update', 'Modifier type produit', 'ProductTypes', 'Modifier un type produit', TRUE),
   ('product_types.delete', 'Supprimer type produit', 'ProductTypes', 'Supprimer un type produit', TRUE),
+  ('product_units.read', 'Consulter unites produit', 'ArticleReferences', 'Voir les unites produit', TRUE),
+  ('product_units.create', 'Creer unite produit', 'ArticleReferences', 'Creer une unite produit', TRUE),
+  ('dosages.read', 'Consulter dosages', 'ArticleReferences', 'Voir les dosages', TRUE),
+  ('dosages.create', 'Creer dosage', 'ArticleReferences', 'Creer un dosage', TRUE),
+  ('active_ingredients.read', 'Consulter DCI', 'ArticleReferences', 'Voir les DCI', TRUE),
+  ('active_ingredients.create', 'Creer DCI', 'ArticleReferences', 'Creer une DCI', TRUE),
+  ('atc_codes.read', 'Consulter codes ATC', 'ArticleReferences', 'Voir les codes ATC', TRUE),
+  ('atc_codes.create', 'Creer code ATC', 'ArticleReferences', 'Creer un code ATC', TRUE),
   ('suppliers.read', 'Consulter fournisseurs', 'Suppliers', 'Voir les fournisseurs', TRUE),
   ('suppliers.create', 'Creer fournisseur', 'Suppliers', 'Creer un fournisseur', TRUE),
   ('suppliers.update', 'Modifier fournisseur', 'Suppliers', 'Modifier un fournisseur', TRUE),
@@ -260,6 +268,14 @@ JOIN permissions p ON p.permission_code IN (
   'product_types.create',
   'product_types.update',
   'product_types.delete',
+  'product_units.read',
+  'product_units.create',
+  'dosages.read',
+  'dosages.create',
+  'active_ingredients.read',
+  'active_ingredients.create',
+  'atc_codes.read',
+  'atc_codes.create',
   'suppliers.read',
   'suppliers.create',
   'suppliers.update',
@@ -379,6 +395,102 @@ FROM tenants t
 WHERE t.tenant_code = 'DEMO'
 ON CONFLICT (tenant_id, setting_key) DO UPDATE
 SET setting_value = EXCLUDED.setting_value,
+    updated_at = CURRENT_TIMESTAMP;
+
+WITH target_tenant AS (
+  SELECT tenant_id FROM tenants WHERE tenant_code = 'DEMO'
+),
+unit_data(unit_code, unit_label, normalized_label) AS (
+  VALUES
+    ('UNIT', 'Unite', 'unite'),
+    ('COMP', 'Comprime', 'comprime'),
+    ('GEL', 'Gelule', 'gelule'),
+    ('PLAQ', 'Plaquette', 'plaquette'),
+    ('BOX', 'Boite', 'boite'),
+    ('FLAC', 'Flacon', 'flacon'),
+    ('AMPO', 'Ampoule', 'ampoule'),
+    ('SACH', 'Sachet', 'sachet'),
+    ('TUBE', 'Tube', 'tube'),
+    ('BOTL', 'Bouteille', 'bouteille'),
+    ('POT', 'Pot', 'pot'),
+    ('CART', 'Carton', 'carton'),
+    ('PACK', 'Paquet', 'paquet'),
+    ('SUPP', 'Suppositoire', 'suppositoire'),
+    ('DOSE', 'Dose', 'dose'),
+    ('KIT', 'Kit', 'kit')
+)
+INSERT INTO product_units (tenant_id, unit_code, unit_label, normalized_label, is_active)
+SELECT t.tenant_id, d.unit_code, d.unit_label, d.normalized_label, TRUE
+FROM target_tenant t
+CROSS JOIN unit_data d
+ON CONFLICT (tenant_id, normalized_label) DO UPDATE
+SET unit_code = EXCLUDED.unit_code,
+    unit_label = EXCLUDED.unit_label,
+    is_active = TRUE,
+    updated_at = CURRENT_TIMESTAMP;
+
+WITH target_tenant AS (
+  SELECT tenant_id FROM tenants WHERE tenant_code = 'DEMO'
+),
+dosage_data(dosage_label, normalized_label) AS (
+  VALUES
+    ('5 mg', '5mg'),
+    ('10 mg', '10mg'),
+    ('100 mg', '100mg'),
+    ('250 mg', '250mg'),
+    ('500 mg', '500mg'),
+    ('1 g', '1g'),
+    ('5 mg/ml', '5mg/ml'),
+    ('100 mg/5 ml', '100mg/5ml'),
+    ('0,5 %', '0,5%'),
+    ('10 UI/ml', '10ui/ml'),
+    ('500 mg + 65 mg', '500mg+65mg')
+)
+INSERT INTO dosages (tenant_id, dosage_label, normalized_label, is_active)
+SELECT t.tenant_id, d.dosage_label, d.normalized_label, TRUE
+FROM target_tenant t
+CROSS JOIN dosage_data d
+ON CONFLICT (tenant_id, normalized_label) DO UPDATE
+SET dosage_label = EXCLUDED.dosage_label,
+    is_active = TRUE,
+    updated_at = CURRENT_TIMESTAMP;
+
+WITH target_tenant AS (
+  SELECT tenant_id FROM tenants WHERE tenant_code = 'DEMO'
+),
+ingredient_data(canonical_name, normalized_name) AS (
+  VALUES
+    ('Paracetamol', 'paracetamol'),
+    ('Amoxicilline', 'amoxicilline'),
+    ('Ibuprofene', 'ibuprofene'),
+    ('Artemether + Lumefantrine', 'artemether+lumefantrine')
+)
+INSERT INTO active_ingredients (tenant_id, canonical_name, normalized_name, is_active)
+SELECT t.tenant_id, d.canonical_name, d.normalized_name, TRUE
+FROM target_tenant t
+CROSS JOIN ingredient_data d
+ON CONFLICT (tenant_id, normalized_name) DO UPDATE
+SET canonical_name = EXCLUDED.canonical_name,
+    is_active = TRUE,
+    updated_at = CURRENT_TIMESTAMP;
+
+WITH target_tenant AS (
+  SELECT tenant_id FROM tenants WHERE tenant_code = 'DEMO'
+),
+atc_data(atc_code, atc_label) AS (
+  VALUES
+    ('N02BE01', 'Paracetamol'),
+    ('J01CA04', 'Amoxicilline'),
+    ('M01AE01', 'Ibuprofene'),
+    ('P01BF01', 'Artemether + Lumefantrine')
+)
+INSERT INTO atc_codes (tenant_id, atc_code, atc_label, is_active)
+SELECT t.tenant_id, d.atc_code, d.atc_label, TRUE
+FROM target_tenant t
+CROSS JOIN atc_data d
+ON CONFLICT (tenant_id, atc_code) DO UPDATE
+SET atc_label = EXCLUDED.atc_label,
+    is_active = TRUE,
     updated_at = CURRENT_TIMESTAMP;
 
 INSERT INTO payment_methods(method_code, method_name, is_active)

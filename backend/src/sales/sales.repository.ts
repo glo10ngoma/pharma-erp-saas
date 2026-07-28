@@ -5,6 +5,7 @@ import { DatabaseService } from '../database/database.service';
 import { AddSaleItemFefoDto } from './dto/add-sale-item-fefo.dto';
 import { ApplyInsuranceDto } from './dto/apply-insurance.dto';
 import { CreateSaleDto } from './dto/create-sale.dto';
+import { ListSalesDto } from './dto/list-sales.dto';
 import { UpdateSaleDraftDto } from './dto/update-sale-draft.dto';
 import { ValidateSaleDto } from './dto/validate-sale.dto';
 
@@ -24,6 +25,11 @@ type SettlementSnapshot = {
   settlementDifferenceType: string;
   settlementDifferenceReason: string | null;
   settlementDifferenceNote: string | null;
+};
+type SaleListRow = SaleRow & {
+  created_by_name: string | null;
+  payment_modes: string | null;
+  total_count: string;
 };
 
 @Injectable()
@@ -58,6 +64,171 @@ export class SalesRepository {
       [user.tenantId, user.siteId ?? null],
     );
     return r.rows.map(this.toSale);
+  }
+
+  async findList(user: AuthUser, query: ListSalesDto) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 25;
+    const offset = (page - 1) * limit;
+    const built = this.buildListFilterSql(user, query);
+    const sortColumn = this.resolveListSort(query.sortBy);
+    const sortOrder = query.sortOrder === 'asc' ? 'ASC' : 'DESC';
+    const params = [...built.params, limit, offset];
+    const rows = await this.db.query<SaleListRow>(
+      `
+      WITH filtered_sales AS (
+        SELECT
+          s.sale_id, s.tenant_id, s.sale_number, s.sale_date, s.customer_id, c.customer_name,
+          s.organization_id, o.organization_name, s.membership_id, ip.plan_name, ip.coverage_percent,
+          s.site_id, st.site_name, s.currency_id, cur.currency_code,
+          CASE WHEN cur.currency_code='CDF' THEN 'FC' WHEN cur.currency_code='USD' THEN '$' ELSE cur.currency_code END AS currency_symbol,
+          s.exchange_rate, s.subtotal, s.discount_amount,
+          s.insurance_covered_amount, s.customer_payable_amount, s.credit_amount, s.total_amount,
+          s.amount_paid_usd, s.amount_paid_cdf, s.amount_returned_usd, s.amount_returned_cdf,
+          s.net_received_usd, s.net_received_cdf, s.settlement_difference_usd,
+          s.settlement_difference_type, s.settlement_difference_reason, s.settlement_difference_note,
+          s.sale_type, s.status, s.created_by, s.created_at, s.validated_at,
+          u.full_name AS created_by_name
+        FROM sales s
+        JOIN sites st ON st.site_id=s.site_id AND st.tenant_id=s.tenant_id
+        LEFT JOIN currencies cur ON cur.currency_id=s.currency_id
+        LEFT JOIN customers c ON c.customer_id=s.customer_id AND c.tenant_id=s.tenant_id
+        LEFT JOIN organizations o ON o.organization_id=s.organization_id AND o.tenant_id=s.tenant_id
+        LEFT JOIN customer_memberships cm ON cm.membership_id=s.membership_id AND cm.tenant_id=s.tenant_id
+        LEFT JOIN insurance_plans ip ON ip.plan_id=cm.plan_id
+        LEFT JOIN users u ON u.user_id=s.created_by AND u.tenant_id=s.tenant_id
+        WHERE ${built.where}
+      )
+      SELECT
+        filtered_sales.*,
+        payment_modes.methods AS payment_modes,
+        COUNT(*) OVER()::int AS total_count
+      FROM filtered_sales
+      LEFT JOIN LATERAL (
+        SELECT string_agg(DISTINCT COALESCE(pm.method_name, pm.method_code), ', ' ORDER BY COALESCE(pm.method_name, pm.method_code)) AS methods
+        FROM payments p
+        JOIN payment_methods pm ON pm.payment_method_id = p.payment_method_id
+        WHERE p.tenant_id = filtered_sales.tenant_id
+          AND p.sale_id = filtered_sales.sale_id
+      ) AS payment_modes ON true
+      ORDER BY ${sortColumn} ${sortOrder}, filtered_sales.created_at DESC
+      LIMIT $${params.length - 1}
+      OFFSET $${params.length}
+      `,
+      params,
+    );
+
+    return {
+      items: rows.rows.map((row) => ({
+        ...this.toSale(row),
+        createdByName: row.created_by_name,
+        paymentModes: row.payment_modes ?? '-',
+      })),
+      page,
+      limit,
+      total: Number(rows.rows[0]?.total_count ?? 0),
+      totalPages: Math.max(1, Math.ceil(Number(rows.rows[0]?.total_count ?? 0) / limit)),
+    };
+  }
+
+  async findSummary(user: AuthUser, query: ListSalesDto) {
+    const built = this.buildListFilterSql(user, query);
+    const summary = await this.db.query<{
+      revenue_net: string;
+      sale_count: string;
+      average_basket: string;
+      received_usd: string;
+      received_cdf: string;
+      change_usd: string;
+      change_cdf: string;
+      settlement_difference_usd: string;
+      settlement_difference_count: string;
+      cancelled_count: string;
+    }>(
+      `
+      WITH filtered_sales AS (
+        SELECT
+          s.sale_id,
+          s.tenant_id,
+          s.status,
+          s.total_amount,
+          s.net_received_usd,
+          s.net_received_cdf,
+          s.amount_returned_usd,
+          s.amount_returned_cdf,
+          s.settlement_difference_usd
+        FROM sales s
+        JOIN sites st ON st.site_id=s.site_id AND st.tenant_id=s.tenant_id
+        LEFT JOIN customers c ON c.customer_id=s.customer_id AND c.tenant_id=s.tenant_id
+        LEFT JOIN organizations o ON o.organization_id=s.organization_id AND o.tenant_id=s.tenant_id
+        LEFT JOIN customer_memberships cm ON cm.membership_id=s.membership_id AND cm.tenant_id=s.tenant_id
+        LEFT JOIN insurance_plans ip ON ip.plan_id=cm.plan_id
+        LEFT JOIN users u ON u.user_id=s.created_by AND u.tenant_id=s.tenant_id
+        WHERE ${built.where}
+      ),
+      items_summary AS (
+        SELECT COALESCE(SUM(si.quantity), 0)::numeric AS items_sold
+        FROM filtered_sales fs
+        JOIN sale_items si ON si.sale_id = fs.sale_id AND si.tenant_id = fs.tenant_id
+        WHERE fs.status = 'VALIDATED'
+      )
+      SELECT
+        COALESCE(SUM(CASE WHEN status='VALIDATED' THEN total_amount ELSE 0 END), 0)::numeric AS revenue_net,
+        COUNT(*) FILTER (WHERE status='VALIDATED')::int AS sale_count,
+        CASE
+          WHEN COUNT(*) FILTER (WHERE status='VALIDATED') = 0 THEN 0
+          ELSE ROUND(
+            COALESCE(SUM(CASE WHEN status='VALIDATED' THEN total_amount ELSE 0 END), 0)
+            / COUNT(*) FILTER (WHERE status='VALIDATED'),
+            2
+          )
+        END::numeric AS average_basket,
+        COALESCE(SUM(CASE WHEN status='VALIDATED' THEN net_received_usd ELSE 0 END), 0)::numeric AS received_usd,
+        COALESCE(SUM(CASE WHEN status='VALIDATED' THEN net_received_cdf ELSE 0 END), 0)::numeric AS received_cdf,
+        COALESCE(SUM(CASE WHEN status='VALIDATED' THEN amount_returned_usd ELSE 0 END), 0)::numeric AS change_usd,
+        COALESCE(SUM(CASE WHEN status='VALIDATED' THEN amount_returned_cdf ELSE 0 END), 0)::numeric AS change_cdf,
+        COALESCE(SUM(CASE WHEN status='VALIDATED' THEN settlement_difference_usd ELSE 0 END), 0)::numeric AS settlement_difference_usd,
+        COUNT(*) FILTER (WHERE status='VALIDATED' AND COALESCE(settlement_difference_usd, 0) <> 0)::int AS settlement_difference_count,
+        COUNT(*) FILTER (WHERE status='CANCELLED')::int AS cancelled_count
+      FROM filtered_sales
+      `,
+      built.params,
+    );
+    const itemsSummary = await this.db.query<{ items_sold: string }>(
+      `
+      WITH filtered_sales AS (
+        SELECT s.sale_id, s.tenant_id, s.status
+        FROM sales s
+        JOIN sites st ON st.site_id=s.site_id AND st.tenant_id=s.tenant_id
+        LEFT JOIN customers c ON c.customer_id=s.customer_id AND c.tenant_id=s.tenant_id
+        LEFT JOIN organizations o ON o.organization_id=s.organization_id AND o.tenant_id=s.tenant_id
+        LEFT JOIN customer_memberships cm ON cm.membership_id=s.membership_id AND cm.tenant_id=s.tenant_id
+        LEFT JOIN insurance_plans ip ON ip.plan_id=cm.plan_id
+        LEFT JOIN users u ON u.user_id=s.created_by AND u.tenant_id=s.tenant_id
+        WHERE ${built.where}
+      )
+      SELECT COALESCE(SUM(si.quantity), 0)::numeric AS items_sold
+      FROM filtered_sales fs
+      JOIN sale_items si ON si.sale_id = fs.sale_id AND si.tenant_id = fs.tenant_id
+      WHERE fs.status = 'VALIDATED'
+      `,
+      built.params,
+    );
+
+    const row = summary.rows[0];
+    return {
+      revenueNet: Number(row?.revenue_net ?? 0),
+      saleCount: Number(row?.sale_count ?? 0),
+      averageBasket: Number(row?.average_basket ?? 0),
+      itemsSold: Number(itemsSummary.rows[0]?.items_sold ?? 0),
+      receivedUsd: Number(row?.received_usd ?? 0),
+      receivedCdf: Number(row?.received_cdf ?? 0),
+      changeUsd: Number(row?.change_usd ?? 0),
+      changeCdf: Number(row?.change_cdf ?? 0),
+      settlementDifferenceUsd: Number(row?.settlement_difference_usd ?? 0),
+      settlementDifferenceCount: Number(row?.settlement_difference_count ?? 0),
+      cancelledCount: Number(row?.cancelled_count ?? 0),
+    };
   }
 
   async findOne(user: AuthUser, id: string) {
@@ -595,6 +766,80 @@ export class SalesRepository {
       [user.tenantId, customerId],
     );
     if (Number(r.rows[0]?.total ?? 0) !== 1) throw new Error('CUSTOMER_NOT_IN_TENANT');
+  }
+
+  private buildListFilterSql(user: AuthUser, query: ListSalesDto) {
+    const filters = ['s.tenant_id = $1', '($2::uuid IS NULL OR s.site_id = $2::uuid)'];
+    const params: unknown[] = [user.tenantId, user.siteId ?? null];
+
+    if (query.siteId) {
+      params.push(query.siteId);
+      filters.push(`s.site_id = $${params.length}::uuid`);
+    }
+
+    if (query.status) {
+      params.push(query.status);
+      filters.push(`s.status = $${params.length}`);
+    }
+
+    if (query.saleType) {
+      params.push(query.saleType);
+      filters.push(`s.sale_type = $${params.length}`);
+    }
+
+    if (query.dateFrom) {
+      params.push(query.dateFrom);
+      filters.push(`s.sale_date >= $${params.length}::date`);
+    }
+
+    if (query.dateTo) {
+      params.push(query.dateTo);
+      filters.push(`s.sale_date < ($${params.length}::date + INTERVAL '1 day')`);
+    }
+
+    if (query.saleNumber?.trim()) {
+      params.push(`%${query.saleNumber.trim()}%`);
+      filters.push(`s.sale_number ILIKE $${params.length}`);
+    }
+
+    if (query.customer?.trim()) {
+      params.push(`%${query.customer.trim()}%`);
+      filters.push(`(
+        c.customer_name ILIKE $${params.length}
+        OR o.organization_name ILIKE $${params.length}
+      )`);
+    }
+
+    if (query.seller?.trim()) {
+      params.push(`%${query.seller.trim()}%`);
+      filters.push(`u.full_name ILIKE $${params.length}`);
+    }
+
+    if (query.paymentMode?.trim()) {
+      params.push(query.paymentMode.trim());
+      params.push(`%${query.paymentMode.trim()}%`);
+      const codeParam = params.length - 1;
+      const nameParam = params.length;
+      filters.push(`EXISTS (
+        SELECT 1
+        FROM payments p
+        JOIN payment_methods pm ON pm.payment_method_id = p.payment_method_id
+        WHERE p.tenant_id = s.tenant_id
+          AND p.sale_id = s.sale_id
+          AND (
+            pm.method_code = $${codeParam}
+            OR pm.method_name ILIKE $${nameParam}
+          )
+      )`);
+    }
+
+    return { where: filters.join(' AND '), params };
+  }
+
+  private resolveListSort(sortBy?: string) {
+    if (sortBy === 'totalAmount') return 'filtered_sales.total_amount';
+    if (sortBy === 'createdAt') return 'filtered_sales.created_at';
+    return 'filtered_sales.sale_date';
   }
 
   private toSale(row: SaleRow) { return { saleId: row.sale_id, tenantId: row.tenant_id, saleNumber: row.sale_number, saleDate: row.sale_date, customerId: row.customer_id, customerName: row.customer_name, organizationId: row.organization_id ?? null, organizationName: row.organization_name ?? null, membershipId: row.membership_id ?? null, planName: row.plan_name ?? null, coveragePercent: row.coverage_percent === null || row.coverage_percent === undefined ? null : Number(row.coverage_percent), siteId: row.site_id, siteName: row.site_name, currencyId: row.currency_id, currencyCode: row.currency_code, currencySymbol: row.currency_symbol, exchangeRate: Number(row.exchange_rate), subtotal: Number(row.subtotal), discountAmount: Number(row.discount_amount ?? 0), insuranceCoveredAmount: Number(row.insurance_covered_amount ?? 0), customerPayableAmount: Number(row.customer_payable_amount ?? row.total_amount), creditAmount: Number(row.credit_amount ?? 0), totalAmount: Number(row.total_amount), amountPaidUsd: Number(row.amount_paid_usd ?? 0), amountPaidCdf: Number(row.amount_paid_cdf ?? 0), amountReturnedUsd: Number(row.amount_returned_usd ?? 0), amountReturnedCdf: Number(row.amount_returned_cdf ?? 0), netReceivedUsd: Number(row.net_received_usd ?? 0), netReceivedCdf: Number(row.net_received_cdf ?? 0), settlementDifferenceUsd: Number(row.settlement_difference_usd ?? 0), settlementDifferenceType: row.settlement_difference_type ?? 'NONE', settlementDifferenceReason: row.settlement_difference_reason ?? null, settlementDifferenceNote: row.settlement_difference_note ?? null, saleType: row.sale_type, status: row.status, createdBy: row.created_by, createdAt: row.created_at, validatedAt: row.validated_at }; }

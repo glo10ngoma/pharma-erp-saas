@@ -1,11 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Modal } from '../../components/Modal';
 import { SearchBox } from '../../components/SearchBox';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { filterRows } from '../../lib/search';
 import { Article, articlesService } from '../../services/articles.service';
 import { Lot, lotsService } from '../../services/lots.service';
-import { Stock, StockMovement, stocksService } from '../../services/stocks.service';
+import { sitesService } from '../../services/sites.service';
+import { Stock, StockDetail, StockMovement, StockSummary, stocksService } from '../../services/stocks.service';
 import { formatDate, fileDateStamp } from '../../utils/date';
 import { downloadCsv, downloadJson, downloadXlsx } from '../../utils/export';
 import { formatMoney } from '../../utils/money';
@@ -42,6 +44,8 @@ type StockLotDetail = {
   sellingPrice: number;
 };
 
+const PAGE_LIMIT = 25;
+
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
 export function StocksPage() {
@@ -49,51 +53,120 @@ export function StocksPage() {
   const [statusFilter, setStatusFilter] = useState<StockStatus>('ALL');
   const [siteFilter, setSiteFilter] = useState('');
   const [stockDate, setStockDate] = useState(todayIso());
+  const [page, setPage] = useState(1);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const debouncedSearch = useDebouncedValue(search, 300);
   const isSnapshot = Boolean(stockDate && stockDate !== todayIso());
 
-  const stocks = useQuery({ queryKey: ['stocks'], queryFn: async () => (await stocksService.getAll()).data });
-  const movements = useQuery({ queryKey: ['stock-movements'], queryFn: async () => (await stocksService.getMovements()).data, enabled: isSnapshot || Boolean(selectedKey) });
-  const lots = useQuery({ queryKey: ['lots'], queryFn: async () => (await lotsService.getAll()).data });
-  const articles = useQuery({ queryKey: ['articles', 'stock-page'], queryFn: async () => (await articlesService.getAll({ limit: 1000 })).data.items });
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, statusFilter, siteFilter, stockDate]);
 
-  const lotsById = useMemo(() => new Map((lots.data ?? []).map((lot) => [lot.lotId, lot])), [lots.data]);
-  const articlesById = useMemo(() => new Map((articles.data ?? []).map((article) => [article.articleId, article])), [articles.data]);
-  const rows = useMemo(() => {
-    if (isSnapshot) return buildSnapshotRows(stockDate, movements.data ?? [], lotsById, articlesById);
-    return buildCurrentRows(stocks.data ?? [], lotsById, articlesById, movements.data ?? []);
-  }, [articlesById, isSnapshot, lotsById, movements.data, stockDate, stocks.data]);
+  const siteOptions = useQuery({
+    queryKey: ['sites', 'stocks-filter'],
+    queryFn: async () => (await sitesService.getAll()).data,
+    staleTime: 5 * 60 * 1000,
+  });
 
-  const sites = useMemo(() => unique(rows.map((row) => row.siteName).filter(Boolean)), [rows]);
-  const filteredRows = useMemo(() => {
-    const searched = filterRows(rows, search, (row) => [
+  const summary = useQuery({
+    queryKey: ['stocks-summary', { page, search: debouncedSearch, statusFilter, siteFilter }],
+    queryFn: async () => (await stocksService.getSummary({
+      page,
+      limit: PAGE_LIMIT,
+      search: debouncedSearch || undefined,
+      status: statusFilter,
+      siteId: siteFilter || undefined,
+    })).data,
+    enabled: !isSnapshot,
+    placeholderData: (previous) => previous,
+  });
+
+  const snapshotMovements = useQuery({
+    queryKey: ['stock-movements', 'snapshot'],
+    queryFn: async () => (await stocksService.getMovements()).data,
+    enabled: isSnapshot,
+  });
+  const snapshotLots = useQuery({
+    queryKey: ['lots', 'stocks-snapshot'],
+    queryFn: async () => (await lotsService.getAll()).data,
+    enabled: isSnapshot,
+  });
+  const snapshotArticles = useQuery({
+    queryKey: ['articles', 'stocks-snapshot'],
+    queryFn: async () => (await articlesService.getAll({ limit: 1000 })).data.items,
+    enabled: isSnapshot,
+  });
+
+  const currentRows = useMemo(() => (summary.data?.items ?? []).map(toCurrentStockRow), [summary.data?.items]);
+  const snapshotRows = useMemo(() => {
+    const lotsById = new Map((snapshotLots.data ?? []).map((lot) => [lot.lotId, lot]));
+    const articlesById = new Map((snapshotArticles.data ?? []).map((article) => [article.articleId, article]));
+    return buildSnapshotRows(stockDate, snapshotMovements.data ?? [], lotsById, articlesById);
+  }, [snapshotArticles.data, snapshotLots.data, snapshotMovements.data, stockDate]);
+  const rows = isSnapshot ? snapshotRows : currentRows;
+
+  const filteredSnapshotRows = useMemo(() => {
+    if (!isSnapshot) return rows;
+    const searched = filterRows(rows, debouncedSearch, (row) => [
       row.articleCode,
       row.articleName,
       row.dci,
       row.siteName,
       row.statusLabel,
     ]);
-    return searched.filter((row) => matchesStatus(row, statusFilter) && (!siteFilter || row.siteName === siteFilter));
-  }, [rows, search, statusFilter, siteFilter]);
-  const selected = filteredRows.find((row) => row.key === selectedKey) ?? rows.find((row) => row.key === selectedKey) ?? null;
+    return searched.filter((row) => matchesStatus(row, statusFilter) && (!siteFilter || row.siteId === siteFilter));
+  }, [debouncedSearch, isSnapshot, rows, siteFilter, statusFilter]);
+
+  const visibleRows = isSnapshot ? filteredSnapshotRows : rows;
+  const selectedSummaryRow = !isSnapshot ? currentRows.find((row) => row.key === selectedKey) ?? null : null;
+  const selectedSnapshotRow = isSnapshot ? filteredSnapshotRows.find((row) => row.key === selectedKey) ?? snapshotRows.find((row) => row.key === selectedKey) ?? null : null;
+  const currentDetail = useQuery({
+    queryKey: ['stocks-detail', selectedSummaryRow?.articleId, selectedSummaryRow?.siteId],
+    enabled: Boolean(selectedSummaryRow),
+    queryFn: async () => (await stocksService.getDetail({
+      articleId: selectedSummaryRow!.articleId,
+      siteId: selectedSummaryRow!.siteId,
+    })).data,
+  });
+
   const kpis = useMemo(() => ({
-    articlesInStock: filteredRows.filter((row) => row.quantityAvailable > 0).length,
-    outOfStock: filteredRows.filter((row) => row.quantityAvailable <= 0).length,
-    lowStock: filteredRows.filter((row) => row.quantityAvailable > 0 && row.quantityAvailable <= row.stockMin).length,
-    purchaseValue: filteredRows.reduce((sum, row) => sum + row.purchaseValue, 0),
-    saleValue: filteredRows.reduce((sum, row) => sum + row.saleValue, 0),
-  }), [filteredRows]);
+    articlesInStock: visibleRows.filter((row) => row.quantityAvailable > 0).length,
+    outOfStock: visibleRows.filter((row) => row.quantityAvailable <= 0).length,
+    lowStock: visibleRows.filter((row) => row.quantityAvailable > 0 && row.quantityAvailable <= row.stockMin).length,
+    purchaseValue: visibleRows.reduce((sum, row) => sum + row.purchaseValue, 0),
+    saleValue: visibleRows.reduce((sum, row) => sum + row.saleValue, 0),
+  }), [visibleRows]);
+
+  const loading = isSnapshot
+    ? snapshotMovements.isLoading || snapshotLots.isLoading || snapshotArticles.isLoading
+    : summary.isLoading;
+  const error = isSnapshot
+    ? snapshotMovements.error ?? snapshotLots.error ?? snapshotArticles.error
+    : summary.error;
+  const isRefreshing = isSnapshot
+    ? snapshotMovements.isFetching || snapshotLots.isFetching || snapshotArticles.isFetching
+    : summary.isFetching;
+
+  const selectedRowForModal = selectedSnapshotRow ?? selectedSummaryRow;
+
+  function retry() {
+    if (isSnapshot) {
+      snapshotMovements.refetch();
+      snapshotLots.refetch();
+      snapshotArticles.refetch();
+      return;
+    }
+    summary.refetch();
+  }
 
   function exportRows(format: 'xlsx' | 'csv' | 'json') {
     const stamp = fileDateStamp();
     const label = isSnapshot ? stockDate : todayIso();
-    const data = stockExportRows(filteredRows, label);
+    const data = stockExportRows(visibleRows, label);
     if (format === 'xlsx') downloadXlsx(`stocks_${stamp}.xlsx`, [{ name: 'Stocks', rows: data }]);
     if (format === 'csv') downloadCsv(`stocks_${stamp}.csv`, data);
-    if (format === 'json') downloadJson(`stocks_${stamp}.json`, filteredRows.map((row) => stockExportObject(row, label)));
+    if (format === 'json') downloadJson(`stocks_${stamp}.json`, visibleRows.map((row) => stockExportObject(row, label)));
   }
-
-  const loading = stocks.isLoading || lots.isLoading || articles.isLoading || (isSnapshot && movements.isLoading);
 
   return (
     <>
@@ -106,7 +179,11 @@ export function StocksPage() {
 
       <div className="stock-snapshot-banner card compact-card">
         <strong>{isSnapshot ? `Stock theorique au ${formatDate(stockDate)}` : 'Stock actuel'}</strong>
-        {isSnapshot && <span>Stock reconstruit a partir des mouvements disponibles. Attention: l'API mouvements retourne actuellement les 200 derniers mouvements.</span>}
+        {isSnapshot ? (
+          <span>Le stock historique est reconstruit uniquement a la demande, a partir des mouvements disponibles.</span>
+        ) : (
+          <span>{summary.data ? `${summary.data.total} lignes source cote serveur, page ${summary.data.page}/${summary.data.totalPages}.` : 'Resume charge depuis une vue paginee cote serveur.'}</span>
+        )}
       </div>
 
       <div className="stats-grid stock-kpis">
@@ -128,28 +205,44 @@ export function StocksPage() {
         </select>
         <select className="input" value={siteFilter} onChange={(event) => setSiteFilter(event.target.value)}>
           <option value="">Tous les sites</option>
-          {sites.map((site) => <option key={site} value={site}>{site}</option>)}
+          {(siteOptions.data ?? []).map((site) => <option key={site.siteId} value={site.siteId}>{site.siteName}</option>)}
         </select>
         <input className="input stock-date-input" type="date" value={stockDate} max={todayIso()} onChange={(event) => setStockDate(event.target.value)} />
         <div className="export-actions stock-export-actions">
           <details className="export-menu">
             <summary className="ghost-button compact-button">Exporter</summary>
             <div className="export-menu-panel">
-              <button type="button" disabled={filteredRows.length === 0} onClick={() => exportRows('xlsx')}>Excel</button>
-              <button type="button" disabled={filteredRows.length === 0} onClick={() => exportRows('csv')}>CSV</button>
-              <button type="button" disabled={filteredRows.length === 0} onClick={() => exportRows('json')}>JSON</button>
+              <button type="button" disabled={visibleRows.length === 0} onClick={() => exportRows('xlsx')}>Excel</button>
+              <button type="button" disabled={visibleRows.length === 0} onClick={() => exportRows('csv')}>CSV</button>
+              <button type="button" disabled={visibleRows.length === 0} onClick={() => exportRows('json')}>JSON</button>
               <button type="button" disabled>PDF</button>
             </div>
           </details>
         </div>
       </div>
 
+      {!isSnapshot && summary.data && (
+        <div className="stocks-table-meta">
+          <span>{summary.data.total} lignes</span>
+          {isRefreshing && <span className="muted">Mise a jour...</span>}
+        </div>
+      )}
+
       <div className="card">
-        {loading ? <p className="loading-state">Chargement des stocks...</p> : filteredRows.length === 0 ? <p className="empty-state">Aucun stock trouve. Ajustez la recherche ou les filtres.</p> : (
+        {loading ? (
+          <StocksSkeleton />
+        ) : error ? (
+          <div className="error-state">
+            <p>Impossible de charger les stocks pour le moment.</p>
+            <button className="ghost-button compact-button" type="button" onClick={retry}>Reessayer</button>
+          </div>
+        ) : visibleRows.length === 0 ? (
+          <p className="empty-state">Aucun stock trouve. Ajustez la recherche ou les filtres.</p>
+        ) : (
           <div className="table-wrap">
             <table className="data-table stocks-table">
               <thead><tr><th>Article</th><th>Site</th><th>Disponible</th><th>Reserve</th><th>Total</th><th>Stock min</th><th>Statut</th><th>Valeur achat</th><th>Valeur vente</th><th>Actions</th></tr></thead>
-              <tbody>{filteredRows.map((row) => (
+              <tbody>{visibleRows.map((row) => (
                 <tr className="clickable-row stocks-row" key={row.key} onClick={() => setSelectedKey(row.key)}>
                   <td className="stocks-cell"><strong>{row.articleName}</strong><small>{row.articleCode}{row.dci ? ` - ${row.dci}` : ''}</small></td>
                   <td className="stocks-cell">{row.siteName}</td>
@@ -160,7 +253,11 @@ export function StocksPage() {
                   <td className="stocks-cell"><span className={`badge compact-badge ${row.statusClass}`}>{row.statusLabel}</span></td>
                   <td className="stocks-cell numeric-text">{formatMoney(row.purchaseValue, 'USD')}</td>
                   <td className="stocks-cell numeric-text">{formatMoney(row.saleValue, 'USD')}</td>
-                  <td className="stocks-cell"><button className="ghost-button compact-button" type="button" onClick={(event) => { event.stopPropagation(); setSelectedKey(row.key); }}>Voir</button></td>
+                  <td className="stocks-cell">
+                    <button className="ghost-button compact-button" type="button" onClick={(event) => { event.stopPropagation(); setSelectedKey(row.key); }}>
+                      Voir
+                    </button>
+                  </td>
                 </tr>
               ))}</tbody>
             </table>
@@ -168,14 +265,76 @@ export function StocksPage() {
         )}
       </div>
 
-      <Modal title="Detail stock" open={Boolean(selected)} onClose={() => setSelectedKey(null)}>
-        {selected && <StockDetail row={selected} isSnapshot={isSnapshot} stockDate={stockDate} />}
+      {!isSnapshot && summary.data && summary.data.totalPages > 1 && (
+        <div className="table-pagination">
+          <button className="ghost-button compact-button" type="button" disabled={page <= 1 || summary.isFetching} onClick={() => setPage((current) => Math.max(1, current - 1))}>Precedent</button>
+          <span>Page {summary.data.page} / {summary.data.totalPages}</span>
+          <button className="ghost-button compact-button" type="button" disabled={page >= summary.data.totalPages || summary.isFetching} onClick={() => setPage((current) => current + 1)}>Suivant</button>
+        </div>
+      )}
+
+      <Modal title="Detail stock" open={Boolean(selectedRowForModal)} onClose={() => setSelectedKey(null)}>
+        {isSnapshot ? (
+          selectedSnapshotRow && <StockDetailPanel row={selectedSnapshotRow} isSnapshot stockDate={stockDate} />
+        ) : currentDetail.isLoading ? (
+          <p className="loading-state">Chargement du detail stock...</p>
+        ) : currentDetail.data ? (
+          <CurrentStockDetail detail={currentDetail.data} />
+        ) : (
+          <p className="empty-state">Aucun detail disponible pour cette ligne.</p>
+        )}
       </Modal>
     </>
   );
 }
 
-function StockDetail({ row, isSnapshot, stockDate }: { row: StockRow; isSnapshot: boolean; stockDate: string }) {
+function StocksSkeleton() {
+  return (
+    <div className="stocks-skeleton">
+      <div className="stocks-skeleton-row" />
+      <div className="stocks-skeleton-row" />
+      <div className="stocks-skeleton-row" />
+      <div className="stocks-skeleton-row" />
+    </div>
+  );
+}
+
+function CurrentStockDetail({ detail }: { detail: StockDetail }) {
+  const row: StockRow = {
+    key: `${detail.articleId}-${detail.siteId}`,
+    articleId: detail.articleId,
+    articleCode: detail.articleCode ?? '-',
+    articleName: detail.articleName ?? '-',
+    dci: detail.dci,
+    siteId: detail.siteId,
+    siteName: detail.siteName ?? '-',
+    quantityAvailable: detail.quantityAvailable,
+    quantityReserved: detail.quantityReserved,
+    quantityTotal: detail.quantityTotal,
+    stockMin: detail.stockMin,
+    purchaseValue: detail.purchaseValue,
+    saleValue: detail.saleValue,
+    statusLabel: stockStatusLabel(detail.quantityAvailable, detail.quantityReserved, detail.stockMin),
+    statusClass: stockStatusClass(detail.quantityAvailable, detail.quantityReserved, detail.stockMin),
+    lots: detail.lots,
+    movements: detail.movements.map((movement) => ({
+      movementId: movement.movementId,
+      movementDate: movement.movementDate,
+      siteName: detail.siteName,
+      articleId: detail.articleId,
+      articleCode: detail.articleCode,
+      commercialName: detail.articleName,
+      lotId: movement.lotId,
+      lotNumber: movement.lotNumber,
+      movementType: movement.movementType,
+      quantity: movement.quantity,
+      referenceType: movement.referenceType,
+    })),
+  };
+  return <StockDetailPanel row={row} isSnapshot={false} stockDate={todayIso()} />;
+}
+
+function StockDetailPanel({ row, isSnapshot, stockDate }: { row: StockRow; isSnapshot: boolean; stockDate: string }) {
   const nearExpiry = row.lots.filter((lot) => {
     const days = daysUntil(lot.expiryDate);
     return days !== null && days >= 0 && days <= 90;
@@ -218,27 +377,26 @@ function StockDetail({ row, isSnapshot, stockDate }: { row: StockRow; isSnapshot
   );
 }
 
-function buildCurrentRows(stocks: Stock[], lotsById: Map<string, Lot>, articlesById: Map<string, Article>, movements: StockMovement[]) {
-  const grouped = new Map<string, StockRow>();
-  for (const stock of stocks) {
-    const article = articlesById.get(stock.articleId);
-    const lot = lotsById.get(stock.lotId);
-    const key = `${stock.articleId}-${stock.siteId}`;
-    const row = grouped.get(key) ?? emptyRow(key, stock.articleId, stock.articleCode, stock.commercialName, article, stock.siteId, stock.siteName);
-    const quantityAvailable = Number(stock.quantityAvailable ?? 0);
-    const quantityReserved = Number(stock.quantityReserved ?? 0);
-    const purchasePrice = Number(lot?.purchasePrice ?? 0);
-    const sellingPrice = Number(lot?.sellingPrice ?? article?.sellingPrice ?? 0);
-    row.quantityAvailable += quantityAvailable;
-    row.quantityReserved += quantityReserved;
-    row.quantityTotal += quantityAvailable + quantityReserved;
-    row.stockMin = Math.max(row.stockMin, Number(stock.stockMin ?? article?.defaultStockMin ?? 0));
-    row.purchaseValue += quantityAvailable * purchasePrice;
-    row.saleValue += quantityAvailable * sellingPrice;
-    row.lots.push({ lotId: stock.lotId, lotNumber: stock.lotNumber, expiryDate: stock.expiryDate, quantityAvailable, quantityReserved, purchasePrice, sellingPrice });
-    grouped.set(key, row);
-  }
-  return finalizeRows([...grouped.values()], movements);
+function toCurrentStockRow(row: StockSummary): StockRow {
+  return {
+    key: `${row.articleId}-${row.siteId}`,
+    articleId: row.articleId,
+    articleCode: row.articleCode ?? '-',
+    articleName: row.commercialName ?? '-',
+    dci: row.dci,
+    siteId: row.siteId,
+    siteName: row.siteName ?? '-',
+    quantityAvailable: row.quantityAvailable,
+    quantityReserved: row.quantityReserved,
+    quantityTotal: row.quantityTotal,
+    stockMin: row.stockMin,
+    purchaseValue: row.purchaseValue,
+    saleValue: row.saleValue,
+    statusLabel: mapStatusLabel(row.statusCode),
+    statusClass: mapStatusClass(row.statusCode),
+    lots: [],
+    movements: [],
+  };
 }
 
 function buildSnapshotRows(stockDate: string, movements: StockMovement[], lotsById: Map<string, Lot>, articlesById: Map<string, Article>) {
@@ -324,6 +482,28 @@ function stockStatus(row: StockRow) {
   return { label: 'Disponible', className: 'badge-success' };
 }
 
+function stockStatusLabel(quantityAvailable: number, quantityReserved: number, stockMin: number) {
+  return stockStatus({ quantityAvailable, quantityReserved, stockMin } as StockRow).label;
+}
+
+function stockStatusClass(quantityAvailable: number, quantityReserved: number, stockMin: number) {
+  return stockStatus({ quantityAvailable, quantityReserved, stockMin } as StockRow).className;
+}
+
+function mapStatusLabel(statusCode: StockSummary['statusCode']) {
+  if (statusCode === 'OUT') return 'Rupture';
+  if (statusCode === 'RESERVED') return 'Reserve';
+  if (statusCode === 'LOW') return 'Stock faible';
+  return 'Disponible';
+}
+
+function mapStatusClass(statusCode: StockSummary['statusCode']) {
+  if (statusCode === 'OUT') return 'badge-danger';
+  if (statusCode === 'RESERVED') return 'badge-info';
+  if (statusCode === 'LOW') return 'badge-warning';
+  return 'badge-success';
+}
+
 function matchesStatus(row: StockRow, filter: StockStatus) {
   if (filter === 'ALL') return true;
   if (filter === 'AVAILABLE') return row.quantityAvailable > 0;
@@ -353,10 +533,6 @@ function formatQuantity(value: number) {
 
 function roundQuantity(value: number) {
   return Math.round((Number(value) || 0) * 1000) / 1000;
-}
-
-function unique(values: string[]) {
-  return [...new Set(values)];
 }
 
 function stockExportRows(rows: StockRow[], date: string) {

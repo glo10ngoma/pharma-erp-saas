@@ -594,6 +594,41 @@ details.nav-group .nav-link {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
+.stocks-table-meta,
+.table-pagination {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: .88rem;
+  gap: 10px;
+  justify-content: space-between;
+  margin: 8px 2px 12px;
+}
+
+.stocks-skeleton {
+  display: grid;
+  gap: 8px;
+}
+
+.stocks-skeleton-row {
+  animation: pulse 1.4s ease-in-out infinite;
+  background: linear-gradient(90deg, var(--surface-soft) 0%, var(--surface) 50%, var(--surface-soft) 100%);
+  background-size: 200% 100%;
+  border-radius: 8px;
+  height: 42px;
+}
+
+.error-state {
+  align-items: flex-start;
+  display: grid;
+  gap: 10px;
+}
+
+.error-state p {
+  margin: 0;
+}
+
 .inventory-sticky-header {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -2407,6 +2442,43 @@ details.nav-group .nav-link {
   grid-template-columns: minmax(260px, 1fr) minmax(320px, 2fr) auto;
 }
 
+.advanced-sales-filters {
+  align-items: stretch;
+  display: grid;
+  gap: 12px;
+}
+
+.sales-filter-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.sales-date-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.field-inline {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+}
+
+.field-inline span {
+  color: var(--muted);
+  font-size: .8rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.sales-kpis {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 .sales-export-actions {
   justify-self: end;
 }
@@ -2419,6 +2491,33 @@ details.nav-group .nav-link {
 .sales-table .ghost-button {
   min-height: 28px;
   padding: 4px 8px;
+}
+
+.sales-cell small {
+  color: var(--muted);
+  display: block;
+  font-size: .73rem;
+  margin-top: 2px;
+}
+
+.link-button {
+  background: transparent;
+  border: 0;
+  color: var(--primary-dark);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  padding: 0;
+}
+
+.link-button:hover {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+@keyframes pulse {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 .print-invoice {
@@ -2501,6 +2600,19 @@ details.nav-group .nav-link {
 [data-theme='dark'] .pos-lines-table tbody tr,
 [data-theme='dark'] .sales-table tbody tr {
   background: #111827;
+}
+
+[data-theme='dark'] .link-button {
+  color: #7dd3fc;
+}
+
+[data-theme='dark'] .link-button:hover {
+  color: #bae6fd;
+}
+
+[data-theme='dark'] .stocks-skeleton-row {
+  background: linear-gradient(90deg, #111827 0%, #172033 50%, #111827 100%);
+  background-size: 200% 100%;
 }
 
 [data-theme='dark'] .pos-checkout-actions .pos-secondary-action {
@@ -2742,6 +2854,17 @@ details.nav-group .nav-link {
   .page-actions .button,
   .page-actions .ghost-button {
     width: 100%;
+  }
+
+  .sales-filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sales-date-row,
+  .table-pagination,
+  .stocks-table-meta {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 
@@ -2988,6 +3111,17 @@ details.nav-group .nav-link {
 }
 
 .reference-form label span {
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.reference-section-title {
+  grid-column: 1 / -1;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
   color: var(--muted);
   font-size: .72rem;
   font-weight: 900;

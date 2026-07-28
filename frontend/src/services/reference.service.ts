@@ -7,6 +7,10 @@ export type AdministrationRouteItem = { routeId: string; routeCode: string; rout
 export type ProductTypeItem = { productTypeId: string; typeCode: string; typeName: string };
 export type SupplierItem = { supplierId: string; supplierCode: string; supplierName: string; phone: string | null; email: string | null; address: string | null; isActive: boolean };
 export type CustomerItem = { customerId: string; customerCode: string; customerName: string; customerType: string; phone: string | null; email: string | null; creditAllowed: boolean; creditLimit: number; isActive: boolean };
+export type ProductUnitItem = { productUnitId: string; unitCode: string; unitLabel: string; isActive: boolean };
+export type DosageItem = { dosageId: string; dosageLabel: string; isActive: boolean };
+export type ActiveIngredientItem = { activeIngredientId: string; canonicalName: string; isActive: boolean };
+export type AtcCodeItem = { atcId: string; atcCode: string; atcLabel: string; level: string | null; parentCode: string | null; isActive: boolean };
 
 export const referenceService = {
   categories: {
@@ -36,5 +40,21 @@ export const referenceService = {
   customers: {
     getAll: () => apiClient.get<CustomerItem[]>('/customers'),
     create: (payload: Record<string, unknown>) => apiClient.post<CustomerItem>('/customers', payload),
+  },
+  productUnits: {
+    getAll: () => apiClient.get<ProductUnitItem[]>('/product-units'),
+    create: (payload: Record<string, unknown>) => apiClient.post<ProductUnitItem>('/product-units', payload),
+  },
+  dosages: {
+    getAll: () => apiClient.get<DosageItem[]>('/dosages'),
+    create: (payload: Record<string, unknown>) => apiClient.post<DosageItem>('/dosages', payload),
+  },
+  activeIngredients: {
+    getAll: () => apiClient.get<ActiveIngredientItem[]>('/active-ingredients'),
+    create: (payload: Record<string, unknown>) => apiClient.post<ActiveIngredientItem>('/active-ingredients', payload),
+  },
+  atcCodes: {
+    getAll: () => apiClient.get<AtcCodeItem[]>('/atc-codes'),
+    create: (payload: Record<string, unknown>) => apiClient.post<AtcCodeItem>('/atc-codes', payload),
   },
 };

@@ -3,6 +3,7 @@ import { AuthUser } from '../common/types/auth-user';
 import { AddSaleItemFefoDto } from './dto/add-sale-item-fefo.dto';
 import { ApplyInsuranceDto } from './dto/apply-insurance.dto';
 import { CreateSaleDto } from './dto/create-sale.dto';
+import { ListSalesDto } from './dto/list-sales.dto';
 import { UpdateSaleDraftDto } from './dto/update-sale-draft.dto';
 import { ValidateSaleDto } from './dto/validate-sale.dto';
 import { SalesRepository } from './sales.repository';
@@ -11,6 +12,8 @@ import { SalesRepository } from './sales.repository';
 export class SalesService {
   constructor(private readonly repository: SalesRepository) {}
   findAll(user: AuthUser) { return this.repository.findAll(user); }
+  findList(user: AuthUser, query: ListSalesDto) { return this.repository.findList(user, query); }
+  findSummary(user: AuthUser, query: ListSalesDto) { return this.repository.findSummary(user, query); }
   async findOne(user: AuthUser, id: string) { const sale = await this.repository.findOne(user, id); if (!sale) throw new NotFoundException('SALE_NOT_FOUND'); return sale; }
   async create(user: AuthUser, dto: CreateSaleDto) { return this.wrap(() => this.repository.create(user, dto)); }
   async updateDraft(user: AuthUser, id: string, dto: UpdateSaleDraftDto) { return this.wrap(async () => { const sale = await this.repository.updateDraft(user, id, dto); if (!sale) throw new NotFoundException('SALE_NOT_FOUND'); return sale; }); }

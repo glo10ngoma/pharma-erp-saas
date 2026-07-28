@@ -202,6 +202,14 @@ INSERT INTO permissions (
   is_system_permission
 )
 VALUES
+  ('product_units.read', 'Consulter unites produit', 'ArticleReferences', 'Voir les unites produit', TRUE),
+  ('product_units.create', 'Creer unite produit', 'ArticleReferences', 'Creer une unite produit', TRUE),
+  ('dosages.read', 'Consulter dosages', 'ArticleReferences', 'Voir les dosages', TRUE),
+  ('dosages.create', 'Creer dosage', 'ArticleReferences', 'Creer un dosage', TRUE),
+  ('active_ingredients.read', 'Consulter DCI', 'ArticleReferences', 'Voir les DCI', TRUE),
+  ('active_ingredients.create', 'Creer DCI', 'ArticleReferences', 'Creer une DCI', TRUE),
+  ('atc_codes.read', 'Consulter codes ATC', 'ArticleReferences', 'Voir les codes ATC', TRUE),
+  ('atc_codes.create', 'Creer code ATC', 'ArticleReferences', 'Creer un code ATC', TRUE),
   ('settings.exchange_rate.read', 'Consulter taux de change', 'Settings', 'Voir le taux USD/CDF du tenant', TRUE),
   ('settings.exchange_rate.update', 'Modifier taux de change', 'Settings', 'Modifier le taux USD/CDF du tenant', TRUE),
   ('settlements.read', 'Consulter ecarts reglement', 'Settlements', 'Voir les ecarts de reglement des ventes', TRUE),
@@ -224,6 +232,35 @@ CROSS JOIN permissions p
 WHERE t.tenant_code = 'PHARMACIE_DEMO'
   AND r.role_name = 'ADMIN'
 ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+WITH unit_data(unit_code, unit_label, normalized_label) AS (
+  VALUES
+    ('UNIT', 'Unite', 'unite'),
+    ('COMP', 'Comprime', 'comprime'),
+    ('GEL', 'Gelule', 'gelule'),
+    ('PLAQ', 'Plaquette', 'plaquette'),
+    ('BOX', 'Boite', 'boite'),
+    ('FLAC', 'Flacon', 'flacon'),
+    ('AMPO', 'Ampoule', 'ampoule'),
+    ('SACH', 'Sachet', 'sachet'),
+    ('TUBE', 'Tube', 'tube'),
+    ('BOTL', 'Bouteille', 'bouteille'),
+    ('POT', 'Pot', 'pot'),
+    ('CART', 'Carton', 'carton'),
+    ('PACK', 'Paquet', 'paquet'),
+    ('SUPP', 'Suppositoire', 'suppositoire'),
+    ('DOSE', 'Dose', 'dose'),
+    ('KIT', 'Kit', 'kit')
+)
+INSERT INTO product_units (tenant_id, unit_code, unit_label, normalized_label, is_active)
+SELECT tp.tenant_id, d.unit_code, d.unit_label, d.normalized_label, TRUE
+FROM target_pharmacy tp
+CROSS JOIN unit_data d
+ON CONFLICT (tenant_id, normalized_label) DO UPDATE
+SET unit_code = EXCLUDED.unit_code,
+    unit_label = EXCLUDED.unit_label,
+    is_active = TRUE,
+    updated_at = CURRENT_TIMESTAMP;
 
 INSERT INTO users(
   tenant_id, site_id, role_id, full_name, username, email, phone, password_hash, is_active

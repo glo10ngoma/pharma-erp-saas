@@ -1,5 +1,5 @@
 import { Fragment, FormEvent, KeyboardEvent, ReactNode, useEffect, useMemo, useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { FloatingSearchPopover } from '../../components/FloatingSearchPopover';
 import { Article, articlesService } from '../../services/articles.service';
@@ -52,6 +52,7 @@ function issueForLine(line: PurchaseDraftLine): LineIssue {
 
 export function NewPurchasePage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [form, setForm] = useState<PurchaseForm>(initialForm);
   const [draftLines, setDraftLines] = useState<PurchaseDraftLine[]>([]);
   const [quickLine, setQuickLine] = useState<PurchaseDraftLine>(newLine());
@@ -91,11 +92,25 @@ export function NewPurchasePage() {
   }, [stocks.data]);
   const lineIssues = useMemo(() => new Map(draftLines.map((line) => [line.id, issueForLine(line)])), [draftLines]);
   const quickIssue = useMemo(() => issueForLine(quickLine), [quickLine]);
-  const hasBlockingError = draftLines.length === 0 || [...lineIssues.values()].some((issue) => issue.blocksSave);
+  const quickLineHasInput = useMemo(
+    () => Boolean(
+      quickLine.articleId
+      || quickLine.articleQuery.trim()
+      || quickLine.lotNumber.trim()
+      || quickLine.expiryDate
+      || Number(quickLine.quantity || 0) > 0
+      || Number(quickLine.purchaseUnitPrice || 0) > 0
+      || Number(quickLine.sellingUnitPrice || 0) > 0,
+    ),
+    [quickLine],
+  );
+  const normalizedLines = useMemo(
+    () => (quickLineHasInput && !quickIssue.blocksSave ? [...draftLines, quickLine] : draftLines),
+    [draftLines, quickIssue.blocksSave, quickLine, quickLineHasInput],
+  );
   const totals = useMemo(() => {
     const articleIds = new Set<string>();
-    const quickHasValues = Boolean(quickLine.articleId || quickLine.purchaseUnitPrice || quickLine.sellingUnitPrice);
-    const lines = quickHasValues ? [...draftLines, quickLine] : draftLines;
+    const lines = normalizedLines;
     return lines.reduce((acc, line) => {
       if (line.articleId) articleIds.add(line.articleId);
       const quantity = Number(line.quantity || 0);
@@ -105,19 +120,26 @@ export function NewPurchasePage() {
       acc.articleCount = articleIds.size;
       return acc;
     }, { articleCount: 0, quantity: 0, purchase: 0, sale: 0 });
-  }, [draftLines, quickLine]);
+  }, [normalizedLines]);
   const currentSupplier = suppliers.data?.find((supplier) => supplier.supplierId === form.supplierId);
   const currentSite = sites.data?.find((site) => site.siteId === form.siteId);
 
-  const create = useMutation({
-    mutationFn: async () => {
+  const savePurchase = useMutation({
+    mutationFn: async (validateNow: boolean) => {
+      const lines = normalizedLines;
       const purchase = (await purchasesService.create({ purchaseNumber: form.purchaseNumber.trim() || undefined, supplierId: form.supplierId, siteId: form.siteId, purchaseDate: form.purchaseDate, exchangeRate: Number(form.exchangeRate || 1) })).data;
-      for (const line of draftLines) {
+      for (const line of lines) {
         await purchasesService.addItem(purchase.purchaseId, { articleId: line.articleId, lotNumber: line.lotNumber.trim(), expiryDate: line.expiryDate, quantity: Number(line.quantity), purchaseUnitPrice: Number(line.purchaseUnitPrice), sellingUnitPrice: Number(line.sellingUnitPrice || 0) });
       }
-      return purchase;
+      if (!validateNow) return purchase;
+      return (await purchasesService.validate(purchase.purchaseId)).data;
     },
-    onSuccess: (purchase) => navigate(`/purchases/${purchase.purchaseId}`),
+    onSuccess: async (purchase) => {
+      await queryClient.invalidateQueries({ queryKey: ['purchases'] });
+      await queryClient.invalidateQueries({ queryKey: ['purchase', purchase.purchaseId] });
+      await queryClient.invalidateQueries({ queryKey: ['stocks'] });
+      navigate(`/purchases/${purchase.purchaseId}`);
+    },
   });
 
   useEffect(() => {
@@ -171,20 +193,24 @@ export function NewPurchasePage() {
     if (!query) return source;
     return prioritizeExactBarcode(source.filter((article) => [article.articleCode, article.commercialName, article.dci, article.dosage, article.barcode].some((value) => String(value ?? '').toLowerCase().includes(query))), line.articleQuery);
   }
-  function validateDraftLines() {
-    if (draftLines.length === 0) return 'Ajoutez au moins une ligne achat.';
-    const blocking = draftLines.map((line, index) => ({ issue: issueForLine(line), index })).find(({ issue }) => issue.blocksSave);
+  function validatePurchaseDraft() {
+    if (!form.supplierId) return 'Fournisseur manquant.';
+    if (!form.siteId) return 'Site manquant.';
+    if (form.currencyCode !== 'USD' && Number(form.exchangeRate || 0) <= 0) return 'Taux de change invalide.';
+    if (quickLineHasInput && quickIssue.blocksSave) return `Ligne rapide: ${quickIssue.message}`;
+    if (normalizedLines.length === 0) return 'Ajoutez au moins une ligne achat.';
+    const blocking = normalizedLines.map((line, index) => ({ issue: issueForLine(line), index })).find(({ issue }) => issue.blocksSave);
     return blocking ? `Ligne ${blocking.index + 1}: ${blocking.issue.message}` : '';
   }
-  function submit(event?: FormEvent<HTMLFormElement>) {
+  function submit(event?: FormEvent<HTMLFormElement>, validateNow = false) {
     event?.preventDefault();
-    const error = validateDraftLines();
+    const error = validatePurchaseDraft();
     if (error) { setClientError(error); return; }
     setClientError('');
-    create.mutate();
+    savePurchase.mutate(validateNow);
   }
   function handleGridKey(event: KeyboardEvent<HTMLElement>, row: number, col: number, lineId: string) {
-    if (event.ctrlKey && event.key === 'Enter') { event.preventDefault(); if (!hasBlockingError && !create.isPending) submit(); return; }
+    if (event.ctrlKey && event.key === 'Enter') { event.preventDefault(); if (!savePurchase.isPending) submit(); return; }
     if (event.ctrlKey && event.key.toLowerCase() === 'l') { event.preventDefault(); addLine(lineId); return; }
     if (event.ctrlKey && event.key === 'Delete') { event.preventDefault(); lineId === quickLine.id ? setQuickLine(newLine()) : removeLine(lineId); return; }
     if (event.key === 'Escape') { event.preventDefault(); navigate('/purchases'); return; }
@@ -209,9 +235,9 @@ export function NewPurchasePage() {
   }
 
   return (
-    <form className="purchase-page purchase-form purchase-erp-window" onSubmit={submit}>
+    <form className="purchase-page purchase-form purchase-erp-window" onSubmit={(event) => submit(event, false)}>
       <div className="breadcrumb"><Link to="/purchases">Achats</Link><span>&gt;</span><strong>Nouvel Achat</strong></div>
-      {(create.isError || clientError) && <p className="form-error">{clientError || apiErrorMessage(create.error)}</p>}
+      {(savePurchase.isError || clientError) && <p className="form-error">{clientError || apiErrorMessage(savePurchase.error)}</p>}
       <div className="purchase-sticky-header purchase-page-header">
         <div><span>Code</span><strong>{form.purchaseNumber || 'ACH-...'}</strong></div>
         <div><span>Fournisseur</span><strong>{currentSupplier?.supplierName ?? '-'}</strong></div>
@@ -261,7 +287,7 @@ export function NewPurchasePage() {
         </div>
       </section>
       <section className="purchase-totals premium-summary compact-summary">
-        <div className="form-summary"><span>Lignes</span><strong>{draftLines.length + (quickLine.articleId || quickLine.purchaseUnitPrice || quickLine.sellingUnitPrice ? 1 : 0)}</strong></div>
+        <div className="form-summary"><span>Lignes</span><strong>{normalizedLines.length}</strong></div>
         <div className="form-summary"><span>Qte</span><strong>{totals.quantity}</strong></div>
         <div className="form-summary"><span>Achat</span><strong>{formatMoney(totals.purchase, form.currencyCode)}</strong></div>
         <div className="form-summary"><span>Vente</span><strong>{formatMoney(totals.sale, form.currencyCode)}</strong></div>
@@ -269,8 +295,8 @@ export function NewPurchasePage() {
       </section>
       <div className="page-actions">
         <Link className="ghost-button compact-button" to="/purchases">Annuler</Link>
-        <button className="button compact-button" disabled={create.isPending || suppliers.isLoading || sites.isLoading || articlesLoading || hasBlockingError}>{create.isPending ? 'Enregistrement...' : 'Enregistrer Brouillon'}</button>
-        <button className="button compact-button" type="button" disabled title="Disponible apres creation du brouillon">Valider Achat</button>
+        <button className="button compact-button" type="button" onClick={() => submit(undefined, false)} disabled={savePurchase.isPending || suppliers.isLoading || sites.isLoading || articlesLoading}>{savePurchase.isPending ? 'Enregistrement...' : 'Enregistrer Brouillon'}</button>
+        <button className="button compact-button" type="button" onClick={() => submit(undefined, true)} disabled={savePurchase.isPending || suppliers.isLoading || sites.isLoading || articlesLoading}>{savePurchase.isPending ? 'Validation...' : 'Valider Achat'}</button>
       </div>
     </form>
   );

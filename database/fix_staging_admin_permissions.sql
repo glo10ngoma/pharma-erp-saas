@@ -7,6 +7,8 @@ BEGIN;
 WITH v1_permissions(permission_code) AS (
   VALUES
     ('articles.read'), ('articles.create'), ('articles.update'), ('articles.delete'),
+    ('product_units.read'), ('product_units.create'), ('dosages.read'), ('dosages.create'),
+    ('active_ingredients.read'), ('active_ingredients.create'), ('atc_codes.read'), ('atc_codes.create'),
     ('attachments.read'), ('audit.read'),
     ('categories.read'), ('categories.create'), ('categories.update'), ('categories.delete'),
     ('sub_categories.read'), ('sub_categories.create'), ('sub_categories.update'), ('sub_categories.delete'),
@@ -88,6 +90,8 @@ WITH staging_admin_role AS (
 v1_permissions(permission_code) AS (
   VALUES
     ('articles.read'), ('articles.create'), ('articles.update'), ('articles.delete'),
+    ('product_units.read'), ('product_units.create'), ('dosages.read'), ('dosages.create'),
+    ('active_ingredients.read'), ('active_ingredients.create'), ('atc_codes.read'), ('atc_codes.create'),
     ('attachments.read'), ('audit.read'),
     ('categories.read'), ('categories.create'), ('categories.update'), ('categories.delete'),
     ('sub_categories.read'), ('sub_categories.create'), ('sub_categories.update'), ('sub_categories.delete'),

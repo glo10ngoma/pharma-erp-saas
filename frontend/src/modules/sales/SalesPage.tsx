@@ -1,160 +1,126 @@
-import { FormEvent, ReactNode, useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Modal } from '../../components/Modal';
 import { SearchBox } from '../../components/SearchBox';
-import { filterRows } from '../../lib/search';
+import { useAuth } from '../../auth/AuthContext';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { apiErrorMessage } from '../../services/apiError';
-import { referenceService } from '../../services/reference.service';
 import { Sale, salesService } from '../../services/sales.service';
 import { sitesService } from '../../services/sites.service';
 import { formatDate, fileDateStamp } from '../../utils/date';
 import { downloadCsv, downloadJson, downloadXlsx } from '../../utils/export';
 import { formatMoney } from '../../utils/money';
 
-type QuickFilter = 'ALL' | 'DRAFT' | 'VALIDATED' | 'CASH' | 'INSURANCE' | 'TODAY' | 'WEEK' | 'MONTH';
+type DatePreset = 'TODAY' | 'YESTERDAY' | 'WEEK' | 'MONTH' | 'PREVIOUS_MONTH' | 'CUSTOM';
 
-type SaleForm = {
+type FiltersState = {
+  saleNumber: string;
+  customer: string;
+  seller: string;
   siteId: string;
-  saleType: 'CASH' | 'INSURANCE';
-  customerId: string;
-  currencyCode: 'USD';
-  exchangeRate: string;
+  status: string;
+  saleType: string;
+  paymentMode: string;
+  dateFrom: string;
+  dateTo: string;
+  preset: DatePreset;
+  sortBy: 'saleDate' | 'totalAmount' | 'createdAt';
+  sortOrder: 'asc' | 'desc';
 };
 
-const filters: Array<{ key: QuickFilter; label: string }> = [
-  { key: 'ALL', label: 'Toutes' },
-  { key: 'DRAFT', label: 'DRAFT' },
-  { key: 'VALIDATED', label: 'VALIDATED' },
-  { key: 'CASH', label: 'CASH' },
-  { key: 'INSURANCE', label: 'INSURANCE' },
-  { key: 'TODAY', label: "Aujourd'hui" },
-  { key: 'WEEK', label: 'Cette semaine' },
-  { key: 'MONTH', label: 'Ce mois' },
-];
-
-const initialForm = (): SaleForm => ({
-  siteId: '',
-  saleType: 'CASH',
-  customerId: '',
-  currencyCode: 'USD',
-  exchangeRate: '1',
-});
-
-function Field({ label, help, children }: { label: string; help: string; children: ReactNode }) {
-  return (
-    <label className="field-block">
-      <span>{label}</span>
-      {children}
-      <small>{help}</small>
-    </label>
-  );
-}
-
-function badgeForStatus(status: string) {
-  if (status === 'VALIDATED') return 'badge-success';
-  if (status === 'CANCELLED') return 'badge-muted';
-  return 'badge-warning';
-}
-
-function badgeForType(type: string) {
-  return type === 'INSURANCE' ? 'badge-info' : 'badge-success';
-}
-
-function sameDay(value: Date, other: Date) {
-  return value.toDateString() === other.toDateString();
-}
-
-function startOfWeek(value: Date) {
-  const date = new Date(value);
-  const day = date.getDay() || 7;
-  date.setHours(0, 0, 0, 0);
-  date.setDate(date.getDate() - day + 1);
-  return date;
-}
-
-function matchesQuickFilter(sale: Sale, filter: QuickFilter) {
-  if (filter === 'ALL') return true;
-  if (filter === 'DRAFT' || filter === 'VALIDATED') return sale.status === filter;
-  if (filter === 'CASH' || filter === 'INSURANCE') return sale.saleType === filter;
-  const saleDate = new Date(sale.saleDate);
-  const now = new Date();
-  if (filter === 'TODAY') return sameDay(saleDate, now);
-  if (filter === 'WEEK') return saleDate >= startOfWeek(now);
-  if (filter === 'MONTH') return saleDate.getMonth() === now.getMonth() && saleDate.getFullYear() === now.getFullYear();
-  return true;
-}
+const DEFAULT_PAGE_SIZE = 25;
 
 export function SalesPage() {
   const navigate = useNavigate();
-  const qc = useQueryClient();
-  const [search, setSearch] = useState('');
-  const [quickFilter, setQuickFilter] = useState<QuickFilter>('ALL');
-  const [createOpen, setCreateOpen] = useState(false);
+  const { permissions } = useAuth();
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
-  const [form, setForm] = useState<SaleForm>(initialForm);
+  const [page, setPage] = useState(1);
+  const [filters, setFilters] = useState<FiltersState>(defaultFilters());
+  const [dateError, setDateError] = useState('');
+  const debouncedSaleNumber = useDebouncedValue(filters.saleNumber, 300);
+  const debouncedCustomer = useDebouncedValue(filters.customer, 300);
+  const debouncedSeller = useDebouncedValue(filters.seller, 300);
+  const canCreateSale = permissions.includes('sales.create');
 
-  const sales = useQuery({ queryKey: ['sales'], queryFn: async () => (await salesService.getAll()).data });
-  const sites = useQuery({ queryKey: ['sites'], queryFn: async () => (await sitesService.getAll()).data });
-  const customers = useQuery({ queryKey: ['customers'], queryFn: async () => (await referenceService.customers.getAll()).data });
+  const effectiveFilters = useMemo(() => ({
+    saleNumber: debouncedSaleNumber || undefined,
+    customer: debouncedCustomer || undefined,
+    seller: debouncedSeller || undefined,
+    siteId: filters.siteId || undefined,
+    status: filters.status || undefined,
+    saleType: filters.saleType || undefined,
+    paymentMode: filters.paymentMode || undefined,
+    dateFrom: filters.dateFrom || undefined,
+    dateTo: filters.dateTo || undefined,
+    sortBy: filters.sortBy,
+    sortOrder: filters.sortOrder,
+  }), [debouncedCustomer, debouncedSaleNumber, debouncedSeller, filters.dateFrom, filters.dateTo, filters.paymentMode, filters.saleType, filters.siteId, filters.sortBy, filters.sortOrder, filters.status]);
+
+  const sales = useQuery({
+    queryKey: ['sales-list', effectiveFilters, page],
+    queryFn: async () => (await salesService.getList({
+      ...effectiveFilters,
+      page,
+      limit: DEFAULT_PAGE_SIZE,
+    })).data,
+    placeholderData: (previous) => previous,
+  });
+  const summary = useQuery({
+    queryKey: ['sales-summary', effectiveFilters],
+    queryFn: async () => (await salesService.getSummary(effectiveFilters)).data,
+    placeholderData: (previous) => previous,
+  });
+  const sites = useQuery({
+    queryKey: ['sites', 'sales-filter'],
+    queryFn: async () => (await sitesService.getAll()).data,
+    staleTime: 5 * 60 * 1000,
+  });
   const detail = useQuery({
     queryKey: ['sale', selectedSaleId],
     enabled: Boolean(selectedSaleId),
     queryFn: async () => (await salesService.getById(selectedSaleId as string)).data,
   });
 
-  const rows = useMemo(() => {
-    const filtered = (sales.data ?? []).filter((sale) => matchesQuickFilter(sale, quickFilter));
-    return filterRows(filtered, search, (sale) => [
-      sale.saleNumber,
-      sale.customerName,
-      sale.organizationName,
-      sale.planName,
-      sale.status,
-      sale.saleType,
-      sale.saleDate,
-      sale.totalAmount,
-      sale.siteName,
-    ]);
-  }, [quickFilter, sales.data, search]);
+  const rows = sales.data?.items ?? [];
+  const paymentModes = useMemo(() => unique(rows.flatMap((sale) => (sale.paymentModes ?? '').split(',').map((value) => value.trim()).filter(Boolean))), [rows]);
 
-  const create = useMutation({
-    mutationFn: async () => (await salesService.create({
-      siteId: form.siteId,
-      saleType: form.saleType,
-      customerId: form.customerId || undefined,
-      exchangeRate: Number(form.exchangeRate || 1),
-    })).data,
-    onSuccess: async (sale) => {
-      setCreateOpen(false);
-      setForm(initialForm());
-      await qc.invalidateQueries({ queryKey: ['sales'] });
-      setSelectedSaleId(sale.saleId);
-    },
-  });
-
-  function update<K extends keyof SaleForm>(key: K, value: SaleForm[K]) {
-    setForm((current) => ({ ...current, [key]: value }));
+  function updateFilter<K extends keyof FiltersState>(key: K, value: FiltersState[K]) {
+    setFilters((current) => ({ ...current, [key]: value }));
+    if (key !== 'sortBy' && key !== 'sortOrder') setPage(1);
   }
 
-  function closeCreate() {
-    if (!create.isPending) {
-      setCreateOpen(false);
-      setForm(initialForm());
+  function setPreset(preset: DatePreset) {
+    const range = dateRangeFromPreset(preset);
+    setDateError('');
+    setFilters((current) => ({ ...current, preset, dateFrom: range.dateFrom, dateTo: range.dateTo }));
+    setPage(1);
+  }
+
+  function handleDateChange(key: 'dateFrom' | 'dateTo', value: string) {
+    const next = { ...filters, [key]: value, preset: 'CUSTOM' as const };
+    if (next.dateFrom && next.dateTo && next.dateFrom > next.dateTo) {
+      setDateError('La date de debut doit etre inferieure ou egale a la date de fin.');
+    } else {
+      setDateError('');
     }
+    setFilters(next);
+    setPage(1);
   }
 
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    create.mutate();
+  function resetFilters() {
+    setFilters(defaultFilters());
+    setDateError('');
+    setPage(1);
   }
 
-  function exportRows(format: 'xlsx' | 'csv' | 'json') {
+  async function exportRows(format: 'xlsx' | 'csv' | 'json') {
+    const items = await fetchAllSalesForExport(effectiveFilters);
     const stamp = fileDateStamp();
-    const data = saleExportRows(rows);
+    const data = saleExportRows(items);
     if (format === 'xlsx') downloadXlsx(`ventes_${stamp}.xlsx`, [{ name: 'Ventes', rows: data }]);
     if (format === 'csv') downloadCsv(`ventes_${stamp}.csv`, data);
-    if (format === 'json') downloadJson(`ventes_${stamp}.json`, rows.map(saleExportObject));
+    if (format === 'json') downloadJson(`ventes_${stamp}.json`, items.map(saleExportObject));
   }
 
   return (
@@ -162,76 +128,136 @@ export function SalesPage() {
       <div className="toolbar">
         <div>
           <h1>Ventes</h1>
-          <p className="muted">Consultation des ventes, paiements, assurance et facturation.</p>
+          <p className="muted">Historique, suivi et analyse des ventes. Toute nouvelle vente passe par le POS.</p>
         </div>
-        <button className="button" type="button" onClick={() => setCreateOpen(true)}>+ Nouvelle Vente</button>
+        {canCreateSale && <button className="button" type="button" onClick={() => navigate('/pos')}>+ Nouvelle Vente</button>}
       </div>
 
-      <div className="card sales-filters">
-        <SearchBox value={search} onChange={setSearch} placeholder="Rechercher numero, client, assurance, statut, date, montant ou site..." />
-        <div className="filter-pills" aria-label="Filtres ventes">
-          {filters.map((filter) => (
-            <button
-              className={`filter-pill ${quickFilter === filter.key ? 'active' : ''}`}
-              key={filter.key}
-              type="button"
-              onClick={() => setQuickFilter(filter.key)}
-            >
-              {filter.label}
-            </button>
-          ))}
+      <div className="stats-grid sales-kpis">
+        <KpiCard label="CA net" value={formatMoney(summary.data?.revenueNet ?? 0, 'USD')} />
+        <KpiCard label="Ventes validees" value={String(summary.data?.saleCount ?? 0)} />
+        <KpiCard label="Panier moyen" value={formatMoney(summary.data?.averageBasket ?? 0, 'USD')} />
+        <KpiCard label="Articles vendus" value={String(summary.data?.itemsSold ?? 0)} />
+        <KpiCard label="Encaisse USD" value={formatMoney(summary.data?.receivedUsd ?? 0, 'USD')} />
+        <KpiCard label="Encaisse FC" value={formatMoney(summary.data?.receivedCdf ?? 0, 'CDF', 'FC')} />
+        <KpiCard label="Rendu USD" value={formatMoney(summary.data?.changeUsd ?? 0, 'USD')} />
+        <KpiCard label="Rendu FC" value={formatMoney(summary.data?.changeCdf ?? 0, 'CDF', 'FC')} />
+        <KpiCard label="Ecarts reglement" value={`${formatMoney(summary.data?.settlementDifferenceUsd ?? 0, 'USD')} (${summary.data?.settlementDifferenceCount ?? 0})`} />
+        <KpiCard label="Ventes annulees" value={String(summary.data?.cancelledCount ?? 0)} />
+      </div>
+
+      <div className="card sales-filters advanced-sales-filters">
+        <div className="sales-filter-grid">
+          <SearchBox value={filters.saleNumber} onChange={(value) => updateFilter('saleNumber', value)} placeholder="Numero vente..." />
+          <input className="input" placeholder="Client / assurance..." value={filters.customer} onChange={(event) => updateFilter('customer', event.target.value)} />
+          <input className="input" placeholder="Caissier / vendeur..." value={filters.seller} onChange={(event) => updateFilter('seller', event.target.value)} />
+          <select className="input" value={filters.siteId} onChange={(event) => updateFilter('siteId', event.target.value)}>
+            <option value="">Tous les sites</option>
+            {(sites.data ?? []).map((site) => <option key={site.siteId} value={site.siteId}>{site.siteName}</option>)}
+          </select>
+          <select className="input" value={filters.status} onChange={(event) => updateFilter('status', event.target.value)}>
+            <option value="">Tous statuts</option>
+            <option value="DRAFT">DRAFT</option>
+            <option value="VALIDATED">VALIDATED</option>
+            <option value="CANCELLED">CANCELLED</option>
+          </select>
+          <select className="input" value={filters.saleType} onChange={(event) => updateFilter('saleType', event.target.value)}>
+            <option value="">Tous types</option>
+            <option value="CASH">CASH</option>
+            <option value="INSURANCE">INSURANCE</option>
+          </select>
+          <select className="input" value={filters.paymentMode} onChange={(event) => updateFilter('paymentMode', event.target.value)}>
+            <option value="">Tous paiements</option>
+            {paymentModes.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
+          </select>
+          <select className="input" value={filters.sortBy} onChange={(event) => updateFilter('sortBy', event.target.value as FiltersState['sortBy'])}>
+            <option value="saleDate">Tri date vente</option>
+            <option value="totalAmount">Tri montant</option>
+            <option value="createdAt">Tri creation</option>
+          </select>
+          <select className="input" value={filters.sortOrder} onChange={(event) => updateFilter('sortOrder', event.target.value as FiltersState['sortOrder'])}>
+            <option value="desc">Plus recentes</option>
+            <option value="asc">Plus anciennes</option>
+          </select>
         </div>
-        <div className="export-actions sales-export-actions">
-          <details className="export-menu">
-            <summary className="ghost-button compact-button">Exporter</summary>
-            <div className="export-menu-panel">
-              <button type="button" disabled={rows.length === 0} onClick={() => exportRows('xlsx')}>Excel</button>
-              <button type="button" disabled={rows.length === 0} onClick={() => exportRows('csv')}>CSV</button>
-              <button type="button" disabled={rows.length === 0} onClick={() => exportRows('json')}>JSON</button>
-            </div>
-          </details>
+
+        <div className="filter-pills" aria-label="Periodes ventes">
+          <button className={`filter-pill ${filters.preset === 'TODAY' ? 'active' : ''}`} type="button" onClick={() => setPreset('TODAY')}>Aujourd&apos;hui</button>
+          <button className={`filter-pill ${filters.preset === 'YESTERDAY' ? 'active' : ''}`} type="button" onClick={() => setPreset('YESTERDAY')}>Hier</button>
+          <button className={`filter-pill ${filters.preset === 'WEEK' ? 'active' : ''}`} type="button" onClick={() => setPreset('WEEK')}>Cette semaine</button>
+          <button className={`filter-pill ${filters.preset === 'MONTH' ? 'active' : ''}`} type="button" onClick={() => setPreset('MONTH')}>Ce mois</button>
+          <button className={`filter-pill ${filters.preset === 'PREVIOUS_MONTH' ? 'active' : ''}`} type="button" onClick={() => setPreset('PREVIOUS_MONTH')}>Mois precedent</button>
+          <button className={`filter-pill ${filters.preset === 'CUSTOM' ? 'active' : ''}`} type="button" onClick={() => setPreset('CUSTOM')}>Personnalise</button>
         </div>
+
+        <div className="sales-date-row">
+          <label className="field-inline">
+            <span>Du</span>
+            <input className="input" type="date" value={filters.dateFrom} onChange={(event) => handleDateChange('dateFrom', event.target.value)} />
+          </label>
+          <label className="field-inline">
+            <span>Au</span>
+            <input className="input" type="date" value={filters.dateTo} onChange={(event) => handleDateChange('dateTo', event.target.value)} />
+          </label>
+          <button className="ghost-button compact-button" type="button" onClick={resetFilters}>Reinitialiser</button>
+          <div className="export-actions sales-export-actions">
+            <details className="export-menu">
+              <summary className="ghost-button compact-button">Exporter</summary>
+              <div className="export-menu-panel">
+                <button type="button" disabled={rows.length === 0} onClick={() => exportRows('xlsx')}>Excel</button>
+                <button type="button" disabled={rows.length === 0} onClick={() => exportRows('csv')}>CSV</button>
+                <button type="button" disabled={rows.length === 0} onClick={() => exportRows('json')}>JSON</button>
+              </div>
+            </details>
+          </div>
+        </div>
+
+        {dateError && <p className="form-error">{dateError}</p>}
       </div>
 
       <div className="card">
         {sales.isLoading ? (
           <p className="loading-state">Chargement des ventes...</p>
+        ) : sales.isError ? (
+          <div className="error-state">
+            <p>{apiErrorMessage(sales.error)}</p>
+            <button className="ghost-button compact-button" type="button" onClick={() => sales.refetch()}>Reessayer</button>
+          </div>
         ) : rows.length === 0 ? (
-          <p className="empty-state">Aucune vente trouvee pour cette recherche.</p>
+          <p className="empty-state">Aucune vente trouvee pour ces filtres.</p>
         ) : (
           <div className="table-wrap">
             <table className="data-table sales-table">
               <thead>
                 <tr>
+                  <th>Date / heure</th>
                   <th>Numero</th>
-                  <th>Date</th>
                   <th>Client</th>
                   <th>Site</th>
+                  <th>Caissier</th>
                   <th>Type</th>
-                  <th>Total</th>
+                  <th>Total facture</th>
+                  <th>Net USD</th>
+                  <th>Net FC</th>
                   <th>Statut</th>
-                  <th></th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((sale) => (
-                  <tr className="clickable-row" key={sale.saleId} onClick={() => setSelectedSaleId(sale.saleId)}>
-                    <td><strong>{sale.saleNumber}</strong></td>
-                    <td>{formatDate(sale.saleDate)}</td>
-                    <td>{sale.customerName || 'Comptoir'}</td>
-                    <td>{sale.siteName ?? '-'}</td>
-                    <td><span className={`badge ${badgeForType(sale.saleType)}`}>{sale.saleType}</span></td>
-                    <td>{formatMoney(sale.totalAmount, sale.currencyCode ?? 'USD', sale.currencySymbol)}</td>
-                    <td><span className={`badge ${badgeForStatus(sale.status)}`}>{sale.status}</span></td>
-                    <td>
-                      <button
-                        className="ghost-button"
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setSelectedSaleId(sale.saleId);
-                        }}
-                      >
+                  <tr className="clickable-row sales-row" key={sale.saleId} onClick={() => setSelectedSaleId(sale.saleId)}>
+                    <td className="sales-cell">{formatDate(sale.saleDate)}<small>{formatTime(sale.saleDate)}</small></td>
+                    <td className="sales-cell"><button className="link-button" type="button" onClick={(event) => { event.stopPropagation(); navigate(`/sales/${sale.saleId}`); }}>{sale.saleNumber}</button></td>
+                    <td className="sales-cell">{sale.customerName || sale.organizationName || 'Comptoir'}</td>
+                    <td className="sales-cell">{sale.siteName ?? '-'}</td>
+                    <td className="sales-cell">{sale.createdByName ?? '-'}</td>
+                    <td className="sales-cell"><span className={`badge ${badgeForType(sale.saleType)}`}>{sale.saleType}</span></td>
+                    <td className="sales-cell numeric-text">{formatMoney(sale.totalAmount, sale.currencyCode ?? 'USD', sale.currencySymbol)}</td>
+                    <td className="sales-cell numeric-text">{formatMoney(sale.netReceivedUsd ?? 0, 'USD')}</td>
+                    <td className="sales-cell numeric-text">{formatMoney(sale.netReceivedCdf ?? 0, 'CDF', 'FC')}</td>
+                    <td className="sales-cell"><span className={`badge ${badgeForStatus(sale.status)}`}>{sale.status}</span></td>
+                    <td className="sales-cell">
+                      <button className="ghost-button compact-button" type="button" onClick={(event) => { event.stopPropagation(); setSelectedSaleId(sale.saleId); }}>
                         Voir
                       </button>
                     </td>
@@ -243,52 +269,13 @@ export function SalesPage() {
         )}
       </div>
 
-      <Modal title="Nouvelle vente" open={createOpen} onClose={closeCreate}>
-        {create.isError && <p className="form-error">{apiErrorMessage(create.error)}</p>}
-        <form className="purchase-form" onSubmit={submit}>
-          <div className="form-section">
-            <h3>Parametres vente</h3>
-            <div className="form-grid">
-              <Field label="Client" help="Client qui achete les produits. Obligatoire pour une vente assurance.">
-                <select className="input" value={form.customerId} onChange={(event) => update('customerId', event.target.value)} required={form.saleType === 'INSURANCE'}>
-                  <option value="">Client comptoir</option>
-                  {(customers.data ?? []).map((customer) => <option key={customer.customerId} value={customer.customerId}>{customer.customerName}</option>)}
-                </select>
-              </Field>
-              <Field label="Type vente" help="CASH = paiement immediat, INSURANCE = prise en charge assurance.">
-                <select className="input" value={form.saleType} onChange={(event) => update('saleType', event.target.value as SaleForm['saleType'])}>
-                  <option value="CASH">CASH</option>
-                  <option value="INSURANCE">INSURANCE</option>
-                </select>
-              </Field>
-              <Field label="Site" help="Site qui effectue la vente et sortira le stock en FEFO.">
-                <select className="input" value={form.siteId} onChange={(event) => update('siteId', event.target.value)} required>
-                  <option value="">Choisir un site</option>
-                  {(sites.data ?? []).map((site) => <option key={site.siteId} value={site.siteId}>{site.siteName}</option>)}
-                </select>
-              </Field>
-              <Field label="Devise" help="Devise utilisee pour cette transaction. USD est la devise de base V1.1.">
-                <select className="input" value={form.currencyCode} disabled>
-                  <option value="USD">USD - Dollar americain</option>
-                </select>
-              </Field>
-              <Field label="Taux de change" help="Obligatoire si la devise n'est pas USD. Pour USD, laissez 1.">
-                <input className="input" type="number" min="1" step="0.0001" placeholder="1" value={form.exchangeRate} onChange={(event) => update('exchangeRate', event.target.value)} required />
-              </Field>
-            </div>
-          </div>
-          <div className="form-summary">
-            <span>Etape suivante</span>
-            <strong>Ajoutez les produits dans le POS FEFO</strong>
-          </div>
-          <div className="modal-actions">
-            <button className="ghost-button" type="button" onClick={closeCreate} disabled={create.isPending}>Annuler</button>
-            <button className="button" disabled={create.isPending || sites.isLoading || customers.isLoading}>
-              {create.isPending ? 'Creation...' : 'Creer brouillon'}
-            </button>
-          </div>
-        </form>
-      </Modal>
+      {sales.data && sales.data.totalPages > 1 && (
+        <div className="table-pagination">
+          <button className="ghost-button compact-button" type="button" disabled={page <= 1 || sales.isFetching} onClick={() => setPage((current) => Math.max(1, current - 1))}>Precedent</button>
+          <span>Page {sales.data.page} / {sales.data.totalPages}</span>
+          <button className="ghost-button compact-button" type="button" disabled={page >= sales.data.totalPages || sales.isFetching} onClick={() => setPage((current) => current + 1)}>Suivant</button>
+        </div>
+      )}
 
       <Modal title="Detail vente" open={Boolean(selectedSaleId)} onClose={() => setSelectedSaleId(null)}>
         {detail.isLoading || !detail.data ? (
@@ -299,6 +286,10 @@ export function SalesPage() {
       </Modal>
     </>
   );
+}
+
+function KpiCard({ label, value }: { label: string; value: string }) {
+  return <div className="card kpi-card"><span className="kpi-label">{label}</span><p className="metric small-metric">{value}</p></div>;
 }
 
 function SaleDetailModal({ sale, onOpenPos }: { sale: Sale; onOpenPos: () => void }) {
@@ -401,17 +392,100 @@ function SaleDetailModal({ sale, onOpenPos }: { sale: Sale; onOpenPos: () => voi
   );
 }
 
+function defaultFilters(): FiltersState {
+  const range = dateRangeFromPreset('TODAY');
+  return {
+    saleNumber: '',
+    customer: '',
+    seller: '',
+    siteId: '',
+    status: '',
+    saleType: '',
+    paymentMode: '',
+    dateFrom: range.dateFrom,
+    dateTo: range.dateTo,
+    preset: 'TODAY',
+    sortBy: 'saleDate',
+    sortOrder: 'desc',
+  };
+}
+
+function dateRangeFromPreset(preset: DatePreset) {
+  const today = new Date();
+  const iso = (date: Date) => date.toISOString().slice(0, 10);
+  const start = new Date(today);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(today);
+  end.setHours(0, 0, 0, 0);
+
+  if (preset === 'TODAY') return { dateFrom: iso(start), dateTo: iso(end) };
+  if (preset === 'YESTERDAY') {
+    start.setDate(start.getDate() - 1);
+    end.setDate(end.getDate() - 1);
+    return { dateFrom: iso(start), dateTo: iso(end) };
+  }
+  if (preset === 'WEEK') {
+    const day = start.getDay() || 7;
+    start.setDate(start.getDate() - day + 1);
+    return { dateFrom: iso(start), dateTo: iso(end) };
+  }
+  if (preset === 'MONTH') {
+    start.setDate(1);
+    return { dateFrom: iso(start), dateTo: iso(end) };
+  }
+  if (preset === 'PREVIOUS_MONTH') {
+    start.setMonth(start.getMonth() - 1, 1);
+    end.setDate(0);
+    return { dateFrom: iso(start), dateTo: iso(end) };
+  }
+  return { dateFrom: '', dateTo: '' };
+}
+
+function badgeForStatus(status: string) {
+  if (status === 'VALIDATED') return 'badge-success';
+  if (status === 'CANCELLED') return 'badge-muted';
+  return 'badge-warning';
+}
+
+function badgeForType(type: string) {
+  return type === 'INSURANCE' ? 'badge-info' : 'badge-success';
+}
+
+function formatTime(date: string | Date) {
+  const value = typeof date === 'string' ? new Date(date) : date;
+  if (Number.isNaN(value.getTime())) return '--:--';
+  return value.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+}
+
+async function fetchAllSalesForExport(filters: Record<string, string | number | undefined>) {
+  const first = await salesService.getList({ ...filters, page: 1, limit: 100 });
+  const data = first.data;
+  let items = [...data.items];
+  for (let nextPage = 2; nextPage <= data.totalPages; nextPage += 1) {
+    const response = await salesService.getList({ ...filters, page: nextPage, limit: 100 });
+    items = items.concat(response.data.items);
+  }
+  return items;
+}
+
+function unique(values: string[]) {
+  return [...new Set(values)];
+}
+
 function saleExportRows(sales: Sale[]) {
   return [
-    ['Numero', 'Date', 'Client', 'Assurance', 'Site', 'Type', 'Total', 'Statut'],
+    ['Numero', 'Date', 'Client', 'Site', 'Caissier', 'Type', 'Total', 'Net USD', 'Net FC', 'Paiements', 'Statut'],
     ...sales.map((sale) => [
       sale.saleNumber,
-      formatDate(sale.saleDate),
-      sale.customerName || 'Comptoir',
-      sale.organizationName ?? '-',
+      `${formatDate(sale.saleDate)} ${formatTime(sale.saleDate)}`,
+      sale.customerName || sale.organizationName || 'Comptoir',
       sale.siteName ?? '-',
+      sale.createdByName ?? '-',
       sale.saleType,
       formatMoney(sale.totalAmount, sale.currencyCode ?? 'USD', sale.currencySymbol),
+      formatMoney(sale.netReceivedUsd ?? 0, 'USD'),
+      formatMoney(sale.netReceivedCdf ?? 0, 'CDF', 'FC'),
+      sale.paymentModes ?? '-',
       sale.status,
     ]),
   ];
@@ -421,11 +495,15 @@ function saleExportObject(sale: Sale) {
   return {
     numero: sale.saleNumber,
     date: formatDate(sale.saleDate),
-    client: sale.customerName || 'Comptoir',
-    assurance: sale.organizationName ?? '-',
+    heure: formatTime(sale.saleDate),
+    client: sale.customerName || sale.organizationName || 'Comptoir',
     site: sale.siteName ?? '-',
+    caissier: sale.createdByName ?? '-',
     type: sale.saleType,
     total: formatMoney(sale.totalAmount, sale.currencyCode ?? 'USD', sale.currencySymbol),
+    netUsd: formatMoney(sale.netReceivedUsd ?? 0, 'USD'),
+    netFc: formatMoney(sale.netReceivedCdf ?? 0, 'CDF', 'FC'),
+    paiements: sale.paymentModes ?? '-',
     statut: sale.status,
   };
 }

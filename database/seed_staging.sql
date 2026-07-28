@@ -114,6 +114,14 @@ VALUES
   ('product_types.create', 'Creer type produit', 'ProductTypes', 'Creer un type produit', TRUE),
   ('product_types.update', 'Modifier type produit', 'ProductTypes', 'Modifier un type produit', TRUE),
   ('product_types.delete', 'Supprimer type produit', 'ProductTypes', 'Supprimer un type produit', TRUE),
+  ('product_units.read', 'Consulter unites produit', 'ArticleReferences', 'Voir les unites produit', TRUE),
+  ('product_units.create', 'Creer unite produit', 'ArticleReferences', 'Creer une unite produit', TRUE),
+  ('dosages.read', 'Consulter dosages', 'ArticleReferences', 'Voir les dosages', TRUE),
+  ('dosages.create', 'Creer dosage', 'ArticleReferences', 'Creer un dosage', TRUE),
+  ('active_ingredients.read', 'Consulter DCI', 'ArticleReferences', 'Voir les DCI', TRUE),
+  ('active_ingredients.create', 'Creer DCI', 'ArticleReferences', 'Creer une DCI', TRUE),
+  ('atc_codes.read', 'Consulter codes ATC', 'ArticleReferences', 'Voir les codes ATC', TRUE),
+  ('atc_codes.create', 'Creer code ATC', 'ArticleReferences', 'Creer un code ATC', TRUE),
   ('suppliers.read', 'Consulter fournisseurs', 'Suppliers', 'Voir les fournisseurs', TRUE),
   ('suppliers.create', 'Creer fournisseur', 'Suppliers', 'Creer un fournisseur', TRUE),
   ('suppliers.update', 'Modifier fournisseur', 'Suppliers', 'Modifier un fournisseur', TRUE),
@@ -242,6 +250,8 @@ JOIN permissions p ON p.permission_code IN (
   'galenic_forms.read','galenic_forms.create','galenic_forms.update','galenic_forms.delete',
   'administration_routes.read','administration_routes.create','administration_routes.update','administration_routes.delete',
   'product_types.read','product_types.create','product_types.update','product_types.delete',
+  'product_units.read','product_units.create','dosages.read','dosages.create',
+  'active_ingredients.read','active_ingredients.create','atc_codes.read','atc_codes.create',
   'suppliers.read','suppliers.create','suppliers.update','suppliers.delete',
   'customers.read','customers.create','customers.update','customers.delete',
   'disposals.read',
@@ -292,6 +302,38 @@ FROM tenants t
 WHERE t.tenant_code = 'STAGING'
 ON CONFLICT (tenant_id, setting_key) DO UPDATE
 SET setting_value = EXCLUDED.setting_value,
+    updated_at = CURRENT_TIMESTAMP;
+
+WITH target_tenant AS (
+  SELECT tenant_id FROM tenants WHERE tenant_code = 'STAGING'
+),
+unit_data(unit_code, unit_label, normalized_label) AS (
+  VALUES
+    ('UNIT', 'Unite', 'unite'),
+    ('COMP', 'Comprime', 'comprime'),
+    ('GEL', 'Gelule', 'gelule'),
+    ('PLAQ', 'Plaquette', 'plaquette'),
+    ('BOX', 'Boite', 'boite'),
+    ('FLAC', 'Flacon', 'flacon'),
+    ('AMPO', 'Ampoule', 'ampoule'),
+    ('SACH', 'Sachet', 'sachet'),
+    ('TUBE', 'Tube', 'tube'),
+    ('BOTL', 'Bouteille', 'bouteille'),
+    ('POT', 'Pot', 'pot'),
+    ('CART', 'Carton', 'carton'),
+    ('PACK', 'Paquet', 'paquet'),
+    ('SUPP', 'Suppositoire', 'suppositoire'),
+    ('DOSE', 'Dose', 'dose'),
+    ('KIT', 'Kit', 'kit')
+)
+INSERT INTO product_units (tenant_id, unit_code, unit_label, normalized_label, is_active)
+SELECT t.tenant_id, d.unit_code, d.unit_label, d.normalized_label, TRUE
+FROM target_tenant t
+CROSS JOIN unit_data d
+ON CONFLICT (tenant_id, normalized_label) DO UPDATE
+SET unit_code = EXCLUDED.unit_code,
+    unit_label = EXCLUDED.unit_label,
+    is_active = TRUE,
     updated_at = CURRENT_TIMESTAMP;
 
 INSERT INTO payment_methods(method_code, method_name, is_active)
