@@ -325,6 +325,16 @@ CREATE TABLE sales (
     customer_payable_amount NUMERIC(14,2) NOT NULL DEFAULT 0,
     credit_amount NUMERIC(14,2) NOT NULL DEFAULT 0,
     total_amount NUMERIC(14,2) NOT NULL DEFAULT 0,
+    amount_paid_usd NUMERIC(14,2) NOT NULL DEFAULT 0,
+    amount_paid_cdf NUMERIC(14,2) NOT NULL DEFAULT 0,
+    amount_returned_usd NUMERIC(14,2) NOT NULL DEFAULT 0,
+    amount_returned_cdf NUMERIC(14,2) NOT NULL DEFAULT 0,
+    net_received_usd NUMERIC(14,2) NOT NULL DEFAULT 0,
+    net_received_cdf NUMERIC(14,2) NOT NULL DEFAULT 0,
+    settlement_difference_usd NUMERIC(14,2) NOT NULL DEFAULT 0,
+    settlement_difference_type VARCHAR(50),
+    settlement_difference_reason VARCHAR(150),
+    settlement_difference_note TEXT,
     sale_type VARCHAR(50) NOT NULL DEFAULT 'CASH'
         CHECK (sale_type IN ('CASH', 'CUSTOMER_CREDIT', 'ORGANIZATION_CREDIT', 'INSURANCE')),
     status VARCHAR(30) NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'VALIDATED', 'CANCELLED', 'RETURNED')),
@@ -1257,6 +1267,12 @@ CREATE TABLE IF NOT EXISTS cash_registers (
 ALTER TABLE cash_sessions ADD COLUMN IF NOT EXISTS cash_register_id UUID REFERENCES cash_registers(cash_register_id);
 ALTER TABLE cash_sessions ADD COLUMN IF NOT EXISTS expected_closing_balance NUMERIC(14,2) NOT NULL DEFAULT 0;
 ALTER TABLE cash_sessions ADD COLUMN IF NOT EXISTS difference_amount NUMERIC(14,2) NOT NULL DEFAULT 0;
+ALTER TABLE cash_sessions ADD COLUMN IF NOT EXISTS counted_closing_balance_usd NUMERIC(14,2);
+ALTER TABLE cash_sessions ADD COLUMN IF NOT EXISTS counted_closing_balance_cdf NUMERIC(14,2);
+ALTER TABLE cash_sessions ADD COLUMN IF NOT EXISTS expected_closing_balance_usd NUMERIC(14,2);
+ALTER TABLE cash_sessions ADD COLUMN IF NOT EXISTS expected_closing_balance_cdf NUMERIC(14,2);
+ALTER TABLE cash_sessions ADD COLUMN IF NOT EXISTS closing_difference_usd NUMERIC(14,2);
+ALTER TABLE cash_sessions ADD COLUMN IF NOT EXISTS closing_difference_cdf NUMERIC(14,2);
 ALTER TABLE cash_sessions ADD COLUMN IF NOT EXISTS validated_by UUID REFERENCES users(user_id);
 ALTER TABLE cash_sessions ADD COLUMN IF NOT EXISTS validated_at TIMESTAMP;
 ALTER TABLE cash_sessions ADD COLUMN IF NOT EXISTS notes TEXT;
@@ -1267,7 +1283,7 @@ CREATE TABLE IF NOT EXISTS cash_movements (
     cash_session_id UUID NOT NULL REFERENCES cash_sessions(cash_session_id) ON DELETE CASCADE,
     movement_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     movement_type VARCHAR(50) NOT NULL CHECK (
-        movement_type IN ('SALE_PAYMENT','RECEIVABLE_PAYMENT','CASH_IN','CASH_OUT','EXPENSE','BANK_DEPOSIT','ADVANCE','ADJUSTMENT')
+        movement_type IN ('SALE_PAYMENT','SALE_CHANGE','RECEIVABLE_PAYMENT','CASH_IN','CASH_OUT','EXPENSE','BANK_DEPOSIT','ADVANCE','ADJUSTMENT')
     ),
     amount NUMERIC(14,2) NOT NULL CHECK (amount > 0),
     currency_id UUID NOT NULL REFERENCES currencies(currency_id),

@@ -4,6 +4,7 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 
 const BUSINESS_ERRORS: Record<string, number> = {
@@ -31,6 +32,11 @@ const BUSINESS_ERRORS: Record<string, number> = {
   ROLE_NOT_IN_TENANT: HttpStatus.BAD_REQUEST,
   CURRENCY_NOT_FOUND: HttpStatus.BAD_REQUEST,
   PAYMENT_METHOD_NOT_FOUND: HttpStatus.BAD_REQUEST,
+  INVALID_SETTLEMENT_AMOUNT: HttpStatus.BAD_REQUEST,
+  INVALID_SETTLEMENT_RETURN: HttpStatus.BAD_REQUEST,
+  CHANGE_NOT_ALLOWED_FOR_NON_CASH: HttpStatus.BAD_REQUEST,
+  SETTLEMENT_REASON_REQUIRED: HttpStatus.BAD_REQUEST,
+  EXCHANGE_RATE_REQUIRED: HttpStatus.BAD_REQUEST,
   PURCHASE_NOT_FOUND: HttpStatus.NOT_FOUND,
   SALE_NOT_FOUND: HttpStatus.NOT_FOUND,
   CASH_SESSION_NOT_FOUND: HttpStatus.NOT_FOUND,
@@ -63,6 +69,8 @@ const BUSINESS_ERRORS: Record<string, number> = {
 
 @Catch(Error)
 export class BusinessErrorFilter implements ExceptionFilter {
+  private readonly logger = new Logger(BusinessErrorFilter.name);
+
   catch(exception: Error, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse();
@@ -83,6 +91,17 @@ export class BusinessErrorFilter implements ExceptionFilter {
 
     const status = BUSINESS_ERRORS[exception.message] ?? HttpStatus.INTERNAL_SERVER_ERROR;
     const message = status === HttpStatus.INTERNAL_SERVER_ERROR ? 'INTERNAL_SERVER_ERROR' : exception.message;
+
+    if (status === HttpStatus.INTERNAL_SERVER_ERROR) {
+      this.logger.error(
+        JSON.stringify({
+          name: exception.name,
+          message: exception.message,
+          stack: exception.stack,
+          path: request.url,
+        }),
+      );
+    }
 
     return response.status(status).json({
       statusCode: status,

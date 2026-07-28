@@ -35,11 +35,13 @@ import { CodeGeneratorModule } from './code-generator/code-generator.module';
 import { TransfersModule } from './transfers/transfers.module';
 import { SettingsModule } from './settings/settings.module';
 import { AuditModule } from './audit/audit.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     DatabaseModule,
+    HealthModule,
     AuthModule,
     ArticlesModule,
     CategoriesModule,

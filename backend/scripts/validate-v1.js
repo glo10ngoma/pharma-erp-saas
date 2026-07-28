@@ -8,6 +8,25 @@ const client = new Client({
   ssl: connectionString.includes('supabase.co') ? { rejectUnauthorized: false } : undefined,
 });
 
+function describeError(error) {
+  if (!(error instanceof Error)) return { value: String(error) };
+  return {
+    name: error.name,
+    message: error.message,
+    code: error.code,
+    errno: error.errno,
+    address: error.address,
+    port: error.port,
+    endpoint: error.endpoint,
+    status: error.status,
+    body: error.body,
+    rawBody: error.rawBody,
+    cause: error.cause ? describeError(error.cause) : undefined,
+    errors: Array.isArray(error.errors) ? error.errors.map(describeError) : undefined,
+    stack: error.stack,
+  };
+}
+
 let token = '';
 let context = {};
 const stamp = Date.now();
@@ -17,21 +36,33 @@ function unwrap(body) {
 }
 
 async function api(path, options = {}) {
-  const response = await fetch(baseUrl + path, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers || {}),
-    },
-    body: options.body && typeof options.body !== 'string' ? JSON.stringify(options.body) : options.body,
-  });
+  const url = baseUrl + path;
+  let response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options.headers || {}),
+      },
+      body: options.body && typeof options.body !== 'string' ? JSON.stringify(options.body) : options.body,
+    });
+  } catch (error) {
+    throw Object.assign(new Error(`NETWORK_ERROR:${error.message || error}`), { endpoint: path, cause: error });
+  }
+
   const text = await response.text();
-  let body = text ? JSON.parse(text) : null;
-  body = unwrap(body);
+  let parsed = null;
+  try {
+    parsed = text ? JSON.parse(text) : null;
+  } catch {
+    parsed = text || null;
+  }
+  const body = unwrap(parsed);
   if (!response.ok) {
     const message = body?.message || body?.error || text || `HTTP ${response.status}`;
-    throw Object.assign(new Error(message), { status: response.status, body });
+    throw Object.assign(new Error(message), { status: response.status, body, rawBody: text, endpoint: path });
   }
   return body;
 }
@@ -134,7 +165,7 @@ async function closeCurrentIfAny() {
   const totals = await client.query(
     `SELECT cs.opening_balance,
             COALESCE(SUM(CASE WHEN cm.movement_type IN ('SALE_PAYMENT','RECEIVABLE_PAYMENT','CASH_IN','ADVANCE','ADJUSTMENT') THEN cm.amount ELSE 0 END),0)::numeric AS total_in,
-            COALESCE(SUM(CASE WHEN cm.movement_type IN ('EXPENSE','CASH_OUT','BANK_DEPOSIT') THEN cm.amount ELSE 0 END),0)::numeric AS total_out
+            COALESCE(SUM(CASE WHEN cm.movement_type IN ('SALE_CHANGE','EXPENSE','CASH_OUT','BANK_DEPOSIT') THEN cm.amount ELSE 0 END),0)::numeric AS total_out
      FROM cash_sessions cs
      LEFT JOIN cash_movements cm ON cm.cash_session_id=cs.cash_session_id AND cm.tenant_id=cs.tenant_id
      WHERE cs.cash_session_id=$1
@@ -224,7 +255,7 @@ const suites = {
   if (!Object.values(results).every(Boolean)) process.exitCode = 1;
 })()
   .catch((error) => {
-    console.error(JSON.stringify({ error: error.message, status: error.status, body: error.body }, null, 2));
+    console.error(JSON.stringify(describeError(error), null, 2));
     process.exitCode = 1;
   })
   .finally(async () => {

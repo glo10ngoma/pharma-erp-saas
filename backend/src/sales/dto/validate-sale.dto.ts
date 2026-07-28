@@ -16,4 +16,38 @@ export class ValidateSaleDto {
   @IsOptional()
   @IsString()
   referencePayment?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  amountPaidUsd?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  amountPaidCdf?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  amountReturnedUsd?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  amountReturnedCdf?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  settlementDifferenceReason?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  settlementDifferenceNote?: string;
 }

@@ -19,12 +19,19 @@ type CashSessionRow = {
   user_name: string | null;
   cash_register_id: string | null;
   register_name: string | null;
+  register_currency_code: string | null;
   opened_at: Date;
   closed_at: Date | null;
   opening_balance: string;
   closing_balance: string | null;
   expected_closing_balance: string;
   difference_amount: string;
+  counted_closing_balance_usd: string | null;
+  counted_closing_balance_cdf: string | null;
+  expected_closing_balance_usd: string | null;
+  expected_closing_balance_cdf: string | null;
+  closing_difference_usd: string | null;
+  closing_difference_cdf: string | null;
   status: string;
   notes: string | null;
 };
@@ -57,12 +64,18 @@ export class CashRepository {
       `
       SELECT cs.cash_session_id, cs.tenant_id, cs.site_id, s.site_name, cs.user_id,
              u.full_name AS user_name, cs.cash_register_id, cr.register_name,
+             cur.currency_code AS register_currency_code,
              cs.opened_at, cs.closed_at, cs.opening_balance, cs.closing_balance,
-             cs.expected_closing_balance, cs.difference_amount, cs.status, cs.notes
+             cs.expected_closing_balance, cs.difference_amount,
+             cs.counted_closing_balance_usd, cs.counted_closing_balance_cdf,
+             cs.expected_closing_balance_usd, cs.expected_closing_balance_cdf,
+             cs.closing_difference_usd, cs.closing_difference_cdf,
+             cs.status, cs.notes
       FROM cash_sessions cs
       JOIN sites s ON s.site_id = cs.site_id AND s.tenant_id = cs.tenant_id
       LEFT JOIN users u ON u.user_id = cs.user_id AND u.tenant_id = cs.tenant_id
       LEFT JOIN cash_registers cr ON cr.cash_register_id = cs.cash_register_id AND cr.tenant_id = cs.tenant_id
+      LEFT JOIN currencies cur ON cur.currency_id = cr.currency_id
       WHERE cs.tenant_id = $1
         AND ($2::uuid IS NULL OR cs.site_id = $2::uuid)
       ORDER BY cs.opened_at DESC
@@ -78,12 +91,18 @@ export class CashRepository {
       `
       SELECT cs.cash_session_id, cs.tenant_id, cs.site_id, s.site_name, cs.user_id,
              u.full_name AS user_name, cs.cash_register_id, cr.register_name,
+             cur.currency_code AS register_currency_code,
              cs.opened_at, cs.closed_at, cs.opening_balance, cs.closing_balance,
-             cs.expected_closing_balance, cs.difference_amount, cs.status, cs.notes
+             cs.expected_closing_balance, cs.difference_amount,
+             cs.counted_closing_balance_usd, cs.counted_closing_balance_cdf,
+             cs.expected_closing_balance_usd, cs.expected_closing_balance_cdf,
+             cs.closing_difference_usd, cs.closing_difference_cdf,
+             cs.status, cs.notes
       FROM cash_sessions cs
       JOIN sites s ON s.site_id = cs.site_id AND s.tenant_id = cs.tenant_id
       LEFT JOIN users u ON u.user_id = cs.user_id AND u.tenant_id = cs.tenant_id
       LEFT JOIN cash_registers cr ON cr.cash_register_id = cs.cash_register_id AND cr.tenant_id = cs.tenant_id
+      LEFT JOIN currencies cur ON cur.currency_id = cr.currency_id
       WHERE cs.tenant_id = $1
         AND cs.user_id = $2
         AND cs.status = 'OPEN'
@@ -139,12 +158,19 @@ export class CashRepository {
         `
         SELECT cs.cash_session_id, cs.tenant_id, cs.site_id, NULL::text AS site_name, cs.user_id,
                NULL::text AS user_name, cs.cash_register_id, NULL::text AS register_name,
+               cur.currency_code AS register_currency_code,
                cs.opened_at, cs.closed_at, cs.opening_balance, cs.closing_balance,
-               cs.expected_closing_balance, cs.difference_amount, cs.status, cs.notes
+               cs.expected_closing_balance, cs.difference_amount,
+               cs.counted_closing_balance_usd, cs.counted_closing_balance_cdf,
+               cs.expected_closing_balance_usd, cs.expected_closing_balance_cdf,
+               cs.closing_difference_usd, cs.closing_difference_cdf,
+               cs.status, cs.notes
         FROM cash_sessions cs
+        LEFT JOIN cash_registers cr ON cr.cash_register_id = cs.cash_register_id AND cr.tenant_id = cs.tenant_id
+        LEFT JOIN currencies cur ON cur.currency_id = cr.currency_id
         WHERE cs.tenant_id = $1 AND cs.cash_session_id = $2
           AND ($3::uuid IS NULL OR cs.site_id = $3::uuid)
-        FOR UPDATE
+        FOR UPDATE OF cs
         `,
         [user.tenantId, id, user.siteId ?? null],
       );
@@ -152,22 +178,39 @@ export class CashRepository {
       if (!session) throw new NotFoundException('CASH_SESSION_NOT_FOUND');
       if (session.status !== 'OPEN') throw new BadRequestException('CASH_SESSION_NOT_OPEN');
 
-      const totals = await client.query<{ total_cash_in: string; total_cash_out: string }>(
+      const totals = await client.query<{
+        total_cash_in_usd: string;
+        total_cash_out_usd: string;
+        total_cash_in_cdf: string;
+        total_cash_out_cdf: string;
+      }>(
         `
         SELECT
-          COALESCE(SUM(CASE WHEN movement_type IN ('SALE_PAYMENT','RECEIVABLE_PAYMENT','CASH_IN','ADVANCE','ADJUSTMENT') THEN amount ELSE 0 END),0)::numeric AS total_cash_in,
-          COALESCE(SUM(CASE WHEN movement_type IN ('EXPENSE','CASH_OUT','BANK_DEPOSIT') THEN amount ELSE 0 END),0)::numeric AS total_cash_out
-        FROM cash_movements
+          COALESCE(SUM(CASE WHEN movement_type IN ('SALE_PAYMENT','RECEIVABLE_PAYMENT','CASH_IN','ADVANCE','ADJUSTMENT') AND cur.currency_code = 'USD' THEN amount ELSE 0 END),0)::numeric AS total_cash_in_usd,
+          COALESCE(SUM(CASE WHEN movement_type IN ('SALE_CHANGE','EXPENSE','CASH_OUT','BANK_DEPOSIT') AND cur.currency_code = 'USD' THEN amount ELSE 0 END),0)::numeric AS total_cash_out_usd,
+          COALESCE(SUM(CASE WHEN movement_type IN ('SALE_PAYMENT','RECEIVABLE_PAYMENT','CASH_IN','ADVANCE','ADJUSTMENT') AND cur.currency_code = 'CDF' THEN amount ELSE 0 END),0)::numeric AS total_cash_in_cdf,
+          COALESCE(SUM(CASE WHEN movement_type IN ('SALE_CHANGE','EXPENSE','CASH_OUT','BANK_DEPOSIT') AND cur.currency_code = 'CDF' THEN amount ELSE 0 END),0)::numeric AS total_cash_out_cdf
+        FROM cash_movements cm
+        LEFT JOIN currencies cur ON cur.currency_id = cm.currency_id
         WHERE tenant_id = $1 AND cash_session_id = $2
         `,
         [user.tenantId, id],
       );
 
-      const opening = Number(session.opening_balance);
-      const totalIn = Number(totals.rows[0]?.total_cash_in ?? 0);
-      const totalOut = Number(totals.rows[0]?.total_cash_out ?? 0);
-      const expected = opening + totalIn - totalOut;
-      const difference = dto.countedClosingBalance - expected;
+      const openingBalances = this.openingBalancesByCurrency(session.opening_balance, session.register_currency_code);
+      const totalInUsd = Number(totals.rows[0]?.total_cash_in_usd ?? 0);
+      const totalOutUsd = Number(totals.rows[0]?.total_cash_out_usd ?? 0);
+      const totalInCdf = Number(totals.rows[0]?.total_cash_in_cdf ?? 0);
+      const totalOutCdf = Number(totals.rows[0]?.total_cash_out_cdf ?? 0);
+      const expectedUsd = this.roundMoney(openingBalances.usd + totalInUsd - totalOutUsd);
+      const expectedCdf = this.roundMoney(openingBalances.cdf + totalInCdf - totalOutCdf);
+      const countedBalances = this.countedBalancesByCurrency(dto, session.register_currency_code);
+      const differenceUsd = this.roundMoney(countedBalances.usd - expectedUsd);
+      const differenceCdf = this.roundMoney(countedBalances.cdf - expectedCdf);
+      const primaryCurrency = session.register_currency_code === 'CDF' ? 'CDF' : 'USD';
+      const legacyExpected = primaryCurrency === 'CDF' ? expectedCdf : expectedUsd;
+      const legacyCounted = primaryCurrency === 'CDF' ? countedBalances.cdf : countedBalances.usd;
+      const legacyDifference = primaryCurrency === 'CDF' ? differenceCdf : differenceUsd;
 
       await client.query(
         `
@@ -177,12 +220,32 @@ export class CashRepository {
             closing_balance = $3,
             expected_closing_balance = $4,
             difference_amount = $5,
-            validated_by = $6,
+            counted_closing_balance_usd = $6,
+            counted_closing_balance_cdf = $7,
+            expected_closing_balance_usd = $8,
+            expected_closing_balance_cdf = $9,
+            closing_difference_usd = $10,
+            closing_difference_cdf = $11,
+            validated_by = $12,
             validated_at = CURRENT_TIMESTAMP,
-            notes = COALESCE($7, notes)
+            notes = COALESCE($13, notes)
         WHERE tenant_id = $1 AND cash_session_id = $2
         `,
-        [user.tenantId, id, dto.countedClosingBalance, expected, difference, user.userId, dto.notes ?? null],
+        [
+          user.tenantId,
+          id,
+          legacyCounted,
+          legacyExpected,
+          legacyDifference,
+          countedBalances.usd,
+          countedBalances.cdf,
+          expectedUsd,
+          expectedCdf,
+          differenceUsd,
+          differenceCdf,
+          user.userId,
+          dto.notes ?? null,
+        ],
       );
 
       await client.query(
@@ -190,7 +253,18 @@ export class CashRepository {
         INSERT INTO audit_logs (tenant_id, user_id, table_name, record_id, action_type, new_value)
         VALUES ($1, $2, 'cash_sessions', $3, 'VALIDATE', $4::jsonb)
         `,
-        [user.tenantId, user.userId, id, JSON.stringify({ status: 'CLOSED', expectedClosingBalance: expected, countedClosingBalance: dto.countedClosingBalance, differenceAmount: difference })],
+        [user.tenantId, user.userId, id, JSON.stringify({
+          status: 'CLOSED',
+          expectedClosingBalance: legacyExpected,
+          countedClosingBalance: legacyCounted,
+          differenceAmount: legacyDifference,
+          expectedClosingBalanceUsd: expectedUsd,
+          expectedClosingBalanceCdf: expectedCdf,
+          countedClosingBalanceUsd: countedBalances.usd,
+          countedClosingBalanceCdf: countedBalances.cdf,
+          closingDifferenceUsd: differenceUsd,
+          closingDifferenceCdf: differenceCdf,
+        })],
       );
     });
 
@@ -287,12 +361,18 @@ export class CashRepository {
       `
       SELECT cs.cash_session_id, cs.tenant_id, cs.site_id, s.site_name, cs.user_id,
              u.full_name AS user_name, cs.cash_register_id, cr.register_name,
+             cur.currency_code AS register_currency_code,
              cs.opened_at, cs.closed_at, cs.opening_balance, cs.closing_balance,
-             cs.expected_closing_balance, cs.difference_amount, cs.status, cs.notes
+             cs.expected_closing_balance, cs.difference_amount,
+             cs.counted_closing_balance_usd, cs.counted_closing_balance_cdf,
+             cs.expected_closing_balance_usd, cs.expected_closing_balance_cdf,
+             cs.closing_difference_usd, cs.closing_difference_cdf,
+             cs.status, cs.notes
       FROM cash_sessions cs
       JOIN sites s ON s.site_id = cs.site_id AND s.tenant_id = cs.tenant_id
       LEFT JOIN users u ON u.user_id = cs.user_id AND u.tenant_id = cs.tenant_id
       LEFT JOIN cash_registers cr ON cr.cash_register_id = cs.cash_register_id AND cr.tenant_id = cs.tenant_id
+      LEFT JOIN currencies cur ON cur.currency_id = cr.currency_id
       WHERE cs.tenant_id = $1 AND cs.cash_session_id = $2
         AND ($3::uuid IS NULL OR cs.site_id = $3::uuid)
       LIMIT 1
@@ -332,6 +412,28 @@ export class CashRepository {
   }
 
   private toSession(row: CashSessionRow) {
+    const registerCurrencyCode = row.register_currency_code ?? 'USD';
+    const openingBalance = Number(row.opening_balance);
+    const openingBalanceUsd = registerCurrencyCode === 'CDF' ? 0 : openingBalance;
+    const openingBalanceCdf = registerCurrencyCode === 'CDF' ? openingBalance : 0;
+    const expectedClosingBalanceUsd = row.expected_closing_balance_usd === null
+      ? (registerCurrencyCode === 'CDF' ? 0 : Number(row.expected_closing_balance))
+      : Number(row.expected_closing_balance_usd);
+    const expectedClosingBalanceCdf = row.expected_closing_balance_cdf === null
+      ? (registerCurrencyCode === 'CDF' ? Number(row.expected_closing_balance) : 0)
+      : Number(row.expected_closing_balance_cdf);
+    const countedClosingBalanceUsd = row.counted_closing_balance_usd === null
+      ? (registerCurrencyCode === 'CDF' ? 0 : Number(row.closing_balance ?? 0))
+      : Number(row.counted_closing_balance_usd);
+    const countedClosingBalanceCdf = row.counted_closing_balance_cdf === null
+      ? (registerCurrencyCode === 'CDF' ? Number(row.closing_balance ?? 0) : 0)
+      : Number(row.counted_closing_balance_cdf);
+    const closingDifferenceUsd = row.closing_difference_usd === null
+      ? (registerCurrencyCode === 'CDF' ? 0 : Number(row.difference_amount))
+      : Number(row.closing_difference_usd);
+    const closingDifferenceCdf = row.closing_difference_cdf === null
+      ? (registerCurrencyCode === 'CDF' ? Number(row.difference_amount) : 0)
+      : Number(row.closing_difference_cdf);
     return {
       cashSessionId: row.cash_session_id,
       tenantId: row.tenant_id,
@@ -341,15 +443,52 @@ export class CashRepository {
       userName: row.user_name,
       cashRegisterId: row.cash_register_id,
       registerName: row.register_name,
+      registerCurrencyCode,
       openedAt: row.opened_at,
       closedAt: row.closed_at,
-      openingBalance: Number(row.opening_balance),
+      openingBalance,
+      openingBalanceUsd,
+      openingBalanceCdf,
       closingBalance: row.closing_balance === null ? null : Number(row.closing_balance),
       expectedClosingBalance: Number(row.expected_closing_balance),
       differenceAmount: Number(row.difference_amount),
+      countedClosingBalanceUsd,
+      countedClosingBalanceCdf,
+      expectedClosingBalanceUsd,
+      expectedClosingBalanceCdf,
+      closingDifferenceUsd,
+      closingDifferenceCdf,
       status: row.status,
       notes: row.notes,
     };
+  }
+
+  private countedBalancesByCurrency(dto: CloseCashSessionDto, registerCurrencyCode: string | null) {
+    if (
+      dto.countedClosingBalance === undefined
+      && dto.countedClosingBalanceUsd === undefined
+      && dto.countedClosingBalanceCdf === undefined
+    ) {
+      throw new BadRequestException('COUNTED_CLOSING_BALANCE_REQUIRED');
+    }
+    const primaryCurrency = registerCurrencyCode === 'CDF' ? 'CDF' : 'USD';
+    const legacyValue = Number(dto.countedClosingBalance ?? 0);
+    return {
+      usd: this.roundMoney(Number(dto.countedClosingBalanceUsd ?? (primaryCurrency === 'USD' ? legacyValue : 0))),
+      cdf: this.roundMoney(Number(dto.countedClosingBalanceCdf ?? (primaryCurrency === 'CDF' ? legacyValue : 0))),
+    };
+  }
+
+  private openingBalancesByCurrency(openingBalance: string, registerCurrencyCode: string | null) {
+    const opening = Number(openingBalance);
+    return {
+      usd: registerCurrencyCode === 'CDF' ? 0 : opening,
+      cdf: registerCurrencyCode === 'CDF' ? opening : 0,
+    };
+  }
+
+  private roundMoney(value: number) {
+    return Math.round((value + Number.EPSILON) * 100) / 100;
   }
 
   private toMovement(row: CashMovementRow) {

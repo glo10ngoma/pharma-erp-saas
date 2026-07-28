@@ -34,6 +34,16 @@ export function SaleDetailPage() {
             <div><span>Part patient</span><strong>{formatMoney(sale.customerPayableAmount, currencyCode, currencySymbol)}</strong></div>
             <div><span>Part assurance</span><strong>{formatMoney(sale.insuranceCoveredAmount, currencyCode, currencySymbol)}</strong></div>
             <div><span>Creance</span><strong>{formatMoney(sale.creditAmount, currencyCode, currencySymbol)}</strong></div>
+            <div><span>Remis USD</span><strong>{formatMoney(sale.amountPaidUsd ?? 0, 'USD', currencySymbol)}</strong></div>
+            <div><span>Rendu USD</span><strong>{formatMoney(sale.amountReturnedUsd ?? 0, 'USD', currencySymbol)}</strong></div>
+            <div><span>Net USD</span><strong>{formatMoney(sale.netReceivedUsd ?? 0, 'USD', currencySymbol)}</strong></div>
+            <div><span>Remis CDF</span><strong>{formatMoney(sale.amountPaidCdf ?? 0, 'CDF')}</strong></div>
+            <div><span>Rendu CDF</span><strong>{formatMoney(sale.amountReturnedCdf ?? 0, 'CDF')}</strong></div>
+            <div><span>Net CDF</span><strong>{formatMoney(sale.netReceivedCdf ?? 0, 'CDF')}</strong></div>
+            <div><span>Ecart USD</span><strong>{formatMoney(sale.settlementDifferenceUsd ?? 0, 'USD', currencySymbol)}</strong></div>
+            <div><span>Type ecart</span><strong>{sale.settlementDifferenceType ?? 'NONE'}</strong></div>
+            <div><span>Motif</span><strong>{sale.settlementDifferenceReason ?? '-'}</strong></div>
+            <div><span>Note</span><strong>{sale.settlementDifferenceNote ?? '-'}</strong></div>
           </div>
         </section>
 
@@ -69,6 +79,12 @@ export function SaleDetailPage() {
           <p>Client: {sale.customerName || 'Comptoir'}</p>
           <table><tbody>{items.map((item) => <tr key={item.saleItemId}><td>{item.commercialName}</td><td>{item.quantity}</td><td>{formatMoney(item.lineTotal, currencyCode, currencySymbol)}</td></tr>)}</tbody></table>
           <h2>Total: {formatMoney(sale.totalAmount, currencyCode, currencySymbol)}</h2>
+          <p>Recu USD: {formatMoney(sale.amountPaidUsd ?? 0, 'USD', currencySymbol)}</p>
+          <p>Rendu USD: {formatMoney(sale.amountReturnedUsd ?? 0, 'USD', currencySymbol)}</p>
+          <p>Net USD: {formatMoney(sale.netReceivedUsd ?? 0, 'USD', currencySymbol)}</p>
+          <p>Recu CDF: {formatMoney(sale.amountPaidCdf ?? 0, 'CDF')}</p>
+          <p>Rendu CDF: {formatMoney(sale.amountReturnedCdf ?? 0, 'CDF')}</p>
+          <p>Net CDF: {formatMoney(sale.netReceivedCdf ?? 0, 'CDF')}</p>
           <p>Merci pour votre confiance.</p>
         </div>
       </>}

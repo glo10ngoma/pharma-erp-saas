@@ -8,8 +8,23 @@ import { CreateSaleDto } from './dto/create-sale.dto';
 import { UpdateSaleDraftDto } from './dto/update-sale-draft.dto';
 import { ValidateSaleDto } from './dto/validate-sale.dto';
 
-type SaleRow = { sale_id: string; tenant_id: string; sale_number: string; sale_date: Date; customer_id: string | null; customer_name: string | null; organization_id?: string | null; organization_name?: string | null; membership_id?: string | null; plan_name?: string | null; coverage_percent?: string | null; site_id: string; site_name: string | null; currency_id: string; currency_code: string | null; currency_symbol: string | null; exchange_rate: string; subtotal: string; discount_amount?: string; insurance_covered_amount?: string; customer_payable_amount?: string; credit_amount?: string; total_amount: string; sale_type: string; status: string; created_by: string | null; created_at: Date; validated_at: Date | null };
+const SETTLEMENT_TOLERANCE_USD = 0.02;
+
+type SaleRow = { sale_id: string; tenant_id: string; sale_number: string; sale_date: Date; customer_id: string | null; customer_name: string | null; organization_id?: string | null; organization_name?: string | null; membership_id?: string | null; plan_name?: string | null; coverage_percent?: string | null; site_id: string; site_name: string | null; currency_id: string; currency_code: string | null; currency_symbol: string | null; exchange_rate: string; subtotal: string; discount_amount?: string; insurance_covered_amount?: string; customer_payable_amount?: string; credit_amount?: string; total_amount: string; amount_paid_usd?: string; amount_paid_cdf?: string; amount_returned_usd?: string; amount_returned_cdf?: string; net_received_usd?: string; net_received_cdf?: string; settlement_difference_usd?: string; settlement_difference_type?: string | null; settlement_difference_reason?: string | null; settlement_difference_note?: string | null; sale_type: string; status: string; created_by: string | null; created_at: Date; validated_at: Date | null };
 type ItemRow = { sale_item_id: string; tenant_id: string; sale_id: string; article_id: string; article_code: string | null; commercial_name: string | null; lot_id: string; lot_number: string | null; expiry_date: string | null; quantity: string; unit_price: string; line_total: string };
+type SettlementSnapshot = {
+  amountPaidUsd: number;
+  amountPaidCdf: number;
+  amountReturnedUsd: number;
+  amountReturnedCdf: number;
+  netReceivedUsd: number;
+  netReceivedCdf: number;
+  netTotalEquivalentUsd: number;
+  settlementDifferenceUsd: number;
+  settlementDifferenceType: string;
+  settlementDifferenceReason: string | null;
+  settlementDifferenceNote: string | null;
+};
 
 @Injectable()
 export class SalesRepository {
@@ -26,6 +41,9 @@ export class SalesRepository {
               CASE WHEN cur.currency_code='CDF' THEN 'FC' WHEN cur.currency_code='USD' THEN '$' ELSE cur.currency_code END AS currency_symbol,
               s.exchange_rate, s.subtotal, s.discount_amount,
               s.insurance_covered_amount, s.customer_payable_amount, s.credit_amount, s.total_amount,
+              s.amount_paid_usd, s.amount_paid_cdf, s.amount_returned_usd, s.amount_returned_cdf,
+              s.net_received_usd, s.net_received_cdf, s.settlement_difference_usd,
+              s.settlement_difference_type, s.settlement_difference_reason, s.settlement_difference_note,
               s.sale_type, s.status, s.created_by, s.created_at, s.validated_at
        FROM sales s
        JOIN sites st ON st.site_id=s.site_id AND st.tenant_id=s.tenant_id
@@ -50,6 +68,9 @@ export class SalesRepository {
               CASE WHEN cur.currency_code='CDF' THEN 'FC' WHEN cur.currency_code='USD' THEN '$' ELSE cur.currency_code END AS currency_symbol,
               s.exchange_rate, s.subtotal, s.discount_amount,
               s.insurance_covered_amount, s.customer_payable_amount, s.credit_amount, s.total_amount,
+              s.amount_paid_usd, s.amount_paid_cdf, s.amount_returned_usd, s.amount_returned_cdf,
+              s.net_received_usd, s.net_received_cdf, s.settlement_difference_usd,
+              s.settlement_difference_type, s.settlement_difference_reason, s.settlement_difference_note,
               s.sale_type, s.status, s.created_by, s.created_at, s.validated_at
        FROM sales s
        JOIN sites st ON st.site_id=s.site_id AND st.tenant_id=s.tenant_id
@@ -74,7 +95,7 @@ export class SalesRepository {
     const r = await this.db.query<SaleRow>(
       `INSERT INTO sales (tenant_id, sale_number, site_id, customer_id, currency_id, exchange_rate, sale_type, created_by)
        VALUES ($1,$2,$3,$4,$5,$8,$7,$6)
-       RETURNING sale_id, tenant_id, sale_number, sale_date, customer_id, NULL::text AS customer_name, organization_id, membership_id, site_id, NULL::text AS site_name, currency_id, NULL::text AS currency_code, NULL::text AS currency_symbol, exchange_rate, subtotal, insurance_covered_amount, customer_payable_amount, credit_amount, total_amount, sale_type, status, created_by, created_at, validated_at`,
+       RETURNING sale_id, tenant_id, sale_number, sale_date, customer_id, NULL::text AS customer_name, organization_id, membership_id, site_id, NULL::text AS site_name, currency_id, NULL::text AS currency_code, NULL::text AS currency_symbol, exchange_rate, subtotal, insurance_covered_amount, customer_payable_amount, credit_amount, total_amount, amount_paid_usd, amount_paid_cdf, amount_returned_usd, amount_returned_cdf, net_received_usd, net_received_cdf, settlement_difference_usd, settlement_difference_type, settlement_difference_reason, settlement_difference_note, sale_type, status, created_by, created_at, validated_at`,
       [user.tenantId, number, dto.siteId, dto.customerId ?? null, currencyId, user.userId, dto.saleType ?? 'CASH', dto.exchangeRate ?? 1],
     );
     return this.findOne(user, r.rows[0].sale_id);
@@ -247,6 +268,9 @@ export class SalesRepository {
         `SELECT sale_id, tenant_id, sale_number, sale_date, customer_id, NULL::text AS customer_name,
                 organization_id, membership_id, site_id, NULL::text AS site_name, currency_id, NULL::text AS currency_code, NULL::text AS currency_symbol, exchange_rate, subtotal,
                 insurance_covered_amount, customer_payable_amount, credit_amount, total_amount,
+                amount_paid_usd, amount_paid_cdf, amount_returned_usd, amount_returned_cdf,
+                net_received_usd, net_received_cdf, settlement_difference_usd,
+                settlement_difference_type, settlement_difference_reason, settlement_difference_note,
                 sale_type, status, created_by, created_at, validated_at
          FROM sales WHERE tenant_id=$1 AND sale_id=$2
            AND ($3::uuid IS NULL OR site_id=$3::uuid)
@@ -261,7 +285,11 @@ export class SalesRepository {
       const insuranceCovered = Number(sale.insurance_covered_amount ?? 0);
       if (total <= 0) throw new Error('SALE_HAS_NO_ITEMS');
       if (sale.sale_type === 'INSURANCE' && (!sale.customer_id || !sale.organization_id || !sale.membership_id || insuranceCovered <= 0)) throw new Error('MEMBERSHIP_NOT_ACTIVE');
-      if (dto.amountPaid < patientPayable) throw new Error('PAYMENT_INSUFFICIENT');
+      const settlement = this.buildSettlementSnapshot(sale, dto, patientPayable);
+      if (settlement.settlementDifferenceUsd < -SETTLEMENT_TOLERANCE_USD) throw new Error('PAYMENT_INSUFFICIENT');
+      if (settlement.settlementDifferenceUsd > SETTLEMENT_TOLERANCE_USD && !settlement.settlementDifferenceReason) {
+        throw new Error('SETTLEMENT_REASON_REQUIRED');
+      }
 
       const items = await client.query<ItemRow>(
         `SELECT si.sale_item_id, si.tenant_id, si.sale_id, si.article_id, NULL::text AS article_code,
@@ -293,15 +321,20 @@ export class SalesRepository {
         );
       }
 
-      const methodId = dto.paymentMethodId ?? (await this.defaultPaymentMethodId(client));
+      const method = dto.paymentMethodId
+        ? await this.paymentMethodInfo(client, dto.paymentMethodId)
+        : await this.defaultPaymentMethodInfo(client);
+      if ((settlement.amountReturnedUsd > 0 || settlement.amountReturnedCdf > 0) && method.method_code !== 'CASH') {
+        throw new Error('CHANGE_NOT_ALLOWED_FOR_NON_CASH');
+      }
       if (patientPayable > 0) {
         await client.query(
           `INSERT INTO payments (tenant_id, sale_id, payment_method_id, currency_id, amount, reference_payment, received_by)
            VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-          [user.tenantId, saleId, methodId, sale.currency_id, dto.amountPaid, dto.referencePayment ?? null, user.userId],
+          [user.tenantId, saleId, method.payment_method_id, sale.currency_id, patientPayable, dto.referencePayment ?? null, user.userId],
         );
       }
-      if ((sale.sale_type === 'CASH' || sale.sale_type === 'INSURANCE') && dto.amountPaid > 0) {
+      if ((sale.sale_type === 'CASH' || sale.sale_type === 'INSURANCE') && (settlement.amountPaidUsd > 0 || settlement.amountPaidCdf > 0)) {
         const session = await client.query<{ cash_session_id: string }>(
           `SELECT cash_session_id
            FROM cash_sessions
@@ -311,22 +344,33 @@ export class SalesRepository {
           [user.tenantId, sale.site_id, user.userId],
         );
         if (session.rows[0]) {
-          await client.query(
-            `INSERT INTO cash_movements (
-               tenant_id, cash_session_id, movement_type, amount, currency_id,
-               reference_type, reference_id, description, created_by
-             )
-             VALUES ($1,$2,'SALE_PAYMENT',$3,$4,'SALE',$5,$6,$7)`,
-            [
-              user.tenantId,
-              session.rows[0].cash_session_id,
-              dto.amountPaid,
-              sale.currency_id,
-              sale.sale_id,
-              `Paiement vente ${sale.sale_number}`,
-              user.userId,
-            ],
-          );
+          const currencies = await this.currencyIdsByCode(client);
+          const movementRows = [
+            settlement.amountPaidUsd > 0 ? { movementType: 'SALE_PAYMENT', amount: settlement.amountPaidUsd, currencyId: currencies.USD, description: `Paiement brut USD vente ${sale.sale_number}` } : null,
+            settlement.amountPaidCdf > 0 ? { movementType: 'SALE_PAYMENT', amount: settlement.amountPaidCdf, currencyId: currencies.CDF, description: `Paiement brut CDF vente ${sale.sale_number}` } : null,
+            settlement.amountReturnedUsd > 0 ? { movementType: 'SALE_CHANGE', amount: settlement.amountReturnedUsd, currencyId: currencies.USD, description: `Monnaie rendue USD vente ${sale.sale_number}` } : null,
+            settlement.amountReturnedCdf > 0 ? { movementType: 'SALE_CHANGE', amount: settlement.amountReturnedCdf, currencyId: currencies.CDF, description: `Monnaie rendue CDF vente ${sale.sale_number}` } : null,
+          ].filter(Boolean) as Array<{ movementType: string; amount: number; currencyId: string; description: string }>;
+
+          for (const movement of movementRows) {
+            await client.query(
+              `INSERT INTO cash_movements (
+                 tenant_id, cash_session_id, movement_type, amount, currency_id,
+                 reference_type, reference_id, description, created_by
+               )
+               VALUES ($1,$2,$3,$4,$5,'SALE',$6,$7,$8)`,
+              [
+                user.tenantId,
+                session.rows[0].cash_session_id,
+                movement.movementType,
+                movement.amount,
+                movement.currencyId,
+                sale.sale_id,
+                movement.description,
+                user.userId,
+              ],
+            );
+          }
         }
       }
       if (sale.sale_type === 'INSURANCE' && insuranceCovered > 0) {
@@ -351,20 +395,132 @@ export class SalesRepository {
         description: `Validation vente ${sale.sale_number}`,
         lines: accountingLines,
       });
-      await client.query(`UPDATE sales SET status='VALIDATED', validated_at=CURRENT_TIMESTAMP WHERE tenant_id=$1 AND sale_id=$2`, [user.tenantId, saleId]);
+      await client.query(
+        `UPDATE sales
+         SET status='VALIDATED',
+             validated_at=CURRENT_TIMESTAMP,
+             amount_paid_usd=$3,
+             amount_paid_cdf=$4,
+             amount_returned_usd=$5,
+             amount_returned_cdf=$6,
+             net_received_usd=$7,
+             net_received_cdf=$8,
+             settlement_difference_usd=$9,
+             settlement_difference_type=$10,
+             settlement_difference_reason=$11,
+             settlement_difference_note=$12
+         WHERE tenant_id=$1 AND sale_id=$2`,
+        [
+          user.tenantId,
+          saleId,
+          settlement.amountPaidUsd,
+          settlement.amountPaidCdf,
+          settlement.amountReturnedUsd,
+          settlement.amountReturnedCdf,
+          settlement.netReceivedUsd,
+          settlement.netReceivedCdf,
+          settlement.settlementDifferenceUsd,
+          settlement.settlementDifferenceType,
+          settlement.settlementDifferenceReason,
+          settlement.settlementDifferenceNote,
+        ],
+      );
       await client.query(
         `INSERT INTO audit_logs (tenant_id, user_id, table_name, record_id, action_type, new_value)
          VALUES ($1,$2,'sales',$3,'VALIDATE',$4::jsonb)`,
-        [user.tenantId, user.userId, saleId, JSON.stringify({ status: 'VALIDATED', saleNumber: sale.sale_number })],
+        [user.tenantId, user.userId, saleId, JSON.stringify({ status: 'VALIDATED', saleNumber: sale.sale_number, settlement })],
       );
     });
     return this.findOne(user, saleId);
   }
 
-  private async defaultPaymentMethodId(client: { query: (sql: string, params?: unknown[]) => Promise<{ rows: Array<{ payment_method_id: string }> }> }) {
-    const result = await client.query(`SELECT payment_method_id FROM payment_methods WHERE method_code='CASH' LIMIT 1`);
+  private async defaultPaymentMethodInfo(client: { query: (sql: string, params?: unknown[]) => Promise<{ rows: Array<{ payment_method_id: string; method_code: string }> }> }) {
+    const result = await client.query(`SELECT payment_method_id, method_code FROM payment_methods WHERE method_code='CASH' LIMIT 1`);
     if (!result.rows[0]) throw new Error('PAYMENT_METHOD_NOT_FOUND');
-    return result.rows[0].payment_method_id;
+    return result.rows[0];
+  }
+
+  private async paymentMethodInfo(client: { query: (sql: string, params?: unknown[]) => Promise<{ rows: Array<{ payment_method_id: string; method_code: string }> }> }, paymentMethodId: string) {
+    const result = await client.query(
+      `SELECT payment_method_id, method_code
+       FROM payment_methods
+       WHERE payment_method_id=$1
+       LIMIT 1`,
+      [paymentMethodId],
+    );
+    if (!result.rows[0]) throw new Error('PAYMENT_METHOD_NOT_FOUND');
+    return result.rows[0];
+  }
+
+  private async currencyIdsByCode(client: { query: (sql: string, params?: unknown[]) => Promise<{ rows: Array<{ currency_id: string; currency_code: string }> }> }) {
+    const result = await client.query(
+      `SELECT currency_id, currency_code
+       FROM currencies
+       WHERE currency_code IN ('USD','CDF')`,
+    );
+    const byCode = new Map(result.rows.map((row) => [row.currency_code, row.currency_id]));
+    if (!byCode.get('USD') || !byCode.get('CDF')) throw new Error('CURRENCY_NOT_FOUND');
+    return { USD: byCode.get('USD')!, CDF: byCode.get('CDF')! };
+  }
+
+  private buildSettlementSnapshot(sale: SaleRow, dto: ValidateSaleDto, patientPayable: number): SettlementSnapshot {
+    const exchangeRate = Number(sale.exchange_rate || 1);
+    if (!Number.isFinite(exchangeRate) || exchangeRate <= 0) throw new Error('EXCHANGE_RATE_REQUIRED');
+
+    const usesDetailedPayload =
+      dto.amountPaidUsd !== undefined
+      || dto.amountPaidCdf !== undefined
+      || dto.amountReturnedUsd !== undefined
+      || dto.amountReturnedCdf !== undefined;
+
+    const amountPaidUsd = this.roundMoney(usesDetailedPayload ? Number(dto.amountPaidUsd ?? 0) : Number(dto.amountPaid ?? 0));
+    const amountPaidCdf = this.roundMoney(Number(dto.amountPaidCdf ?? 0));
+    const amountReturnedUsd = this.roundMoney(Number(dto.amountReturnedUsd ?? 0));
+    const amountReturnedCdf = this.roundMoney(Number(dto.amountReturnedCdf ?? 0));
+
+    if ([amountPaidUsd, amountPaidCdf, amountReturnedUsd, amountReturnedCdf].some((amount) => amount < 0)) {
+      throw new Error('INVALID_SETTLEMENT_AMOUNT');
+    }
+    if (amountReturnedUsd > amountPaidUsd || amountReturnedCdf > amountPaidCdf) {
+      throw new Error('INVALID_SETTLEMENT_RETURN');
+    }
+    if ((amountReturnedUsd > 0 && amountPaidUsd === 0) || (amountReturnedCdf > 0 && amountPaidCdf === 0)) {
+      throw new Error('INVALID_SETTLEMENT_RETURN');
+    }
+
+    const netReceivedUsd = this.roundMoney(amountPaidUsd - amountReturnedUsd);
+    const netReceivedCdf = this.roundMoney(amountPaidCdf - amountReturnedCdf);
+    const cdfEquivalentUsd = this.roundMoney(netReceivedCdf / exchangeRate);
+    const netTotalEquivalentUsd = this.roundMoney(netReceivedUsd + cdfEquivalentUsd);
+    const settlementDifferenceUsd = this.roundMoney(netTotalEquivalentUsd - patientPayable);
+    const settlementDifferenceReason = dto.settlementDifferenceReason?.trim() || null;
+    const settlementDifferenceNote = dto.settlementDifferenceNote?.trim() || null;
+
+    return {
+      amountPaidUsd,
+      amountPaidCdf,
+      amountReturnedUsd,
+      amountReturnedCdf,
+      netReceivedUsd,
+      netReceivedCdf,
+      netTotalEquivalentUsd,
+      settlementDifferenceUsd,
+      settlementDifferenceType: this.classifySettlementDifference(settlementDifferenceUsd, amountPaidCdf, amountPaidUsd),
+      settlementDifferenceReason,
+      settlementDifferenceNote,
+    };
+  }
+
+  private classifySettlementDifference(differenceUsd: number, amountPaidCdf: number, amountPaidUsd: number) {
+    if (differenceUsd === 0) return 'NONE';
+    if (Math.abs(differenceUsd) <= SETTLEMENT_TOLERANCE_USD) {
+      return amountPaidCdf > 0 && amountPaidUsd === 0 ? 'EXCHANGE_ROUNDING' : 'ROUNDING';
+    }
+    return differenceUsd > 0 ? 'OVERPAYMENT' : 'UNDERPAYMENT';
+  }
+
+  private roundMoney(value: number) {
+    return Math.round((value + Number.EPSILON) * 100) / 100;
   }
 
   private async findItems(user: AuthUser, saleId: string) {
@@ -441,6 +597,6 @@ export class SalesRepository {
     if (Number(r.rows[0]?.total ?? 0) !== 1) throw new Error('CUSTOMER_NOT_IN_TENANT');
   }
 
-  private toSale(row: SaleRow) { return { saleId: row.sale_id, tenantId: row.tenant_id, saleNumber: row.sale_number, saleDate: row.sale_date, customerId: row.customer_id, customerName: row.customer_name, organizationId: row.organization_id ?? null, organizationName: row.organization_name ?? null, membershipId: row.membership_id ?? null, planName: row.plan_name ?? null, coveragePercent: row.coverage_percent === null || row.coverage_percent === undefined ? null : Number(row.coverage_percent), siteId: row.site_id, siteName: row.site_name, currencyId: row.currency_id, currencyCode: row.currency_code, currencySymbol: row.currency_symbol, exchangeRate: Number(row.exchange_rate), subtotal: Number(row.subtotal), discountAmount: Number(row.discount_amount ?? 0), insuranceCoveredAmount: Number(row.insurance_covered_amount ?? 0), customerPayableAmount: Number(row.customer_payable_amount ?? row.total_amount), creditAmount: Number(row.credit_amount ?? 0), totalAmount: Number(row.total_amount), saleType: row.sale_type, status: row.status, createdBy: row.created_by, createdAt: row.created_at, validatedAt: row.validated_at }; }
+  private toSale(row: SaleRow) { return { saleId: row.sale_id, tenantId: row.tenant_id, saleNumber: row.sale_number, saleDate: row.sale_date, customerId: row.customer_id, customerName: row.customer_name, organizationId: row.organization_id ?? null, organizationName: row.organization_name ?? null, membershipId: row.membership_id ?? null, planName: row.plan_name ?? null, coveragePercent: row.coverage_percent === null || row.coverage_percent === undefined ? null : Number(row.coverage_percent), siteId: row.site_id, siteName: row.site_name, currencyId: row.currency_id, currencyCode: row.currency_code, currencySymbol: row.currency_symbol, exchangeRate: Number(row.exchange_rate), subtotal: Number(row.subtotal), discountAmount: Number(row.discount_amount ?? 0), insuranceCoveredAmount: Number(row.insurance_covered_amount ?? 0), customerPayableAmount: Number(row.customer_payable_amount ?? row.total_amount), creditAmount: Number(row.credit_amount ?? 0), totalAmount: Number(row.total_amount), amountPaidUsd: Number(row.amount_paid_usd ?? 0), amountPaidCdf: Number(row.amount_paid_cdf ?? 0), amountReturnedUsd: Number(row.amount_returned_usd ?? 0), amountReturnedCdf: Number(row.amount_returned_cdf ?? 0), netReceivedUsd: Number(row.net_received_usd ?? 0), netReceivedCdf: Number(row.net_received_cdf ?? 0), settlementDifferenceUsd: Number(row.settlement_difference_usd ?? 0), settlementDifferenceType: row.settlement_difference_type ?? 'NONE', settlementDifferenceReason: row.settlement_difference_reason ?? null, settlementDifferenceNote: row.settlement_difference_note ?? null, saleType: row.sale_type, status: row.status, createdBy: row.created_by, createdAt: row.created_at, validatedAt: row.validated_at }; }
   private toItem(row: ItemRow) { return { saleItemId: row.sale_item_id, saleId: row.sale_id, articleId: row.article_id, articleCode: row.article_code, commercialName: row.commercial_name, lotId: row.lot_id, lotNumber: row.lot_number, expiryDate: row.expiry_date, quantity: Number(row.quantity), unitPrice: Number(row.unit_price), lineTotal: Number(row.line_total) }; }
 }

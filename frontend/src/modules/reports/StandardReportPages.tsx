@@ -230,7 +230,8 @@ const configs: Record<ReportKind, ReportConfig> = {
     filename: 'rapport_caisse',
     sheetName: 'Caisse',
     load: async () => {
-      const [sessions, movements] = await Promise.all([cashService.getSessions(), cashService.getMovements()]);
+      const [sessions, movements, sales] = await Promise.all([cashService.getSessions(), cashService.getMovements(), salesService.getAll()]);
+      const saleById = new Map(sales.data.map((sale) => [sale.saleId, sale]));
       return [
         ...sessions.data.map((session) => ({
           date: session.openedAt,
@@ -238,9 +239,22 @@ const configs: Record<ReportKind, ReportConfig> = {
           label: session.registerName || 'Caisse',
           site: session.siteName || '-',
           user: session.userName || '-',
-          in: session.expectedClosingBalance,
-          out: session.closingBalance ?? 0,
-          difference: session.differenceAmount,
+          receivedUsd: 0,
+          changeUsd: 0,
+          netUsd: Number(session.expectedClosingBalanceUsd ?? session.expectedClosingBalance ?? 0),
+          receivedCdf: 0,
+          changeCdf: 0,
+          netCdf: Number(session.expectedClosingBalanceCdf ?? 0),
+          settlementDifferenceUsd: 0,
+          physicalDifferenceUsd: Number(session.closingDifferenceUsd ?? session.differenceAmount ?? 0),
+          physicalDifferenceCdf: Number(session.closingDifferenceCdf ?? 0),
+          expectedUsd: Number(session.expectedClosingBalanceUsd ?? session.expectedClosingBalance ?? 0),
+          expectedCdf: Number(session.expectedClosingBalanceCdf ?? 0),
+          countedUsd: Number(session.countedClosingBalanceUsd ?? session.closingBalance ?? 0),
+          countedCdf: Number(session.countedClosingBalanceCdf ?? 0),
+          settlementType: 'SESSION',
+          reason: '',
+          note: '',
           status: session.status,
         })),
         ...movements.data.map((movement) => ({
@@ -249,9 +263,30 @@ const configs: Record<ReportKind, ReportConfig> = {
           label: movement.description || movement.referenceType || '-',
           site: '-',
           user: '-',
-          in: String(movement.movementType).includes('SALE') ? movement.amount : 0,
-          out: String(movement.movementType).includes('EXPENSE') ? movement.amount : 0,
-          difference: 0,
+          receivedUsd: movement.movementType === 'SALE_PAYMENT' && movement.currencyCode === 'USD' ? movement.amount : 0,
+          changeUsd: movement.movementType === 'SALE_CHANGE' && movement.currencyCode === 'USD' ? movement.amount : 0,
+          netUsd: movement.movementType === 'SALE_PAYMENT' && movement.currencyCode === 'USD'
+            ? movement.amount
+            : movement.movementType === 'SALE_CHANGE' && movement.currencyCode === 'USD'
+              ? -movement.amount
+              : 0,
+          receivedCdf: movement.movementType === 'SALE_PAYMENT' && movement.currencyCode === 'CDF' ? movement.amount : 0,
+          changeCdf: movement.movementType === 'SALE_CHANGE' && movement.currencyCode === 'CDF' ? movement.amount : 0,
+          netCdf: movement.movementType === 'SALE_PAYMENT' && movement.currencyCode === 'CDF'
+            ? movement.amount
+            : movement.movementType === 'SALE_CHANGE' && movement.currencyCode === 'CDF'
+              ? -movement.amount
+              : 0,
+          settlementDifferenceUsd: movement.referenceType === 'SALE' && movement.referenceId ? Number(saleById.get(movement.referenceId)?.settlementDifferenceUsd ?? 0) : 0,
+          physicalDifferenceUsd: 0,
+          physicalDifferenceCdf: 0,
+          expectedUsd: 0,
+          expectedCdf: 0,
+          countedUsd: 0,
+          countedCdf: 0,
+          settlementType: movement.referenceType === 'SALE' && movement.referenceId ? String(saleById.get(movement.referenceId)?.settlementDifferenceType ?? 'NONE') : 'NONE',
+          reason: movement.referenceType === 'SALE' && movement.referenceId ? String(saleById.get(movement.referenceId)?.settlementDifferenceReason ?? '') : '',
+          note: movement.referenceType === 'SALE' && movement.referenceId ? String(saleById.get(movement.referenceId)?.settlementDifferenceNote ?? '') : '',
           status: movement.currencyCode || 'USD',
         })),
       ];
@@ -262,16 +297,27 @@ const configs: Record<ReportKind, ReportConfig> = {
       ['label', 'Libelle'],
       ['site', 'Site'],
       ['user', 'Utilisateur'],
-      ['in', 'Entrees', 'right'],
-      ['out', 'Sorties', 'right'],
-      ['difference', 'Ecart', 'right'],
+      ['receivedUsd', 'Remis USD', 'right'],
+      ['changeUsd', 'Rendu USD', 'right'],
+      ['netUsd', 'Net USD', 'right'],
+      ['receivedCdf', 'Remis CDF', 'right'],
+      ['changeCdf', 'Rendu CDF', 'right'],
+      ['netCdf', 'Net CDF', 'right'],
+      ['settlementType', 'Type ecart', 'center'],
+      ['reason', 'Motif'],
+      ['settlementDifferenceUsd', 'Ecart reglement USD', 'right'],
+      ['expectedUsd', 'Attendu USD', 'right'],
+      ['countedUsd', 'Compte USD', 'right'],
+      ['physicalDifferenceUsd', 'Ecart physique USD', 'right'],
+      ['physicalDifferenceCdf', 'Ecart physique CDF', 'right'],
       ['status', 'Statut', 'center'],
     ]),
     kpis: (rows) => [
       { label: 'Lignes caisse', value: String(rows.length) },
-      { label: 'Entrees', value: money(sum(rows, 'in')) },
-      { label: 'Sorties', value: money(sum(rows, 'out')) },
-      { label: 'Solde net', value: money(sum(rows, 'in') - sum(rows, 'out')) },
+      { label: 'Paiements bruts USD', value: money(sum(rows, 'receivedUsd')) },
+      { label: 'Monnaie rendue USD', value: money(sum(rows, 'changeUsd')) },
+      { label: 'Net encaisse USD', value: money(sum(rows, 'netUsd')) },
+      { label: 'Ecart physique USD', value: money(sum(rows, 'physicalDifferenceUsd')) },
     ],
   },
   insurance: {
@@ -429,7 +475,11 @@ function filterRows(rows: ReportRow[], search: string, from: string, to: string,
 }
 
 function moneyColumns(source: Array<[key: string, label: string, align?: 'left' | 'center' | 'right']>): ReportColumn<ReportRow>[] {
-  const moneyKeys = new Set(['total', 'patient', 'insurance', 'value', 'in', 'out', 'difference', 'amountDue', 'amountPaid', 'balance', 'revenue', 'cost', 'margin']);
+  const moneyKeys = new Set([
+    'total', 'patient', 'insurance', 'value', 'in', 'out', 'difference', 'amountDue', 'amountPaid', 'balance', 'revenue', 'cost', 'margin',
+    'receivedUsd', 'changeUsd', 'netUsd', 'receivedCdf', 'changeCdf', 'netCdf', 'settlementDifferenceUsd', 'physicalDifferenceUsd', 'physicalDifferenceCdf',
+    'expectedUsd', 'expectedCdf', 'countedUsd', 'countedCdf',
+  ]);
   return source.map(([key, label, align]) => ({
     key,
     label,
@@ -437,6 +487,7 @@ function moneyColumns(source: Array<[key: string, label: string, align?: 'left' 
     render: (row) => {
       const value = row[key];
       if (key === 'date' || key === 'expiry') return formatDate(String(value || ''));
+      if (['receivedCdf', 'changeCdf', 'netCdf', 'physicalDifferenceCdf', 'expectedCdf', 'countedCdf'].includes(key)) return money(Number(value || 0), 'CDF');
       if (moneyKeys.has(key)) return money(Number(value || 0), String(row.currency || 'USD'));
       return value;
     },

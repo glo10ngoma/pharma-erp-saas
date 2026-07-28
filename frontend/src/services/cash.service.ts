@@ -6,12 +6,21 @@ export type CashSession = {
   siteName: string | null;
   userName: string | null;
   registerName: string | null;
+  registerCurrencyCode?: string | null;
   openedAt: string;
   closedAt: string | null;
   openingBalance: number;
+  openingBalanceUsd?: number;
+  openingBalanceCdf?: number;
   closingBalance: number | null;
   expectedClosingBalance: number;
   differenceAmount: number;
+  countedClosingBalanceUsd?: number;
+  countedClosingBalanceCdf?: number;
+  expectedClosingBalanceUsd?: number;
+  expectedClosingBalanceCdf?: number;
+  closingDifferenceUsd?: number;
+  closingDifferenceCdf?: number;
   status: string;
   notes: string | null;
 };
@@ -25,6 +34,7 @@ export type CashMovement = {
   currencyCode: string | null;
   currencySymbol?: string | null;
   referenceType: string | null;
+  referenceId?: string | null;
   description: string | null;
 };
 

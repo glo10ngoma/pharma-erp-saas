@@ -61,7 +61,7 @@ export class AuthRepository {
       [email],
       );
     } catch (error) {
-      this.logger.error('AUTH_LOGIN_QUERY_FAILED', error);
+      this.logger.error(`AUTH_LOGIN_QUERY_FAILED ${JSON.stringify(this.serializeError(error))}`);
       throw error;
     }
 
@@ -152,5 +152,56 @@ export class AuthRepository {
        WHERE user_id=$1 AND tenant_id=$2 AND is_active=true`,
       [userId, tenantId, passwordHash],
     );
+  }
+
+  private serializeError(error: unknown) {
+    if (!(error instanceof Error)) return { value: String(error) };
+    const anyError = error as Error & {
+      code?: string;
+      errno?: string | number;
+      address?: string;
+      port?: string | number;
+      cause?: unknown;
+      errors?: unknown[];
+    };
+    return {
+      name: anyError.name,
+      message: anyError.message,
+      code: anyError.code,
+      errno: anyError.errno,
+      address: anyError.address,
+      port: anyError.port,
+      cause: this.serializeNested(anyError.cause),
+      errors: Array.isArray(anyError.errors) ? anyError.errors.map((entry) => this.serializeNested(entry)) : undefined,
+      stack: this.isDev() ? anyError.stack : undefined,
+      db: this.db.connectionSummary(),
+    };
+  }
+
+  private serializeNested(value: unknown): unknown {
+    if (value instanceof Error) {
+      const nested = value as Error & {
+        code?: string;
+        errno?: string | number;
+        address?: string;
+        port?: string | number;
+        cause?: unknown;
+      };
+      return {
+        name: nested.name,
+        message: nested.message,
+        code: nested.code,
+        errno: nested.errno,
+        address: nested.address,
+        port: nested.port,
+        cause: nested.cause ? this.serializeNested(nested.cause) : undefined,
+        stack: this.isDev() ? nested.stack : undefined,
+      };
+    }
+    return value;
+  }
+
+  private isDev() {
+    return (process.env.APP_ENV ?? 'development') !== 'production' && (process.env.NODE_ENV ?? 'development') !== 'production';
   }
 }

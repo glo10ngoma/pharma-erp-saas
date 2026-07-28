@@ -26,6 +26,7 @@ type PosForm = {
 
 const initialForm = (): PosForm => ({ siteId: '', saleType: 'CASH', customerId: '', exchangeRate: '1', membershipId: '' });
 const POS_USD_CDF_FALLBACK_RATE = 2800;
+const SETTLEMENT_TOLERANCE_USD = 0.02;
 
 export function PosPage() {
   const qc = useQueryClient();
@@ -40,6 +41,10 @@ export function PosPage() {
   const [quantityArticle, setQuantityArticle] = useState<Article | null>(null);
   const [paidUsd, setPaidUsd] = useState('');
   const [paidFc, setPaidFc] = useState('');
+  const [returnedUsd, setReturnedUsd] = useState('0');
+  const [returnedFc, setReturnedFc] = useState('0');
+  const [settlementReason, setSettlementReason] = useState('');
+  const [settlementNote, setSettlementNote] = useState('');
   const [exactPayment, setExactPayment] = useState(false);
   const [selectedLineId, setSelectedLineId] = useState('');
   const [clientError, setClientError] = useState('');
@@ -147,12 +152,25 @@ export function PosPage() {
   const insuranceAmount = Number(sale?.insuranceCoveredAmount ?? 0);
   const paidUsdAmount = Number(paidUsd || 0);
   const paidFcAmount = Number(paidFc || 0);
+  const returnedUsdAmount = Number(returnedUsd || 0);
+  const returnedFcAmount = Number(returnedFc || 0);
   const paidEquivalentFc = paidFcAmount + paidUsdAmount * saleExchangeRate;
-  const paidEquivalentUsd = paidEquivalentFc / saleExchangeRate;
   const patientPayableFc = patientPayable * saleExchangeRate;
-  const changeDueFc = Math.max(0, paidEquivalentFc - patientPayableFc);
-  const changeDueUsd = changeDueFc / saleExchangeRate;
-  const hasChangeDue = changeDueFc > 0;
+  const suggestedChangeFc = Math.max(0, roundMoney(paidEquivalentFc - patientPayableFc));
+  const suggestedChangeUsd = roundMoney(suggestedChangeFc / saleExchangeRate);
+  const returnedEquivalentFc = returnedFcAmount + returnedUsdAmount * saleExchangeRate;
+  const netReceivedUsd = roundMoney(paidUsdAmount - returnedUsdAmount);
+  const netReceivedCdf = roundMoney(paidFcAmount - returnedFcAmount);
+  const netReceivedEquivalentUsd = roundMoney(netReceivedCdf / saleExchangeRate);
+  const netTotalEquivalentUsd = roundMoney(netReceivedUsd + netReceivedEquivalentUsd);
+  const netTotalEquivalentFc = roundMoney(netReceivedUsd * saleExchangeRate + netReceivedCdf);
+  const settlementDifferenceUsd = roundMoney(netTotalEquivalentUsd - patientPayable);
+  const settlementDifferenceFc = roundMoney(netTotalEquivalentFc - patientPayableFc);
+  const settlementStatus = classifySettlementDifference(settlementDifferenceUsd, paidFcAmount, paidUsdAmount);
+  const settlementStatusLabel = settlementLabel(settlementStatus);
+  const actualChangeDueFc = Math.max(0, returnedEquivalentFc);
+  const actualChangeDueUsd = roundMoney(actualChangeDueFc / saleExchangeRate);
+  const hasChangeDue = actualChangeDueFc > 0;
   const quantityTotal = items.reduce((sum: number, item: any) => sum + Number(item.quantity ?? 0), 0);
 
   const createDraft = useMutation({
@@ -161,6 +179,10 @@ export function PosPage() {
       setSale(created);
       setPaidUsd('');
       setPaidFc('');
+      setReturnedUsd('0');
+      setReturnedFc('0');
+      setSettlementReason('');
+      setSettlementNote('');
       setExactPayment(false);
       setTimeout(() => focusArticleSearch(), 0);
     },
@@ -172,6 +194,10 @@ export function PosPage() {
       setSale(response.data);
       setPaidUsd('');
       setPaidFc('');
+      setReturnedUsd('0');
+      setReturnedFc('0');
+      setSettlementReason('');
+      setSettlementNote('');
       setExactPayment(false);
       setArticleQuery('');
       setQuantity('1');
@@ -191,6 +217,10 @@ export function PosPage() {
       setSale(response.data);
       setPaidUsd('');
       setPaidFc('');
+      setReturnedUsd('0');
+      setReturnedFc('0');
+      setSettlementReason('');
+      setSettlementNote('');
       setExactPayment(false);
     },
   });
@@ -200,6 +230,10 @@ export function PosPage() {
       setSale(response.data);
       setPaidUsd('');
       setPaidFc('');
+      setReturnedUsd('0');
+      setReturnedFc('0');
+      setSettlementReason('');
+      setSettlementNote('');
       setExactPayment(false);
     },
   });
@@ -209,6 +243,10 @@ export function PosPage() {
       setSale(response.data);
       setPaidUsd('');
       setPaidFc('');
+      setReturnedUsd('0');
+      setReturnedFc('0');
+      setSettlementReason('');
+      setSettlementNote('');
       setExactPayment(false);
       setClientError('');
       setTimeout(() => focusArticleSearch(), 0);
@@ -219,7 +257,15 @@ export function PosPage() {
     },
   });
   const validate = useMutation({
-    mutationFn: (overrideAmount?: number) => salesService.validate(sale.saleId, { amountPaid: Number(overrideAmount ?? paidEquivalentUsd ?? 0) }),
+    mutationFn: (overrideAmount?: number) => salesService.validate(sale.saleId, {
+      amountPaid: Number(overrideAmount ?? netTotalEquivalentUsd ?? 0),
+      amountPaidUsd: paidUsdAmount,
+      amountPaidCdf: paidFcAmount,
+      amountReturnedUsd: returnedUsdAmount,
+      amountReturnedCdf: returnedFcAmount,
+      settlementDifferenceReason: settlementReason.trim() || undefined,
+      settlementDifferenceNote: settlementNote.trim() || undefined,
+    }),
     onSuccess: async (response) => {
       setSale(response.data);
       await qc.invalidateQueries({ queryKey: ['sales'] });
@@ -387,8 +433,12 @@ export function PosPage() {
     setClientError('');
     addArticleQuick(quantityArticle, requested);
   }
-  function canValidate(amount = paidEquivalentUsd) {
-    return Boolean(sale?.saleId && sale.status === 'DRAFT' && items.length > 0 && !validate.isPending && amount >= patientPayable);
+  function canValidate() {
+    if (!sale?.saleId || sale.status !== 'DRAFT' || items.length === 0 || validate.isPending) return false;
+    if (returnedUsdAmount > paidUsdAmount || returnedFcAmount > paidFcAmount) return false;
+    if (settlementDifferenceUsd < -SETTLEMENT_TOLERANCE_USD) return false;
+    if (settlementDifferenceUsd > SETTLEMENT_TOLERANCE_USD && !settlementReason.trim()) return false;
+    return true;
   }
   function closeQuantityBox() {
     setQuantityArticle(null);
@@ -402,6 +452,10 @@ export function PosPage() {
     setQuantityArticle(null);
     setPaidUsd('');
     setPaidFc('');
+    setReturnedUsd('0');
+    setReturnedFc('0');
+    setSettlementReason('');
+    setSettlementNote('');
     setExactPayment(false);
     setSelectedLineId('');
     setClientError('');
@@ -438,19 +492,34 @@ export function PosPage() {
       if (items.length > 0) focusPayment();
       return;
     }
-    const amount = paidEquivalentUsd;
-    if (!canValidate(amount)) {
-      setClientError(amount < patientPayable ? 'Paiement insuffisant.' : 'Aucune vente a encaisser.');
+    if (returnedUsdAmount > paidUsdAmount || returnedFcAmount > paidFcAmount) {
+      setClientError('La monnaie rendue ne peut pas depasser le montant remis.');
+      playBeep('error');
+      focusPayment();
+      return;
+    }
+    if (!canValidate()) {
+      setClientError(
+        settlementDifferenceUsd < -SETTLEMENT_TOLERANCE_USD
+          ? 'Paiement insuffisant.'
+          : settlementDifferenceUsd > SETTLEMENT_TOLERANCE_USD && !settlementReason.trim()
+            ? 'Un motif est requis pour ce surplus.'
+            : 'Aucune vente a encaisser.',
+      );
       playBeep('error');
       if (items.length > 0) focusPayment();
       return;
     }
     setClientError('');
-    validate.mutate(amount);
+    validate.mutate(netTotalEquivalentUsd);
   }
   function applyExactPayment() {
     setPaidUsd('');
-    setPaidFc(String(Math.ceil(patientPayableFc)));
+    setPaidFc(String(roundMoney(patientPayableFc)));
+    setReturnedUsd('0');
+    setReturnedFc('0');
+    setSettlementReason('');
+    setSettlementNote('');
     setExactPayment(true);
     setClientError('');
     setTimeout(() => focusPayment(), 0);
@@ -615,8 +684,8 @@ export function PosPage() {
           </div>
           <div className={`pos-cash-change ${hasChangeDue ? 'positive' : ''}`}>
             <span>RENDU</span>
-            <strong>{formatMoney(changeDueFc, 'CDF')}</strong>
-            <small>{formatMoney(changeDueUsd, 'USD', currencySymbol)}</small>
+            <strong>{formatMoney(actualChangeDueFc, 'CDF')}</strong>
+            <small>{formatMoney(actualChangeDueUsd, 'USD', currencySymbol)}</small>
           </div>
         </div>
         <div className="pos-summary-grid">
@@ -629,8 +698,18 @@ export function PosPage() {
           <Summary label="Part assurance" value={`${formatMoney(insuranceAmount, 'USD', currencySymbol)} / ${formatMoney(insuranceAmount * saleExchangeRate, 'CDF')}`} />
           <label className="pos-paid-field pos-paid-fc"><span>Paye FC</span><input ref={paymentInputRef} className="input compact-input numeric-cell" type="number" min="0" step="1" value={paidFc} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); quickCheckout(); } }} onChange={(event) => { setPaidFc(event.target.value); setExactPayment(false); }} /></label>
           <label className="pos-paid-field"><span>Paye USD</span><input className="input compact-input numeric-cell" type="number" min="0" step="0.01" value={paidUsd} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); quickCheckout(); } }} onChange={(event) => { setPaidUsd(event.target.value); setExactPayment(false); }} /></label>
-          <Summary label="Rendu FC" value={formatMoney(changeDueFc, 'CDF')} strong />
-          <Summary label="Rendu USD" value={formatMoney(changeDueUsd, 'USD', currencySymbol)} />
+          <label className="pos-paid-field"><span>Rendu FC</span><input className="input compact-input numeric-cell" type="number" min="0" step="1" value={returnedFc} onChange={(event) => setReturnedFc(event.target.value)} /></label>
+          <label className="pos-paid-field"><span>Rendu USD</span><input className="input compact-input numeric-cell" type="number" min="0" step="0.01" value={returnedUsd} onChange={(event) => setReturnedUsd(event.target.value)} /></label>
+          <Summary label="Net USD" value={formatMoney(netReceivedUsd, 'USD', currencySymbol)} />
+          <Summary label="Net CDF" value={formatMoney(netReceivedCdf, 'CDF')} />
+          <Summary label="Net equiv. USD" value={formatMoney(netTotalEquivalentUsd, 'USD', currencySymbol)} strong />
+          <Summary label="Ecart USD" value={formatMoney(settlementDifferenceUsd, 'USD', currencySymbol)} strong />
+          <Summary label="Ecart FC" value={formatMoney(settlementDifferenceFc, 'CDF')} />
+          <Summary label="Type d ecart" value={settlementStatusLabel} />
+          <Summary label="Rendu suggere FC" value={formatMoney(suggestedChangeFc, 'CDF')} />
+          <Summary label="Rendu suggere USD" value={formatMoney(suggestedChangeUsd, 'USD', currencySymbol)} />
+          <label className="pos-paid-field" style={{ gridColumn: 'span 2' }}><span>Motif ecart</span><input className="input compact-input" placeholder="Arrondi, surplus client, conversion..." value={settlementReason} onChange={(event) => setSettlementReason(event.target.value)} /></label>
+          <label className="pos-paid-field" style={{ gridColumn: 'span 2' }}><span>Note</span><input className="input compact-input" placeholder="Observation facultative" value={settlementNote} onChange={(event) => setSettlementNote(event.target.value)} /></label>
         </div>
         <div className="page-actions pos-checkout-actions">
           <button className="ghost-button compact-button pos-secondary-action pos-danger-action" type="button" disabled={!sale || sale.status !== 'DRAFT'} onClick={() => cancel.mutate()}>Annuler vente</button>
@@ -642,7 +721,7 @@ export function PosPage() {
             <strong>{formatMoney(patientPayableFc, 'CDF')}</strong>
             <small>{formatMoney(patientPayable, 'USD', currencySymbol)}</small>
           </div>
-          <button className="button pos-checkout-button" type="button" disabled={!sale?.saleId || sale.status !== 'DRAFT' || items.length === 0 || validate.isPending || Boolean((paidUsd || paidFc || exactPayment) && !canValidate(paidEquivalentUsd))} onClick={quickCheckout}>{validate.isPending ? 'ENCAISSEMENT...' : 'ENCAISSER'}</button>
+          <button className="button pos-checkout-button" type="button" disabled={!sale?.saleId || sale.status !== 'DRAFT' || items.length === 0 || validate.isPending || Boolean((paidUsd || paidFc || exactPayment) && !canValidate())} onClick={quickCheckout}>{validate.isPending ? 'ENCAISSEMENT...' : 'ENCAISSER'}</button>
         </div>
       </section>
 
@@ -657,7 +736,10 @@ export function PosPage() {
         <p>Total USD: {formatMoney(total, 'USD', currencySymbol)}</p>
         <p>Paye FC: {formatMoney(paidFcAmount, 'CDF')}</p>
         <p>Paye USD: {formatMoney(paidUsdAmount, 'USD', currencySymbol)}</p>
-        <p>Monnaie a rendre FC: {formatMoney(changeDueFc, 'CDF')}</p>
+        <p>Rendu FC: {formatMoney(returnedFcAmount, 'CDF')}</p>
+        <p>Rendu USD: {formatMoney(returnedUsdAmount, 'USD', currencySymbol)}</p>
+        <p>Net paye FC: {formatMoney(netTotalEquivalentFc, 'CDF')}</p>
+        <p>Net paye USD: {formatMoney(netTotalEquivalentUsd, 'USD', currencySymbol)}</p>
         <p>Merci pour votre confiance.</p>
       </div>
 
@@ -748,11 +830,32 @@ function PriceDual({ amountUsd, rate }: { amountUsd: number; rate: number }) {
   return (
     <span className="money-dual">
       <span>{formatMoney(amountUsd, 'USD')}</span>
-      <small>≈ {formatMoney(amountUsd * rate, 'CDF')}</small>
+      <small>~ {formatMoney(amountUsd * rate, 'CDF')}</small>
     </span>
   );
 }
 
 function Summary({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return <div className="form-summary pos-summary-item"><span>{label}</span><strong className={strong ? 'pos-total-text' : ''}>{value}</strong></div>;
+}
+
+function roundMoney(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function classifySettlementDifference(differenceUsd: number, paidCdf: number, paidUsd: number) {
+  if (differenceUsd === 0) return 'NONE';
+  if (Math.abs(differenceUsd) <= SETTLEMENT_TOLERANCE_USD) {
+    return paidCdf > 0 && paidUsd === 0 ? 'EXCHANGE_ROUNDING' : 'ROUNDING';
+  }
+  return differenceUsd > 0 ? 'OVERPAYMENT' : 'UNDERPAYMENT';
+}
+
+function settlementLabel(type: string) {
+  if (type === 'NONE') return 'Reglement exact';
+  if (type === 'ROUNDING') return 'Arrondi / miette';
+  if (type === 'EXCHANGE_ROUNDING') return 'Arrondi de conversion';
+  if (type === 'OVERPAYMENT') return 'Surplus encaisse';
+  if (type === 'UNDERPAYMENT') return 'Montant manquant';
+  return 'Ajustement';
 }

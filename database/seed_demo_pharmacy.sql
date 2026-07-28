@@ -203,7 +203,13 @@ INSERT INTO permissions (
 )
 VALUES
   ('settings.exchange_rate.read', 'Consulter taux de change', 'Settings', 'Voir le taux USD/CDF du tenant', TRUE),
-  ('settings.exchange_rate.update', 'Modifier taux de change', 'Settings', 'Modifier le taux USD/CDF du tenant', TRUE)
+  ('settings.exchange_rate.update', 'Modifier taux de change', 'Settings', 'Modifier le taux USD/CDF du tenant', TRUE),
+  ('settlements.read', 'Consulter ecarts reglement', 'Settlements', 'Voir les ecarts de reglement des ventes', TRUE),
+  ('settlements.justify', 'Justifier ecart reglement', 'Settlements', 'Saisir un motif d ecart de reglement', TRUE),
+  ('settlements.adjust', 'Ajuster ecart reglement', 'Settlements', 'Corriger un ecart de reglement apres validation', TRUE),
+  ('settlements.export', 'Exporter ecarts reglement', 'Settlements', 'Exporter les ecarts de reglement', TRUE),
+  ('cash.discrepancies.read', 'Consulter ecarts caisse', 'Cash', 'Voir les ecarts de reglement et ecarts physiques', TRUE),
+  ('cash.discrepancies.manage', 'Gerer ecarts caisse', 'Cash', 'Gerer les ecarts de reglement et corrections', TRUE)
 ON CONFLICT (permission_code) DO UPDATE
 SET permission_name = EXCLUDED.permission_name,
     module_name = EXCLUDED.module_name,
