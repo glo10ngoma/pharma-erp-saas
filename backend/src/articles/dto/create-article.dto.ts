@@ -100,4 +100,8 @@ export class CreateArticleDto {
   @IsNumber()
   @Min(0)
   defaultStockMax?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }

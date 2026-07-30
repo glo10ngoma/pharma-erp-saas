@@ -52,11 +52,18 @@ export function ArticlesPage() {
   const [atcSearch, setAtcSearch] = useState('');
   const [atcOpen, setAtcOpen] = useState(false);
   const [salesUnitId, setSalesUnitId] = useState('');
+  const [salesUnitSearch, setSalesUnitSearch] = useState('');
+  const [salesUnitOpen, setSalesUnitOpen] = useState(false);
   const [packagingUnitId, setPackagingUnitId] = useState('');
+  const [packagingUnitSearch, setPackagingUnitSearch] = useState('');
+  const [packagingUnitOpen, setPackagingUnitOpen] = useState(false);
   const [unitsPerPackage, setUnitsPerPackage] = useState('');
   const [barcode, setBarcode] = useState('');
   const [defaultStockMin, setDefaultStockMin] = useState('0');
   const [defaultStockMax, setDefaultStockMax] = useState('');
+  const [isActive, setIsActive] = useState(true);
+  const [formError, setFormError] = useState('');
+  const [editingArticleSnapshot, setEditingArticleSnapshot] = useState<Article | null>(null);
 
   const articles = useQuery({ queryKey: ['articles', search], queryFn: async () => fetchArticlesForList(search) });
   const categories = useQuery({ queryKey: ['categories'], queryFn: async () => (await referenceService.categories.getAll()).data });
@@ -103,6 +110,11 @@ export function ArticlesPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['atc-codes'] }),
   });
 
+  const createProductUnit = useMutation({
+    mutationFn: async (payload: { unitCode: string; unitLabel: string }) => (await referenceService.productUnits.create(payload)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['product-units'] }),
+  });
+
   const rows = articles.data?.items ?? [];
   const categoryById = useMemo(() => new Map((categories.data ?? []).map((item) => [item.categoryId, item.categoryName])), [categories.data]);
   const subCategoryById = useMemo(() => new Map((subCategories.data ?? []).map((item) => [item.subCategoryId, item.subCategoryName])), [subCategories.data]);
@@ -111,6 +123,13 @@ export function ArticlesPage() {
   const typeById = useMemo(() => new Map((productTypes.data ?? []).map((item) => [item.productTypeId, item.typeName])), [productTypes.data]);
   const unitById = useMemo(() => new Map((productUnits.data ?? []).map((item) => [item.productUnitId, item.unitLabel])), [productUnits.data]);
   const summary = summarizeActive(rows);
+  const visibleUnitItems = useMemo(
+    () =>
+      (productUnits.data ?? []).filter(
+        (item) => item.isActive || item.productUnitId === salesUnitId || item.productUnitId === packagingUnitId,
+      ),
+    [packagingUnitId, productUnits.data, salesUnitId],
+  );
   const exportRows = useMemo(
     () => [
       [
@@ -167,6 +186,48 @@ export function ArticlesPage() {
     () => buildAtcOptions(atcCodes.data ?? [], atcSearch, can('atc_codes.create')),
     [atcCodes.data, atcSearch, can],
   );
+  const filteredSalesUnitOptions = useMemo(
+    () => buildSearchOptions(visibleUnitItems, salesUnitSearch, can('product_units.create'), (item) => item.unitLabel),
+    [can, salesUnitSearch, visibleUnitItems],
+  );
+  const filteredPackagingUnitOptions = useMemo(
+    () => buildSearchOptions(visibleUnitItems, packagingUnitSearch, can('product_units.create'), (item) => item.unitLabel),
+    [can, packagingUnitSearch, visibleUnitItems],
+  );
+  const initialSalesUnitLabel = useMemo(
+    () => (editingArticleSnapshot ? unitById.get(editingArticleSnapshot.salesUnitId ?? '') ?? '' : ''),
+    [editingArticleSnapshot, unitById],
+  );
+  const initialPackagingUnitLabel = useMemo(
+    () =>
+      editingArticleSnapshot
+        ? unitById.get(editingArticleSnapshot.packagingUnitId ?? '') ?? editingArticleSnapshot.packaging ?? ''
+        : '',
+    [editingArticleSnapshot, unitById],
+  );
+  const unitValidationError = useMemo(() => {
+    if (salesUnitSearch.trim() && !salesUnitId && normalizeSearch(salesUnitSearch) !== normalizeSearch(initialSalesUnitLabel)) {
+      return "Selectionnez une unite de vente existante ou creez-la depuis la liste.";
+    }
+    if (
+      packagingUnitSearch.trim() &&
+      !packagingUnitId &&
+      normalizeSearch(packagingUnitSearch) !== normalizeSearch(initialPackagingUnitLabel)
+    ) {
+      return "Selectionnez une unite de conditionnement existante ou creez-la depuis la liste.";
+    }
+    if (unitsPerPackage && Number(unitsPerPackage) <= 0) {
+      return 'La quantite par conditionnement doit etre strictement positive.';
+    }
+    return '';
+  }, [initialPackagingUnitLabel, initialSalesUnitLabel, packagingUnitId, packagingUnitSearch, salesUnitId, salesUnitSearch, unitsPerPackage]);
+  const unitChangeWarning = useMemo(() => {
+    if (!editingArticleSnapshot || editingArticleSnapshot.stockAvailable <= 0) return '';
+    const salesChanged = normalizeSearch(salesUnitSearch) !== normalizeSearch(initialSalesUnitLabel);
+    const packagingChanged = normalizeSearch(packagingUnitSearch) !== normalizeSearch(initialPackagingUnitLabel);
+    if (!salesChanged && !packagingChanged) return '';
+    return "La modification de l'unite ne convertit pas automatiquement le stock existant. Verifiez la coherence des lots et du stock avant de continuer.";
+  }, [editingArticleSnapshot, initialPackagingUnitLabel, initialSalesUnitLabel, packagingUnitSearch, salesUnitSearch]);
 
   function openCreate() {
     resetForm();
@@ -175,6 +236,7 @@ export function ArticlesPage() {
   }
 
   function openEdit(article: Article) {
+    setEditingArticleSnapshot(article);
     setEditingArticleId(article.articleId);
     setArticleCode(article.articleCode);
     setCommercialName(article.commercialName);
@@ -190,16 +252,21 @@ export function ArticlesPage() {
     setAtcId(article.atcId ?? '');
     setAtcSearch(article.atcCode ?? '');
     setSalesUnitId(article.salesUnitId ?? '');
+    setSalesUnitSearch(unitById.get(article.salesUnitId ?? '') ?? '');
     setPackagingUnitId(article.packagingUnitId ?? '');
+    setPackagingUnitSearch(unitById.get(article.packagingUnitId ?? '') ?? article.packaging ?? '');
     setUnitsPerPackage(article.unitsPerPackage === null ? '' : String(article.unitsPerPackage));
     setBarcode(article.barcode ?? '');
     setDefaultStockMin(String(article.defaultStockMin ?? 0));
     setDefaultStockMax(article.defaultStockMax === null ? '' : String(article.defaultStockMax));
+    setIsActive(article.isActive);
+    setFormError('');
     setDetailArticle(null);
     setModalOpen(true);
   }
 
   function resetForm() {
+    setEditingArticleSnapshot(null);
     setEditingArticleId(null);
     setArticleCode('');
     setCommercialName('');
@@ -218,19 +285,42 @@ export function ArticlesPage() {
     setAtcSearch('');
     setAtcOpen(false);
     setSalesUnitId('');
+    setSalesUnitSearch('');
+    setSalesUnitOpen(false);
     setPackagingUnitId('');
+    setPackagingUnitSearch('');
+    setPackagingUnitOpen(false);
     setUnitsPerPackage('');
     setBarcode('');
     setDefaultStockMin('0');
     setDefaultStockMax('');
+    setIsActive(true);
+    setFormError('');
   }
 
   useEffect(() => {
     if (modalOpen && !editingArticleId && !articleCode && nextCode.data) setArticleCode(nextCode.data);
   }, [articleCode, editingArticleId, modalOpen, nextCode.data]);
 
+  useEffect(() => {
+    if (!editingArticleSnapshot || !modalOpen) return;
+    if (editingArticleSnapshot.salesUnitId && !salesUnitSearch) {
+      setSalesUnitSearch(unitById.get(editingArticleSnapshot.salesUnitId) ?? '');
+    }
+    if (!packagingUnitSearch) {
+      setPackagingUnitSearch(
+        unitById.get(editingArticleSnapshot.packagingUnitId ?? '') ?? editingArticleSnapshot.packaging ?? '',
+      );
+    }
+  }, [editingArticleSnapshot, modalOpen, packagingUnitSearch, salesUnitSearch, unitById]);
+
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    setFormError('');
+    if (unitValidationError) {
+      setFormError(unitValidationError);
+      return;
+    }
     saveArticle.mutate({
       articleCode,
       commercialName,
@@ -252,6 +342,7 @@ export function ArticlesPage() {
       prescriptionRequired: false,
       defaultStockMin: Number(defaultStockMin || 0),
       defaultStockMax: defaultStockMax ? Number(defaultStockMax) : undefined,
+      isActive,
     });
   }
 
@@ -288,7 +379,36 @@ export function ArticlesPage() {
     setAtcSearch(option.item.atcCode);
   }
 
-  const isSavingReference = createIngredient.isPending || createDosage.isPending || createAtc.isPending;
+  async function selectUnit(
+    option: SearchOption<ProductUnitItem>,
+    onSelectExisting: (unit: ProductUnitItem) => void,
+  ) {
+    if (option.kind === 'create') {
+      const created = await createProductUnit.mutateAsync({
+        unitCode: buildUnitCode(option.label),
+        unitLabel: option.label.trim(),
+      });
+      onSelectExisting(created);
+      return;
+    }
+    onSelectExisting(option.item);
+  }
+
+  async function selectSalesUnit(option: SearchOption<ProductUnitItem>) {
+    await selectUnit(option, (unit) => {
+      setSalesUnitId(unit.productUnitId);
+      setSalesUnitSearch(unit.unitLabel);
+    });
+  }
+
+  async function selectPackagingUnit(option: SearchOption<ProductUnitItem>) {
+    await selectUnit(option, (unit) => {
+      setPackagingUnitId(unit.productUnitId);
+      setPackagingUnitSearch(unit.unitLabel);
+    });
+  }
+
+  const isSavingReference = createIngredient.isPending || createDosage.isPending || createAtc.isPending || createProductUnit.isPending;
 
   return (
     <>
@@ -299,9 +419,11 @@ export function ArticlesPage() {
         </div>
       </ReferenceHeader>
       <ReferenceSummary total={articles.data?.total ?? rows.length} filtered={rows.length} active={summary.active} inactive={summary.inactive} />
-      {(saveArticle.isError || createIngredient.isError || createDosage.isError || createAtc.isError) && <p className="form-error">Impossible d'enregistrer les informations pharmaceutiques de l'article.</p>}
+      {(saveArticle.isError || createIngredient.isError || createDosage.isError || createAtc.isError || createProductUnit.isError) && <p className="form-error">Impossible d'enregistrer les informations pharmaceutiques de l'article.</p>}
       <Modal title={editingArticleId ? 'Modifier article' : 'Nouvel article'} open={modalOpen} onClose={() => { setModalOpen(false); resetForm(); }}>
         <form className="form-grid reference-form" onSubmit={submit}>
+          {formError && <p className="form-error">{formError}</p>}
+          {unitChangeWarning && <p className="form-warning">{unitChangeWarning}</p>}
           <label><span>Code</span><input className="input compact-input" placeholder={nextCode.data ?? 'Code article'} value={articleCode || nextCode.data || ''} onChange={(e) => setArticleCode(e.target.value)} required /></label>
           <label><span>Nom</span><input className="input compact-input" placeholder="Nom commercial" value={commercialName} onChange={(e) => setCommercialName(e.target.value)} required /></label>
           <label><span>Categorie</span><select className="input compact-input" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}><option value="">Categorie</option>{(categories.data ?? []).map((item) => <option key={item.categoryId} value={item.categoryId}>{item.categoryName}</option>)}</select></label>
@@ -363,11 +485,48 @@ export function ArticlesPage() {
               value={atcSearch}
             />
           </label>
-          <label><span>Unite vente</span><select className="input compact-input" value={salesUnitId} onChange={(e) => setSalesUnitId(e.target.value)}><option value="">Unite de vente</option>{(productUnits.data ?? []).filter((item) => item.isActive).map((item) => <option key={item.productUnitId} value={item.productUnitId}>{item.unitLabel}</option>)}</select></label>
-          <label><span>Unite conditionnement</span><select className="input compact-input" value={packagingUnitId} onChange={(e) => setPackagingUnitId(e.target.value)}><option value="">Unite de conditionnement</option>{(productUnits.data ?? []).filter((item) => item.isActive).map((item) => <option key={item.productUnitId} value={item.productUnitId}>{item.unitLabel}</option>)}</select></label>
-          <label><span>Qte / conditionnement</span><input className="input compact-input" placeholder="10" type="number" min="0.0001" step="0.0001" value={unitsPerPackage} onChange={(e) => setUnitsPerPackage(e.target.value)} /></label>
+          <label><span>Unite vente</span>
+            <FloatingSearchPopover
+              columns={[
+                { header: 'Code', render: (option: SearchOption<ProductUnitItem>) => option.kind === 'create' ? 'Nouveau' : option.item.unitCode },
+                { header: 'Libelle', render: (option: SearchOption<ProductUnitItem>) => option.kind === 'create' ? `Creer "${option.label}"` : option.item.unitLabel },
+              ]}
+              emptyText="Aucune unite produit."
+              getKey={(option) => option.kind === 'create' ? `create-${option.label}` : option.item.productUnitId}
+              onChange={(value) => { setSalesUnitSearch(value); setSalesUnitId(''); setFormError(''); }}
+              onClose={() => setSalesUnitOpen(false)}
+              onOpen={() => setSalesUnitOpen(true)}
+              onSelect={selectSalesUnit}
+              open={salesUnitOpen}
+              placeholder="Rechercher une unite de vente"
+              searchPlaceholder="Rechercher une unite de vente"
+              suggestions={filteredSalesUnitOptions}
+              value={salesUnitSearch}
+            />
+          </label>
+          <label><span>Unite conditionnement</span>
+            <FloatingSearchPopover
+              columns={[
+                { header: 'Code', render: (option: SearchOption<ProductUnitItem>) => option.kind === 'create' ? 'Nouveau' : option.item.unitCode },
+                { header: 'Libelle', render: (option: SearchOption<ProductUnitItem>) => option.kind === 'create' ? `Creer "${option.label}"` : option.item.unitLabel },
+              ]}
+              emptyText="Aucune unite produit."
+              getKey={(option) => option.kind === 'create' ? `create-${option.label}` : option.item.productUnitId}
+              onChange={(value) => { setPackagingUnitSearch(value); setPackagingUnitId(''); setFormError(''); }}
+              onClose={() => setPackagingUnitOpen(false)}
+              onOpen={() => setPackagingUnitOpen(true)}
+              onSelect={selectPackagingUnit}
+              open={packagingUnitOpen}
+              placeholder="Rechercher une unite de conditionnement"
+              searchPlaceholder="Rechercher une unite de conditionnement"
+              suggestions={filteredPackagingUnitOptions}
+              value={packagingUnitSearch}
+            />
+          </label>
+          <label><span>Qte / conditionnement</span><input className="input compact-input" placeholder="10" type="number" min="0.0001" step="0.0001" value={unitsPerPackage} onChange={(e) => setUnitsPerPackage(e.target.value)} /><small className="field-help">Nombre d'unites de vente contenues dans une unite de conditionnement.</small></label>
           <label><span>Stock min</span><input className="input compact-input" placeholder="Min" type="number" value={defaultStockMin} onChange={(e) => setDefaultStockMin(e.target.value)} /></label>
           <label><span>Stock max</span><input className="input compact-input" placeholder="Max" type="number" value={defaultStockMax} onChange={(e) => setDefaultStockMax(e.target.value)} /></label>
+          <label className="reference-toggle"><span>Actif</span><input checked={isActive} type="checkbox" onChange={(e) => setIsActive(e.target.checked)} /></label>
           <div className="modal-actions">
             <button className="ghost-button compact-button" type="button" onClick={() => { setModalOpen(false); resetForm(); }}>Annuler</button>
             <button className="button compact-button" disabled={saveArticle.isPending || isSavingReference}>{saveArticle.isPending ? 'Enregistrement...' : editingArticleId ? 'Mettre a jour' : 'Enregistrer'}</button>
@@ -381,19 +540,25 @@ export function ArticlesPage() {
         {articles.isLoading ? <p className="loading-state">Chargement des articles...</p> : rows.length === 0 ? <p className="empty-state">Aucun article trouve. Creez un article ou importez le catalogue.</p> : (
           <div className="table-wrap reference-table-wrap articles-table-wrap">
             <table className="data-table reference-table articles-table">
-              <thead><tr><th>Code</th><th>Nom</th><th>DCI</th><th>Dosage</th><th>Categorie</th><th>Forme</th><th>Barcode</th><th>Stock min</th><th>Statut</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Code</th><th>Nom</th><th>DCI</th><th>Dosage</th><th>Unite vente</th><th>Categorie</th><th>Forme</th><th>Barcode</th><th>Stock min</th><th>Statut</th><th>Actions</th></tr></thead>
               <tbody>{rows.map((article) => (
                 <tr key={article.articleId}>
                   <td><strong>{article.articleCode}</strong></td>
                   <td>{article.commercialName}</td>
                   <td>{article.dci || '-'}</td>
                   <td>{article.dosage || '-'}</td>
+                  <td>{unitById.get(article.salesUnitId ?? '') ?? '-'}</td>
                   <td>{categoryById.get(article.categoryId ?? '') ?? '-'}</td>
                   <td>{formById.get(article.formId ?? '') ?? '-'}</td>
                   <td>{article.barcode || '-'}</td>
                   <td className="quantity-cell">{article.defaultStockMin}</td>
                   <td><ActiveBadge active={article.isActive} /></td>
-                  <td><button className="ghost-button compact-button article-view-button" onClick={() => setDetailArticle(article)}>Voir</button></td>
+                  <td>
+                    <div className="article-action-group">
+                      <button className="ghost-button compact-button article-view-button" onClick={() => setDetailArticle(article)}>Voir</button>
+                      {can('articles.update') && <button className="ghost-button compact-button article-edit-button" onClick={() => openEdit(article)}>Modifier</button>}
+                    </div>
+                  </td>
                 </tr>
               ))}</tbody>
             </table>
@@ -554,6 +719,14 @@ function buildAtcOptions(
     filtered.unshift({ kind: 'create' as const, label: search.trim() });
   }
   return filtered;
+}
+
+function buildUnitCode(label: string) {
+  const normalized = normalizeSearch(label)
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toUpperCase();
+  return (normalized || 'UNIT').slice(0, 40);
 }
 
 function normalizeSearch(value: string) {

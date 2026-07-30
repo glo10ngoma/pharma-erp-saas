@@ -145,9 +145,9 @@ export class ArticlesRepository {
         tenant_id, article_code, commercial_name, dci, category_id, sub_category_id,
         form_id, route_id, product_type_id, dosage, packaging, units_per_package, atc_code,
         prescription_required, barcode, sales_unit_id, packaging_unit_id, dosage_id, dci_id, atc_id,
-        default_stock_min, default_stock_max
+        default_stock_min, default_stock_max, is_active
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
       RETURNING
         article_id,
         article_code,
@@ -198,6 +198,7 @@ export class ArticlesRepository {
         dto.atcId ?? null,
         dto.defaultStockMin ?? 0,
         dto.defaultStockMax ?? null,
+        dto.isActive ?? true,
       ],
     );
 
@@ -236,6 +237,7 @@ export class ArticlesRepository {
         form_id=$8, route_id=$9, product_type_id=$10, dosage=$11, packaging=$12,
         units_per_package=$13, atc_code=$14, prescription_required=$15, barcode=$16, default_stock_min=$17,
         default_stock_max=$18, sales_unit_id=$19, packaging_unit_id=$20, dosage_id=$21, dci_id=$22, atc_id=$23,
+        is_active=$24,
         updated_at=CURRENT_TIMESTAMP
       WHERE tenant_id=$1 AND article_id=$2
       `,
@@ -263,6 +265,7 @@ export class ArticlesRepository {
         dto.dosageId ?? current.dosageId,
         dto.dciId ?? current.dciId,
         dto.atcId ?? current.atcId,
+        dto.isActive ?? current.isActive,
       ],
     );
     return this.findOne(user, articleId);

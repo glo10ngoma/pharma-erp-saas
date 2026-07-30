@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsDateString, IsNumber, IsString, IsUUID, Min } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsDateString, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 
 export class AddPurchaseItemDto {
   @ApiProperty()
@@ -18,6 +18,50 @@ export class AddPurchaseItemDto {
   @IsNumber()
   @Min(0.001)
   quantity: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  purchaseUnitId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  purchaseUnitLabelSnapshot?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0.001)
+  purchaseQuantity?: number;
+
+  @ApiPropertyOptional({ default: 1 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0.000001)
+  conversionFactor?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  stockUnitId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  stockUnitLabelSnapshot?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0.001)
+  stockQuantity?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  lineOrder?: number;
 
   @ApiProperty()
   @IsNumber()

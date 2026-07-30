@@ -15,11 +15,15 @@ export type AtcCodeItem = { atcId: string; atcCode: string; atcLabel: string; le
 export const referenceService = {
   categories: {
     getAll: () => apiClient.get<CategoryItem[]>('/categories'),
+    getById: (id: string) => apiClient.get<CategoryItem>(`/categories/${id}`),
     create: (payload: Record<string, unknown>) => apiClient.post<CategoryItem>('/categories', payload),
+    update: (id: string, payload: Record<string, unknown>) => apiClient.patch<CategoryItem>(`/categories/${id}`, payload),
   },
   subCategories: {
     getAll: () => apiClient.get<SubCategoryItem[]>('/sub-categories'),
+    getById: (id: string) => apiClient.get<SubCategoryItem>(`/sub-categories/${id}`),
     create: (payload: Record<string, unknown>) => apiClient.post<SubCategoryItem>('/sub-categories', payload),
+    update: (id: string, payload: Record<string, unknown>) => apiClient.patch<SubCategoryItem>(`/sub-categories/${id}`, payload),
   },
   galenicForms: {
     getAll: () => apiClient.get<GalenicFormItem[]>('/galenic-forms'),
