@@ -1,6 +1,6 @@
 import { Fragment, FormEvent, KeyboardEvent, ReactNode, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Article, articlesService } from '../../services/articles.service';
 import { apiErrorMessage } from '../../services/apiError';
 import { codeGeneratorService } from '../../services/codeGenerator.service';
@@ -179,10 +179,10 @@ function issueForLine(line: PurchaseDraftLine): LineIssue {
 
 export function PurchasesPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [status, setStatus] = useState('');
   const [search, setSearch] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
-  const [selectedPurchaseId, setSelectedPurchaseId] = useState<string | null>(null);
   const [selectedLineId, setSelectedLineId] = useState('');
   const [activeAutocomplete, setActiveAutocomplete] = useState('');
   const [form, setForm] = useState<PurchaseForm>(initialForm);
@@ -200,7 +200,6 @@ export function PurchasesPage() {
   const forms = useQuery({ queryKey: ['galenic-forms'], queryFn: async () => (await referenceService.galenicForms.getAll()).data });
   const stocks = useQuery({ queryKey: ['stocks'], queryFn: async () => (await stocksService.getAll()).data });
   const nextCode = useQuery({ queryKey: ['next-code', 'purchases', createOpen], enabled: createOpen, queryFn: async () => (await codeGeneratorService.next('purchases')).data.code });
-  const detail = useQuery({ queryKey: ['purchase', selectedPurchaseId], enabled: Boolean(selectedPurchaseId), queryFn: async () => (await purchasesService.getById(selectedPurchaseId as string)).data });
 
   const articleById = useMemo(() => new Map((articles.data ?? []).map((article) => [article.articleId, article])), [articles.data]);
   const categoryById = useMemo(() => new Map((categories.data ?? []).map((category) => [category.categoryId, category.categoryName])), [categories.data]);
@@ -275,7 +274,6 @@ export function PurchasesPage() {
     onSuccess: async (purchase) => {
       setCreateOpen(false);
       resetDraft();
-      setSelectedPurchaseId(purchase.purchaseId);
       await qc.invalidateQueries({ queryKey: ['purchases'] });
       await qc.invalidateQueries({ queryKey: ['purchase', purchase.purchaseId] });
     },
@@ -498,9 +496,6 @@ export function PurchasesPage() {
     }
   }
 
-  const selectedPurchase = detail.data;
-  const detailItems = selectedPurchase?.items ?? [];
-  const detailTotal = detailItems.reduce((sum, item) => sum + Number(item.lineTotal ?? 0), 0);
   const currentSupplier = suppliers.data?.find((supplier) => supplier.supplierId === form.supplierId);
   const currentSite = sites.data?.find((site) => site.siteId === form.siteId);
 
@@ -550,14 +545,14 @@ export function PurchasesPage() {
             <table className="data-table purchase-table">
               <thead><tr><th>Numero</th><th>Fournisseur</th><th>Site</th><th>Date</th><th>Total</th><th>Statut</th><th></th></tr></thead>
               <tbody>{rows.map((purchase) => (
-                <tr className="clickable-row" key={purchase.purchaseId} onClick={() => setSelectedPurchaseId(purchase.purchaseId)}>
+                <tr className="clickable-row" key={purchase.purchaseId} onClick={() => navigate(`/purchases/${purchase.purchaseId}`)}>
                   <td><strong>{purchase.purchaseNumber}</strong></td>
                   <td>{purchase.supplierName ?? '-'}</td>
                   <td>{purchase.siteName ?? '-'}</td>
                   <td>{formatDate(purchase.purchaseDate)}</td>
                   <td className="numeric-text">{formatMoney(purchase.totalAmount, purchase.currencyCode ?? 'USD', purchase.currencySymbol)}</td>
                   <td><span className={`badge compact-badge ${statusBadge(purchase.status)}`}>{purchase.status}</span></td>
-                  <td><button className="ghost-button compact-button" type="button" onClick={(event) => { event.stopPropagation(); setSelectedPurchaseId(purchase.purchaseId); }}>Voir</button></td>
+                  <td><button className="ghost-button compact-button" type="button" onClick={(event) => { event.stopPropagation(); navigate(`/purchases/${purchase.purchaseId}`); }}>Voir</button></td>
                 </tr>
               ))}</tbody>
             </table>
@@ -694,73 +689,7 @@ export function PurchasesPage() {
         </form>
       </Modal>
 
-      <Modal title="Detail achat" open={Boolean(selectedPurchaseId)} onClose={() => setSelectedPurchaseId(null)}>
-        {validate.isError && <p className="form-error">{apiErrorMessage(validate.error)}</p>}
-        {detail.isLoading || !selectedPurchase ? <p className="loading-state">Chargement du detail achat...</p> : (
-          <PurchaseDetailModal purchase={selectedPurchase} itemCount={detailItems.length} itemsTotal={detailTotal} onValidate={() => validate.mutate(selectedPurchase.purchaseId)} validating={validate.isPending} />
-        )}
-      </Modal>
     </>
-  );
-}
-
-function PurchaseDetailModal({
-  purchase,
-  itemCount,
-  itemsTotal,
-  onValidate,
-  validating,
-}: {
-  purchase: Purchase;
-  itemCount: number;
-  itemsTotal: number;
-  onValidate: () => void;
-  validating: boolean;
-}) {
-  const currencyCode = purchase.currencyCode ?? 'USD';
-  const currencySymbol = purchase.currencySymbol;
-
-  return (
-    <div className="purchase-detail">
-      <div className="detail-grid">
-        <div><span>Code</span><strong>{purchase.purchaseNumber}</strong></div>
-        <div><span>Date</span><strong>{formatDate(purchase.purchaseDate)}</strong></div>
-        <div><span>Fournisseur</span><strong>{purchase.supplierName ?? '-'}</strong></div>
-        <div><span>Site</span><strong>{purchase.siteName ?? '-'}</strong></div>
-        <div><span>Statut</span><strong><span className={`badge ${statusBadge(purchase.status)}`}>{purchase.status}</span></strong></div>
-        <div><span>Devise</span><strong>{currencyCode}</strong></div>
-        <div><span>Taux de change</span><strong>{purchase.exchangeRate}</strong></div>
-        <div><span>Total</span><strong>{formatMoney(purchase.totalAmount, currencyCode, currencySymbol)}</strong></div>
-      </div>
-
-      <div className="table-wrap">
-        <table className="data-table purchase-detail-table">
-          <thead><tr><th>Article</th><th>Lot</th><th>Expiration</th><th>Quantite</th><th>Prix achat</th><th>Prix vente</th><th>Total ligne</th></tr></thead>
-          <tbody>{(purchase.items ?? []).map((item) => (
-            <tr key={item.purchaseItemId}>
-              <td>{item.commercialName ?? item.articleCode ?? '-'}</td>
-              <td>{item.lotNumber}</td>
-              <td>{formatDate(item.expiryDate)}</td>
-              <td className="quantity-cell">{item.quantity}</td>
-              <td className="numeric-text">{formatMoney(item.purchaseUnitPrice, currencyCode, currencySymbol)}</td>
-              <td className="numeric-text">{formatMoney(item.sellingUnitPrice, currencyCode, currencySymbol)}</td>
-              <td className="numeric-text">{formatMoney(item.lineTotal, currencyCode, currencySymbol)}</td>
-            </tr>
-          ))}</tbody>
-        </table>
-      </div>
-
-      <div className="form-summary">
-        <span>{itemCount} ligne(s)</span>
-        <strong>{formatMoney(itemsTotal, currencyCode, currencySymbol)}</strong>
-      </div>
-
-      {purchase.status === 'DRAFT' && (
-        <div className="modal-actions">
-          <button className="button" type="button" onClick={onValidate} disabled={validating || itemCount === 0}>{validating ? 'Validation...' : 'Valider achat'}</button>
-        </div>
-      )}
-    </div>
   );
 }
 
