@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
+import { CommentsPanel } from '../../components/CommentsPanel';
 import { apiErrorMessage } from '../../services/apiError';
 import { purchasesService } from '../../services/purchases.service';
 import { formatDate } from '../../utils/date';
@@ -148,6 +149,8 @@ export function PurchaseDetailPage() {
             <p className="muted">Historique masque: permission purchase_payments.read requise.</p>
           </div>
         )}
+
+        <CommentsPanel entityType="PURCHASE" entityId={purchase.purchaseId} />
       </>
     )}
   </>;

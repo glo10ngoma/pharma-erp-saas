@@ -20,12 +20,17 @@ type CashSessionRow = {
   cash_register_id: string | null;
   register_name: string | null;
   register_currency_code: string | null;
+  workstation_id: string | null;
+  workstation_name: string | null;
   opened_at: Date;
   closed_at: Date | null;
   opening_balance: string;
   closing_balance: string | null;
   expected_closing_balance: string;
   difference_amount: string;
+  opened_ip_address: string | null;
+  closed_ip_address: string | null;
+  device_uuid: string | null;
   counted_closing_balance_usd: string | null;
   counted_closing_balance_cdf: string | null;
   expected_closing_balance_usd: string | null;
@@ -65,8 +70,10 @@ export class CashRepository {
       SELECT cs.cash_session_id, cs.tenant_id, cs.site_id, s.site_name, cs.user_id,
              u.full_name AS user_name, cs.cash_register_id, cr.register_name,
              cur.currency_code AS register_currency_code,
+             cs.workstation_id, cs.workstation_name,
              cs.opened_at, cs.closed_at, cs.opening_balance, cs.closing_balance,
              cs.expected_closing_balance, cs.difference_amount,
+             cs.opened_ip_address, cs.closed_ip_address, cs.device_uuid,
              cs.counted_closing_balance_usd, cs.counted_closing_balance_cdf,
              cs.expected_closing_balance_usd, cs.expected_closing_balance_cdf,
              cs.closing_difference_usd, cs.closing_difference_cdf,
@@ -85,15 +92,17 @@ export class CashRepository {
     return result.rows.map(this.toSession);
   }
 
-  async currentSession(user: AuthUser, siteId?: string) {
+  async currentSession(user: AuthUser, siteId?: string, deviceUuid?: string) {
     if (siteId) await this.assertSiteAllowed(user, siteId);
     const result = await this.db.query<CashSessionRow>(
       `
       SELECT cs.cash_session_id, cs.tenant_id, cs.site_id, s.site_name, cs.user_id,
              u.full_name AS user_name, cs.cash_register_id, cr.register_name,
              cur.currency_code AS register_currency_code,
+             cs.workstation_id, cs.workstation_name,
              cs.opened_at, cs.closed_at, cs.opening_balance, cs.closing_balance,
              cs.expected_closing_balance, cs.difference_amount,
+             cs.opened_ip_address, cs.closed_ip_address, cs.device_uuid,
              cs.counted_closing_balance_usd, cs.counted_closing_balance_cdf,
              cs.expected_closing_balance_usd, cs.expected_closing_balance_cdf,
              cs.closing_difference_usd, cs.closing_difference_cdf,
@@ -108,59 +117,109 @@ export class CashRepository {
         AND cs.status = 'OPEN'
         AND ($3::uuid IS NULL OR cs.site_id = $3::uuid)
         AND ($4::uuid IS NULL OR cs.site_id = $4::uuid)
+        AND ($5::text IS NULL OR cs.device_uuid = $5::text)
       ORDER BY cs.opened_at DESC
       LIMIT 1
       `,
-      [user.tenantId, user.userId, siteId ?? null, user.siteId ?? null],
+      [user.tenantId, user.userId, siteId ?? null, user.siteId ?? null, deviceUuid ?? null],
     );
     return result.rows[0] ? this.toSession(result.rows[0]) : null;
   }
 
-  async openSession(user: AuthUser, dto: OpenCashSessionDto) {
+  async openSession(user: AuthUser, dto: OpenCashSessionDto, ipAddress?: string) {
     await this.assertSiteAllowed(user, dto.siteId);
     if (dto.cashRegisterId) await this.assertCashRegister(user, dto.siteId, dto.cashRegisterId);
+    const workstation = dto.workstationId ? await this.assertWorkstation(user, dto.siteId, dto.workstationId) : null;
 
     return this.db.transaction(async (client) => {
-      const existing = await client.query<{ total: string }>(
-        `
-        SELECT COUNT(*)::int AS total
-        FROM cash_sessions
-        WHERE tenant_id = $1 AND site_id = $2 AND user_id = $3 AND status = 'OPEN'
-        `,
-        [user.tenantId, dto.siteId, user.userId],
-      );
-      if (Number(existing.rows[0]?.total ?? 0) > 0) throw new ConflictException('CASH_SESSION_ALREADY_OPEN');
+      if (!user.permissions.includes('sessions.multiple')) {
+        const existing = await client.query<{ total: string }>(
+          `
+          SELECT COUNT(*)::int AS total
+          FROM cash_sessions
+          WHERE tenant_id = $1 AND site_id = $2 AND user_id = $3 AND status = 'OPEN'
+          `,
+          [user.tenantId, dto.siteId, user.userId],
+        );
+        if (Number(existing.rows[0]?.total ?? 0) > 0) throw new ConflictException('CASH_SESSION_ALREADY_OPEN');
+      }
+
+      if (dto.workstationId) {
+        const existingWorkstation = await client.query<{ total: string }>(
+          `
+          SELECT COUNT(*)::int AS total
+          FROM cash_sessions
+          WHERE tenant_id = $1 AND site_id = $2 AND workstation_id = $3 AND status = 'OPEN'
+          `,
+          [user.tenantId, dto.siteId, dto.workstationId],
+        );
+        if (Number(existingWorkstation.rows[0]?.total ?? 0) > 0) {
+          throw new ConflictException('WORKSTATION_SESSION_ALREADY_OPEN');
+        }
+      }
 
       const created = await client.query<{ cash_session_id: string }>(
         `
-        INSERT INTO cash_sessions (tenant_id, site_id, user_id, cash_register_id, opening_balance, status, notes)
-        VALUES ($1, $2, $3, $4, $5, 'OPEN', $6)
+        INSERT INTO cash_sessions (
+          tenant_id, site_id, user_id, cash_register_id, workstation_id, workstation_name,
+          opening_balance, status, notes, opened_ip_address, device_uuid
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 'OPEN', $8, $9, $10)
         RETURNING cash_session_id
         `,
-        [user.tenantId, dto.siteId, user.userId, dto.cashRegisterId ?? null, dto.openingBalance, dto.notes ?? null],
+        [
+          user.tenantId,
+          dto.siteId,
+          user.userId,
+          dto.cashRegisterId ?? null,
+          dto.workstationId ?? null,
+          workstation?.workstation_name ?? null,
+          dto.openingBalance,
+          dto.notes ?? null,
+          ipAddress ?? null,
+          dto.deviceUuid ?? null,
+        ],
       );
 
       await client.query(
         `
-        INSERT INTO audit_logs (tenant_id, user_id, table_name, record_id, action_type, new_value)
-        VALUES ($1, $2, 'cash_sessions', $3, 'INSERT', $4::jsonb)
+        INSERT INTO audit_logs (
+          tenant_id, site_id, user_id, table_name, record_id, action_type, new_value, workstation_id, workstation_name, cash_session_id, ip_address
+        )
+        VALUES ($1, $2, $3, 'cash_sessions', $4, 'INSERT', $5::jsonb, $6, $7, $4, $8)
         `,
-        [user.tenantId, user.userId, created.rows[0].cash_session_id, JSON.stringify({ status: 'OPEN', openingBalance: dto.openingBalance })],
+        [
+          user.tenantId,
+          dto.siteId,
+          user.userId,
+          created.rows[0].cash_session_id,
+          JSON.stringify({
+            status: 'OPEN',
+            openingBalance: dto.openingBalance,
+            workstationId: dto.workstationId ?? null,
+            workstationName: workstation?.workstation_name ?? null,
+          }),
+          dto.workstationId ?? null,
+          workstation?.workstation_name ?? null,
+          ipAddress ?? null,
+        ],
       );
 
       return created.rows[0].cash_session_id;
     }).then((id) => this.findSessionById(user, id));
   }
 
-  async closeSession(user: AuthUser, id: string, dto: CloseCashSessionDto) {
+  async closeSession(user: AuthUser, id: string, dto: CloseCashSessionDto, ipAddress?: string) {
     await this.db.transaction(async (client) => {
       const locked = await client.query<CashSessionRow>(
         `
         SELECT cs.cash_session_id, cs.tenant_id, cs.site_id, NULL::text AS site_name, cs.user_id,
                NULL::text AS user_name, cs.cash_register_id, NULL::text AS register_name,
                cur.currency_code AS register_currency_code,
+               cs.workstation_id, cs.workstation_name,
                cs.opened_at, cs.closed_at, cs.opening_balance, cs.closing_balance,
                cs.expected_closing_balance, cs.difference_amount,
+               cs.opened_ip_address, cs.closed_ip_address, cs.device_uuid,
                cs.counted_closing_balance_usd, cs.counted_closing_balance_cdf,
                cs.expected_closing_balance_usd, cs.expected_closing_balance_cdf,
                cs.closing_difference_usd, cs.closing_difference_cdf,
@@ -228,7 +287,8 @@ export class CashRepository {
             closing_difference_cdf = $11,
             validated_by = $12,
             validated_at = CURRENT_TIMESTAMP,
-            notes = COALESCE($13, notes)
+            closed_ip_address = $13,
+            notes = COALESCE($14, notes)
         WHERE tenant_id = $1 AND cash_session_id = $2
         `,
         [
@@ -244,16 +304,19 @@ export class CashRepository {
           differenceUsd,
           differenceCdf,
           user.userId,
+          ipAddress ?? null,
           dto.notes ?? null,
         ],
       );
 
       await client.query(
         `
-        INSERT INTO audit_logs (tenant_id, user_id, table_name, record_id, action_type, new_value)
-        VALUES ($1, $2, 'cash_sessions', $3, 'VALIDATE', $4::jsonb)
+        INSERT INTO audit_logs (
+          tenant_id, site_id, user_id, table_name, record_id, action_type, new_value, cash_session_id, workstation_id, workstation_name, ip_address
+        )
+        VALUES ($1, $2, $3, 'cash_sessions', $4, 'VALIDATE', $5::jsonb, $6, $7, $8, $9)
         `,
-        [user.tenantId, user.userId, id, JSON.stringify({
+        [user.tenantId, session.site_id, user.userId, id, JSON.stringify({
           status: 'CLOSED',
           expectedClosingBalance: legacyExpected,
           countedClosingBalance: legacyCounted,
@@ -264,7 +327,7 @@ export class CashRepository {
           countedClosingBalanceCdf: countedBalances.cdf,
           closingDifferenceUsd: differenceUsd,
           closingDifferenceCdf: differenceCdf,
-        })],
+        }), id, session.workstation_id, session.workstation_name, ipAddress ?? null],
       );
     });
 
@@ -362,8 +425,10 @@ export class CashRepository {
       SELECT cs.cash_session_id, cs.tenant_id, cs.site_id, s.site_name, cs.user_id,
              u.full_name AS user_name, cs.cash_register_id, cr.register_name,
              cur.currency_code AS register_currency_code,
+             cs.workstation_id, cs.workstation_name,
              cs.opened_at, cs.closed_at, cs.opening_balance, cs.closing_balance,
              cs.expected_closing_balance, cs.difference_amount,
+             cs.opened_ip_address, cs.closed_ip_address, cs.device_uuid,
              cs.counted_closing_balance_usd, cs.counted_closing_balance_cdf,
              cs.expected_closing_balance_usd, cs.expected_closing_balance_cdf,
              cs.closing_difference_usd, cs.closing_difference_cdf,
@@ -401,6 +466,19 @@ export class CashRepository {
       [user.tenantId, siteId, cashRegisterId],
     );
     if (Number(result.rows[0]?.total ?? 0) !== 1) throw new BadRequestException('CASH_REGISTER_NOT_IN_TENANT');
+  }
+
+  private async assertWorkstation(user: AuthUser, siteId: string, workstationId: string) {
+    const result = await this.db.query<{ workstation_id: string; workstation_name: string }>(
+      `
+      SELECT workstation_id, workstation_name
+      FROM pos_workstations
+      WHERE tenant_id = $1 AND site_id = $2 AND workstation_id = $3 AND is_active = true
+      `,
+      [user.tenantId, siteId, workstationId],
+    );
+    if (!result.rows[0]) throw new BadRequestException('WORKSTATION_NOT_IN_TENANT');
+    return result.rows[0];
   }
 
   private async defaultCurrencyId(client: Queryable) {
@@ -444,8 +522,14 @@ export class CashRepository {
       cashRegisterId: row.cash_register_id,
       registerName: row.register_name,
       registerCurrencyCode,
+      workstationId: row.workstation_id,
+      workstationName: row.workstation_name,
+      sessionLabel: `${row.user_name ?? 'Utilisateur'} • ${row.workstation_name ?? 'Poste non renseigne'} • ${row.status === 'OPEN' ? 'Ouverte' : 'Fermee'}`,
       openedAt: row.opened_at,
       closedAt: row.closed_at,
+      openedIpAddress: row.opened_ip_address,
+      closedIpAddress: row.closed_ip_address,
+      deviceUuid: row.device_uuid,
       openingBalance,
       openingBalanceUsd,
       openingBalanceCdf,

@@ -13,16 +13,16 @@ export class CashService {
     return this.repository.findSessions(user);
   }
 
-  openSession(user: AuthUser, dto: OpenCashSessionDto) {
-    return this.repository.openSession(user, dto);
+  openSession(user: AuthUser, dto: OpenCashSessionDto, ipAddress?: string) {
+    return this.repository.openSession(user, dto, ipAddress);
   }
 
-  currentSession(user: AuthUser, siteId?: string) {
-    return this.repository.currentSession(user, siteId);
+  currentSession(user: AuthUser, siteId?: string, deviceUuid?: string) {
+    return this.repository.currentSession(user, siteId, deviceUuid);
   }
 
-  closeSession(user: AuthUser, id: string, dto: CloseCashSessionDto) {
-    return this.repository.closeSession(user, id, dto);
+  closeSession(user: AuthUser, id: string, dto: CloseCashSessionDto, ipAddress?: string) {
+    return this.repository.closeSession(user, id, dto, ipAddress);
   }
 
   findMovements(user: AuthUser, sessionId?: string) {

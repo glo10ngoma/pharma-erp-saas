@@ -21,6 +21,8 @@ export function DashboardLayout() {
       links: [
         [permissions.includes('reports.dashboard') ? '/reports/dashboard' : '/dashboard', permissions.includes('reports.dashboard') ? 'Dashboard BI' : 'Dashboard', undefined],
         ['/notifications', 'Notifications', undefined],
+        ['/activity', 'Activite recente', 'audit.read'],
+        ['/chat', 'Messagerie', 'chat.read'],
         ['/profile', 'Mon profil', undefined],
       ],
     },
@@ -55,6 +57,7 @@ export function DashboardLayout() {
         ['/permissions', 'Permissions', 'permissions.read'],
         ['/sites', 'Sites', 'sites.read'],
         ['/administration/cash-registers', 'Caisses', 'cash_registers.read'],
+        ['/administration/workstations', 'Postes de travail', 'cash_registers.read'],
         ['/administration/general-settings', 'Parametres generaux', 'settings.exchange_rate.read'],
         ['/settings/exchange-rate', 'Taux de change', 'settings.exchange_rate.read'],
         ['/administration/numbering', 'Numerotation', 'articles.read'],

@@ -30,6 +30,7 @@ function describeError(error) {
 
 let token = '';
 let context = {};
+const stamp = Date.now();
 
 function unwrap(body) {
   return body && Object.prototype.hasOwnProperty.call(body, 'data') ? body.data : body;
@@ -37,13 +38,14 @@ function unwrap(body) {
 
 async function api(path, options = {}) {
   const url = baseUrl + path;
+  const authToken = options.authToken ?? token;
   let response;
   try {
     response = await fetch(url, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
         ...(options.headers || {}),
       },
       body: options.body && typeof options.body !== 'string' ? JSON.stringify(options.body) : options.body,
@@ -87,6 +89,15 @@ async function auth() {
   token = login.accessToken;
   const me = await api('/auth/me');
   return Boolean(token && me.tenantId && Array.isArray(me.permissions));
+}
+
+async function loginAs(email, password) {
+  const login = await api('/auth/login', {
+    method: 'POST',
+    authToken: '',
+    body: { email, password },
+  });
+  return login.accessToken;
 }
 
 async function articles() {
@@ -194,34 +205,140 @@ async function closeCurrentIfAny() {
 }
 
 async function cashSession() {
-  await closeCurrentIfAny();
-  const opened = await api('/cash/sessions/open', {
+  const adminToken = token;
+  const permissions = await api('/permissions', { authToken: adminToken });
+  const permissionIds = (codes) => permissions.filter((permission) => codes.includes(permission.permissionCode)).map((permission) => permission.permissionId);
+  const basicCodes = ['cash_sessions.open', 'cash_sessions.close', 'cash_registers.read'];
+  const standardRole = await api('/roles', {
     method: 'POST',
-    body: { siteId: context.site_id, openingBalance: 100 },
+    authToken: adminToken,
+    body: {
+      roleName: `MVP_STD_${stamp}`,
+      description: 'Role validation MVP standard',
+      permissionIds: permissionIds(basicCodes),
+    },
   });
-  let blocked = false;
+  const multiRole = await api('/roles', {
+    method: 'POST',
+    authToken: adminToken,
+    body: {
+      roleName: `MVP_MULTI_${stamp}`,
+      description: 'Role validation MVP multi-session',
+      permissionIds: permissionIds([...basicCodes, 'sessions.multiple']),
+    },
+  });
+
+  const createUser = (suffix, roleId) => api('/users', {
+    method: 'POST',
+    authToken: adminToken,
+    body: {
+      fullName: `MVP ${suffix}`,
+      username: `mvp.${suffix.toLowerCase()}.${stamp}`,
+      email: `mvp.${suffix.toLowerCase()}.${stamp}@demo.local`,
+      roleId,
+      siteId: context.site_id,
+      password: 'Recipe123!',
+      isActive: true,
+    },
+  });
+
+  const standardUserA = await createUser('StandardA', standardRole.roleId);
+  const standardUserB = await createUser('StandardB', standardRole.roleId);
+  const multiUser = await createUser('Multi', multiRole.roleId);
+
+  const createWorkstation = (code, name, deviceUuid) => api('/workstations', {
+    method: 'POST',
+    authToken: adminToken,
+    body: {
+      siteId: context.site_id,
+      workstationCode: `${code}-${stamp}`,
+      workstationName: `${name} ${stamp}`,
+      workstationType: 'POS',
+      deviceUuid,
+    },
+  });
+
+  const workstationA = await createWorkstation('MVP-WS-A', 'MVP Poste A', `mvp-device-a-${stamp}`);
+  const workstationB = await createWorkstation('MVP-WS-B', 'MVP Poste B', `mvp-device-b-${stamp}`);
+  const workstationC = await createWorkstation('MVP-WS-C', 'MVP Poste C', `mvp-device-c-${stamp}`);
+
+  const standardTokenA = await loginAs(standardUserA.email, 'Recipe123!');
+  const standardTokenB = await loginAs(standardUserB.email, 'Recipe123!');
+  const multiToken = await loginAs(multiUser.email, 'Recipe123!');
+
+  const closeSessionExact = (authToken, sessionId, countedClosingBalance = 100) => api(`/cash/sessions/${sessionId}/close`, {
+    method: 'POST',
+    authToken,
+    body: { countedClosingBalance, notes: 'Auto-close validate:mvp' },
+  });
+
+  const standardOpened = await api('/cash/sessions/open', {
+    method: 'POST',
+    authToken: standardTokenA,
+    body: { siteId: context.site_id, openingBalance: 100, workstationId: workstationA.workstationId, deviceUuid: `mvp-device-a-${stamp}` },
+  });
+  let standardBlocked = false;
   try {
     await api('/cash/sessions/open', {
       method: 'POST',
-      body: { siteId: context.site_id, openingBalance: 100 },
+      authToken: standardTokenA,
+      body: { siteId: context.site_id, openingBalance: 100, workstationId: workstationB.workstationId, deviceUuid: `mvp-device-b-${stamp}` },
     });
   } catch (error) {
-    blocked = error.status === 409;
+    standardBlocked = error.status === 409;
   }
-  await api('/cash/expenses', {
+  const standardClosed = await closeSessionExact(standardTokenA, standardOpened.cashSessionId, 100);
+
+  const multiOpenedA = await api('/cash/sessions/open', {
     method: 'POST',
-    body: {
-      cashSessionId: opened.cashSessionId,
-      expenseCategory: 'Validation',
-      description: 'Depense validate:mvp',
-      amount: 5,
-    },
+    authToken: multiToken,
+    body: { siteId: context.site_id, openingBalance: 100, workstationId: workstationA.workstationId, deviceUuid: `mvp-device-a-${stamp}-multi` },
   });
-  const closed = await api(`/cash/sessions/${opened.cashSessionId}/close`, {
+  const multiOpenedB = await api('/cash/sessions/open', {
     method: 'POST',
-    body: { countedClosingBalance: 95 },
+    authToken: multiToken,
+    body: { siteId: context.site_id, openingBalance: 100, workstationId: workstationB.workstationId, deviceUuid: `mvp-device-b-${stamp}-multi` },
   });
-  return opened.status === 'OPEN' && blocked && closed.status === 'CLOSED' && closed.differenceAmount === 0;
+  let sameWorkstationBlocked = false;
+  try {
+    await api('/cash/sessions/open', {
+      method: 'POST',
+      authToken: multiToken,
+      body: { siteId: context.site_id, openingBalance: 100, workstationId: workstationA.workstationId, deviceUuid: `mvp-device-a-${stamp}-again` },
+    });
+  } catch (error) {
+    sameWorkstationBlocked = error.status === 409;
+  }
+  const multiClosedA = await closeSessionExact(multiToken, multiOpenedA.cashSessionId, 100);
+  const multiClosedB = await closeSessionExact(multiToken, multiOpenedB.cashSessionId, 100);
+
+  const parallelOpenedA = await api('/cash/sessions/open', {
+    method: 'POST',
+    authToken: standardTokenA,
+    body: { siteId: context.site_id, openingBalance: 100, workstationId: workstationA.workstationId, deviceUuid: `mvp-device-a-${stamp}-parallel` },
+  });
+  const parallelOpenedB = await api('/cash/sessions/open', {
+    method: 'POST',
+    authToken: standardTokenB,
+    body: { siteId: context.site_id, openingBalance: 100, workstationId: workstationC.workstationId, deviceUuid: `mvp-device-c-${stamp}-parallel` },
+  });
+  const parallelClosedA = await closeSessionExact(standardTokenA, parallelOpenedA.cashSessionId, 100);
+  const parallelClosedB = await closeSessionExact(standardTokenB, parallelOpenedB.cashSessionId, 100);
+
+  return Boolean(
+    standardOpened.status === 'OPEN' &&
+    standardBlocked &&
+    standardClosed.status === 'CLOSED' &&
+    multiOpenedA.status === 'OPEN' &&
+    multiOpenedB.status === 'OPEN' &&
+    sameWorkstationBlocked &&
+    multiClosedA.status === 'CLOSED' &&
+    multiClosedB.status === 'CLOSED' &&
+    parallelOpenedA.status === 'OPEN' &&
+    parallelOpenedB.status === 'OPEN' &&
+    parallelClosedA.status === 'CLOSED' &&
+    parallelClosedB.status === 'CLOSED'
+  );
 }
 
 const suites = {

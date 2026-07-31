@@ -2,10 +2,13 @@ import { FormEvent, Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { Link, NavLink, useLocation, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../auth/AuthContext';
+import { CommentsPanel } from '../../components/CommentsPanel';
+import { activityService } from '../../services/activity.service';
 import { apiErrorMessage } from '../../services/apiError';
 import { cashService, CashMovement, CashSession } from '../../services/cash.service';
 import { Sale, salesService } from '../../services/sales.service';
 import { sitesService } from '../../services/sites.service';
+import { workstationsService } from '../../services/workstations.service';
 import { formatDate } from '../../utils/date';
 import { formatMoney } from '../../utils/money';
 
@@ -69,6 +72,7 @@ export function CashPage() {
   }, [location.pathname]);
 
   const [openingBalance, setOpeningBalance] = useState('0');
+  const [workstationId, setWorkstationId] = useState('');
   const [expenseCategory, setExpenseCategory] = useState('Frais caisse');
   const [expenseDescription, setExpenseDescription] = useState('');
   const [expenseAmount, setExpenseAmount] = useState('');
@@ -81,6 +85,7 @@ export function CashPage() {
   const selectedSiteId = siteId || sites.data?.[0]?.siteId || '';
 
   const sessions = useQuery({ queryKey: ['cash-sessions'], queryFn: async () => (await cashService.getSessions()).data });
+  const workstations = useQuery({ queryKey: ['workstations'], queryFn: async () => (await workstationsService.getAll()).data });
   const current = useQuery({
     queryKey: ['cash-current', selectedSiteId],
     queryFn: async () => (await cashService.getCurrentSession(selectedSiteId || undefined)).data,
@@ -100,6 +105,10 @@ export function CashPage() {
   );
   const sessionId = searchParams.get('sessionId') ?? '';
   const defaultSession = currentSession ?? sessionsForSite[0] ?? null;
+  const siteWorkstations = useMemo(
+    () => (workstations.data ?? []).filter((item) => item.isActive && (!selectedSiteId || item.siteId === selectedSiteId)),
+    [selectedSiteId, workstations.data],
+  );
 
   useEffect(() => {
     if (!siteId && sites.data?.[0]?.siteId) {
@@ -116,6 +125,12 @@ export function CashPage() {
       setSearchParams(next, { replace: true });
     }
   }, [defaultSession?.cashSessionId, searchParams, sessionId, setSearchParams]);
+
+  useEffect(() => {
+    if (!workstationId && siteWorkstations[0]?.workstationId) {
+      setWorkstationId(siteWorkstations[0].workstationId);
+    }
+  }, [siteWorkstations, workstationId]);
 
   const activeSession = useMemo(
     () => sessionsForSite.find((session) => session.cashSessionId === sessionId) ?? defaultSession,
@@ -200,6 +215,11 @@ export function CashPage() {
   const settlementMetricsUsd = useMemo(() => buildSettlementMetrics(settlementRows, 'USD'), [settlementRows]);
   const settlementMetricsCdf = useMemo(() => buildSettlementMetrics(settlementRows, 'CDF'), [settlementRows]);
   const cashiers = useMemo(() => Array.from(new Set(settlementRows.map((row) => row.cashier).filter(Boolean))).sort(), [settlementRows]);
+  const recentActivity = useQuery({
+    queryKey: ['recent-activity', selectedSiteId],
+    queryFn: async () => (await activityService.getRecent(12)).data,
+    refetchInterval: 15000,
+  });
 
   const movementType = searchParams.get('movementType') ?? 'ALL';
   const movementCurrency = searchParams.get('movementCurrency') ?? 'ALL';
@@ -314,7 +334,12 @@ export function CashPage() {
   }
 
   const open = useMutation({
-    mutationFn: () => cashService.openSession({ siteId: selectedSiteId, openingBalance: Number(openingBalance) }),
+    mutationFn: () => cashService.openSession({
+      siteId: selectedSiteId,
+      openingBalance: Number(openingBalance),
+      workstationId: workstationId || undefined,
+      deviceUuid: getOrCreateDeviceUuid(),
+    }),
     onSuccess: refresh,
   });
   const expense = useMutation({
@@ -402,7 +427,7 @@ export function CashPage() {
           </div>
           <div className="cash-session-indicator">
             <span className={sessionStatusClass}>{activeSession?.status ?? 'AUCUNE SESSION'}</span>
-            <small>{activeSession ? `${activeSession.userName ?? 'Utilisateur'} - ${activeSession.siteName ?? '-'}` : 'Selectionnez un site pour continuer.'}</small>
+            <small>{activeSession ? `${activeSession.userName ?? 'Utilisateur'} - ${activeSession.workstationName ?? 'Poste'} - ${activeSession.siteName ?? '-'}` : 'Selectionnez un site pour continuer.'}</small>
           </div>
         </div>
 
@@ -491,9 +516,11 @@ export function CashPage() {
                 <SessionFact label="Caisse" value={activeSession.registerName || '-'} />
                 <SessionFact label="Site" value={activeSession.siteName || '-'} />
                 <SessionFact label="Caissier" value={activeSession.userName || '-'} />
+                <SessionFact label="Poste" value={activeSession.workstationName || '-'} />
                 <SessionFact label="Ouverture" value={`${formatDate(activeSession.openedAt)} ${formatTime(activeSession.openedAt)}`} />
                 <SessionFact label="Duree" value={formatSessionDuration(activeSession)} />
                 <SessionFact label="Fermeture" value={activeSession.closedAt ? `${formatDate(activeSession.closedAt)} ${formatTime(activeSession.closedAt)}` : 'Session ouverte'} />
+                <SessionFact label="IP ouverture" value={activeSession.openedIpAddress || '-'} />
               </div>
             )}
 
@@ -541,6 +568,13 @@ export function CashPage() {
                   <label>
                     Fond d'ouverture
                     <input className="input" type="number" min="0" step="0.01" value={openingBalance} onChange={(event) => setOpeningBalance(event.target.value)} />
+                  </label>
+                  <label>
+                    Poste de travail
+                    <select className="input" value={workstationId} onChange={(event) => setWorkstationId(event.target.value)} required>
+                      <option value="">Choisir un poste</option>
+                      {siteWorkstations.map((item) => <option key={item.workstationId} value={item.workstationId}>{item.workstationName}</option>)}
+                    </select>
                   </label>
                   <button className="button" disabled={open.isPending || !selectedSiteId}>{open.isPending ? 'Ouverture...' : 'Ouvrir caisse'}</button>
                   {open.isError && <p className="form-error">{apiErrorMessage(open.error)}</p>}
@@ -636,6 +670,30 @@ export function CashPage() {
                   ))}
                 </section>
               )}
+
+              <section className="cash-dashboard-side-grid">
+                <div className="card compact-card">
+                  <div className="cash-section-title">
+                    <div>
+                      <h2>Activite recente</h2>
+                      <p className="muted-text">Audit, messages et commentaires autour de la caisse.</p>
+                    </div>
+                  </div>
+                  {recentActivity.isLoading ? <p className="loading-state">Chargement de l activite...</p> : (recentActivity.data ?? []).length === 0 ? <p className="empty-state">Aucune activite recente.</p> : (
+                    <div className="activity-feed">
+                      {(recentActivity.data ?? []).slice(0, 8).map((event) => (
+                        <div className="activity-feed-item" key={`${event.activityType}-${event.recordId}-${event.occurredAt}`}>
+                          <strong>{event.userName ?? 'Utilisateur'}</strong>
+                          <span className="muted">{formatDate(event.occurredAt)}{event.workstationName ? ` • ${event.workstationName}` : ''}</span>
+                          <p>{event.label}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {activeSession && <CommentsPanel entityType="CASH_SESSION" entityId={activeSession.cashSessionId} title="Commentaires session caisse" />}
+              </section>
             </>
           )}
 
@@ -673,6 +731,7 @@ export function CashPage() {
                   <tr>
                     <th>Date</th>
                     <th>Caissier</th>
+                    <th>Poste</th>
                     <th>Ouverture</th>
                     <th>Fermeture</th>
                     <th>Attendu USD</th>
@@ -685,11 +744,12 @@ export function CashPage() {
                 </thead>
                 <tbody>
                   {(showAllSessions ? pagedSessions.items : recentSessions).length === 0 ? (
-                    <tr><td colSpan={10}>Aucune session disponible pour ce site.</td></tr>
+                    <tr><td colSpan={11}>Aucune session disponible pour ce site.</td></tr>
                   ) : (showAllSessions ? pagedSessions.items : recentSessions).map((session) => (
                     <tr key={session.cashSessionId}>
                       <td>{formatDate(session.openedAt)}</td>
                       <td>{session.userName ?? '-'}</td>
+                      <td>{session.workstationName ?? '-'}</td>
                       <td>{formatTime(session.openedAt)}</td>
                       <td>{session.closedAt ? formatTime(session.closedAt) : '-'}</td>
                       <td>{formatMoney(session.expectedClosingBalanceUsd ?? session.expectedClosingBalance, 'USD')}</td>
@@ -1209,7 +1269,16 @@ function directionLabel(direction: string) {
 }
 
 function sessionLabel(session: CashSession) {
-  return `${session.status} - ${session.userName ?? 'Utilisateur'} - ${formatDate(session.openedAt)} ${formatTime(session.openedAt)}`;
+  return session.sessionLabel ?? `${session.status} - ${session.userName ?? 'Utilisateur'} - ${session.workstationName ?? 'Poste'} - ${formatDate(session.openedAt)} ${formatTime(session.openedAt)}`;
+}
+
+function getOrCreateDeviceUuid() {
+  const key = 'deviceUuid';
+  const current = localStorage.getItem(key);
+  if (current) return current;
+  const next = crypto.randomUUID();
+  localStorage.setItem(key, next);
+  return next;
 }
 
 function differenceBadgeClass(value: number) {

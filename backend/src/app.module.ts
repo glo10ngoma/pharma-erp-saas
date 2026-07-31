@@ -37,6 +37,10 @@ import { SettingsModule } from './settings/settings.module';
 import { AuditModule } from './audit/audit.module';
 import { HealthModule } from './health/health.module';
 import { ArticleReferencesModule } from './article-references/article-references.module';
+import { WorkstationsModule } from './workstations/workstations.module';
+import { CommentsModule } from './comments/comments.module';
+import { InternalChatModule } from './internal-chat/internal-chat.module';
+import { ActivityModule } from './activity/activity.module';
 
 @Module({
   imports: [
@@ -71,6 +75,10 @@ import { ArticleReferencesModule } from './article-references/article-references
     CodeGeneratorModule,
     SettingsModule,
     AuditModule,
+    WorkstationsModule,
+    CommentsModule,
+    InternalChatModule,
+    ActivityModule,
     UsersModule,
     RolesModule,
     PermissionsModule,

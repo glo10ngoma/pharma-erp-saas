@@ -57,6 +57,7 @@ export function PosPage() {
   const saleTypeSelectRef = useRef<HTMLSelectElement | null>(null);
   const membershipSelectRef = useRef<HTMLSelectElement | null>(null);
   const audioRef = useRef<AudioContext | null>(null);
+  const deviceUuid = useMemo(() => getOrCreateDeviceUuid(), []);
 
   const sites = useQuery({ queryKey: ['sites'], queryFn: async () => (await sitesService.getAll()).data });
   const articles = useQuery({ queryKey: ['articles', 'pos'], queryFn: async () => (await articlesService.getAll({ limit: 1000 })).data.items });
@@ -64,7 +65,11 @@ export function PosPage() {
   const stocks = useQuery({ queryKey: ['stocks', 'pos'], queryFn: async () => (await stocksService.getAll()).data });
   const customers = useQuery({ queryKey: ['customers'], queryFn: async () => (await referenceService.customers.getAll()).data });
   const memberships = useQuery({ queryKey: ['customer-memberships', form.customerId], queryFn: async () => (await insuranceService.memberships.getByCustomer(form.customerId)).data, enabled: Boolean(form.customerId) });
-  const currentCashSession = useQuery({ queryKey: ['cash-current', form.siteId], queryFn: async () => (await cashService.getCurrentSession(form.siteId)).data, enabled: Boolean(form.siteId) });
+  const currentCashSession = useQuery({
+    queryKey: ['cash-current', form.siteId, deviceUuid],
+    queryFn: async () => (await cashService.getCurrentSession(form.siteId, deviceUuid)).data,
+    enabled: Boolean(form.siteId),
+  });
   const exchangeRateQuery = useQuery({ queryKey: ['settings', 'exchange-rate'], queryFn: async () => (await settingsService.getExchangeRate()).data });
 
   const currentSite = useMemo(() => (sites.data ?? []).find((site) => site.siteId === form.siteId), [form.siteId, sites.data]);
@@ -265,6 +270,7 @@ export function PosPage() {
       amountReturnedCdf: returnedFcAmount,
       settlementDifferenceReason: settlementReason.trim() || undefined,
       settlementDifferenceNote: settlementNote.trim() || undefined,
+      cashSessionId: currentCashSession.data?.cashSessionId,
     }),
     onSuccess: async (response) => {
       setSale(response.data);
@@ -795,6 +801,15 @@ function prioritizeExactBarcode(articles: Article[], query: string) {
   const needle = query.trim().toLowerCase();
   if (!needle) return articles;
   return [...articles].sort((a, b) => Number(String(b.barcode ?? '').toLowerCase() === needle) - Number(String(a.barcode ?? '').toLowerCase() === needle));
+}
+
+function getOrCreateDeviceUuid() {
+  const key = 'deviceUuid';
+  const current = localStorage.getItem(key);
+  if (current) return current;
+  const next = crypto.randomUUID();
+  localStorage.setItem(key, next);
+  return next;
 }
 
 function parseScan(raw: string, articles: Article[]) {

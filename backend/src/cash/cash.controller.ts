@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
@@ -24,22 +24,22 @@ export class CashController {
   @Post('sessions/open')
   @RequirePermission('cash_sessions.open')
   @ApiOperation({ summary: 'Ouvrir une session caisse' })
-  openSession(@CurrentUser() user: AuthUser, @Body() dto: OpenCashSessionDto) {
-    return this.service.openSession(user, dto);
+  openSession(@CurrentUser() user: AuthUser, @Body() dto: OpenCashSessionDto, @Req() request: { ip?: string }) {
+    return this.service.openSession(user, dto, request.ip);
   }
 
   @Get('sessions/current')
   @RequirePermission('cash_registers.read')
   @ApiOperation({ summary: 'Session caisse ouverte courante' })
-  currentSession(@CurrentUser() user: AuthUser, @Query('siteId') siteId?: string) {
-    return this.service.currentSession(user, siteId);
+  currentSession(@CurrentUser() user: AuthUser, @Query('siteId') siteId?: string, @Query('deviceUuid') deviceUuid?: string) {
+    return this.service.currentSession(user, siteId, deviceUuid);
   }
 
   @Post('sessions/:id/close')
   @RequirePermission('cash_sessions.close')
   @ApiOperation({ summary: 'Fermer une session caisse' })
-  closeSession(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: CloseCashSessionDto) {
-    return this.service.closeSession(user, id, dto);
+  closeSession(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: CloseCashSessionDto, @Req() request: { ip?: string }) {
+    return this.service.closeSession(user, id, dto, request.ip);
   }
 
   @Get('movements')

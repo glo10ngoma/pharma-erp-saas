@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
+import { CommentsPanel } from '../../components/CommentsPanel';
 import { salesService } from '../../services/sales.service';
 import { formatDate } from '../../utils/date';
 import { formatMoney } from '../../utils/money';
@@ -71,6 +72,8 @@ export function SaleDetailPage() {
           <Link className="ghost-button compact-button" to="/sales">Retour</Link>
           <button className="button compact-button" type="button" onClick={() => window.print()}>Imprimer Facture</button>
         </div>
+
+        <CommentsPanel entityType="SALE" entityId={sale.saleId} />
 
         <div className="print-invoice">
           <h1>PharmaERP</h1>

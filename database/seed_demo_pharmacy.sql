@@ -219,7 +219,16 @@ VALUES
   ('settlements.adjust', 'Ajuster ecart reglement', 'Settlements', 'Corriger un ecart de reglement apres validation', TRUE),
   ('settlements.export', 'Exporter ecarts reglement', 'Settlements', 'Exporter les ecarts de reglement', TRUE),
   ('cash.discrepancies.read', 'Consulter ecarts caisse', 'Cash', 'Voir les ecarts de reglement et ecarts physiques', TRUE),
-  ('cash.discrepancies.manage', 'Gerer ecarts caisse', 'Cash', 'Gerer les ecarts de reglement et corrections', TRUE)
+  ('cash.discrepancies.manage', 'Gerer ecarts caisse', 'Cash', 'Gerer les ecarts de reglement et corrections', TRUE),
+  ('comments.read', 'Consulter commentaires', 'Collaboration', 'Voir les commentaires metier et notes internes', TRUE),
+  ('comments.create', 'Creer commentaire', 'Collaboration', 'Ajouter un commentaire metier', TRUE),
+  ('comments.update', 'Modifier commentaire', 'Collaboration', 'Modifier un commentaire existant', TRUE),
+  ('comments.delete', 'Supprimer commentaire', 'Collaboration', 'Supprimer ou moderer un commentaire', TRUE),
+  ('chat.read', 'Consulter messagerie interne', 'Collaboration', 'Voir les discussions internes', TRUE),
+  ('chat.send', 'Envoyer message interne', 'Collaboration', 'Envoyer un message interne', TRUE),
+  ('chat.manage', 'Gerer messagerie interne', 'Collaboration', 'Creer et organiser les discussions internes', TRUE),
+  ('sessions.multiple', 'Ouvrir plusieurs sessions', 'Cash', 'Autoriser plusieurs sessions ouvertes pour un meme utilisateur', TRUE),
+  ('workstations.manage', 'Gerer postes de travail', 'Cash', 'Creer et modifier les postes de travail POS et back office', TRUE)
 ON CONFLICT (permission_code) DO UPDATE
 SET permission_name = EXCLUDED.permission_name,
     module_name = EXCLUDED.module_name,
@@ -233,6 +242,7 @@ JOIN tenants t ON t.tenant_id = r.tenant_id
 CROSS JOIN permissions p
 WHERE t.tenant_code = 'PHARMACIE_DEMO'
   AND r.role_name = 'ADMIN'
+  AND p.permission_code <> 'sessions.multiple'
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 WITH unit_data(unit_code, unit_label, normalized_label) AS (

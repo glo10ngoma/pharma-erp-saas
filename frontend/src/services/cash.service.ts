@@ -7,6 +7,12 @@ export type CashSession = {
   userName: string | null;
   registerName: string | null;
   registerCurrencyCode?: string | null;
+  workstationId?: string | null;
+  workstationName?: string | null;
+  sessionLabel?: string | null;
+  openedIpAddress?: string | null;
+  closedIpAddress?: string | null;
+  deviceUuid?: string | null;
   openedAt: string;
   closedAt: string | null;
   openingBalance: number;
@@ -40,8 +46,10 @@ export type CashMovement = {
 
 export const cashService = {
   getSessions: () => apiClient.get<CashSession[]>('/cash/sessions'),
-  getCurrentSession: (siteId?: string) =>
-    apiClient.get<CashSession | null>('/cash/sessions/current', { params: siteId ? { siteId } : undefined }),
+  getCurrentSession: (siteId?: string, deviceUuid?: string) =>
+    apiClient.get<CashSession | null>('/cash/sessions/current', {
+      params: siteId || deviceUuid ? { siteId, deviceUuid } : undefined,
+    }),
   openSession: (payload: Record<string, unknown>) => apiClient.post<CashSession>('/cash/sessions/open', payload),
   closeSession: (sessionId: string, payload: Record<string, unknown>) =>
     apiClient.post<CashSession>(`/cash/sessions/${sessionId}/close`, payload),

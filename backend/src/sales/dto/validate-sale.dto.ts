@@ -50,4 +50,9 @@ export class ValidateSaleDto {
   @IsOptional()
   @IsString()
   settlementDifferenceNote?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  cashSessionId?: string;
 }

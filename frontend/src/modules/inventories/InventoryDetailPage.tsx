@@ -1,6 +1,7 @@
 import { KeyboardEvent, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
+import { CommentsPanel } from '../../components/CommentsPanel';
 import { FloatingSearchPopover } from '../../components/FloatingSearchPopover';
 import { apiErrorMessage } from '../../services/apiError';
 import { articlesService } from '../../services/articles.service';
@@ -240,6 +241,8 @@ export function InventoryDetailPage() {
           </table>
         </div>
       </div>
+
+      <CommentsPanel entityType="INVENTORY" entityId={current.inventoryId} />
     </div>
   );
 }

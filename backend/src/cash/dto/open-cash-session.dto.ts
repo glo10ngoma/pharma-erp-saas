@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import { IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
 
 export class OpenCashSessionDto {
   @ApiProperty()
@@ -15,6 +15,17 @@ export class OpenCashSessionDto {
   @IsOptional()
   @IsUUID()
   cashRegisterId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  workstationId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  deviceUuid?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

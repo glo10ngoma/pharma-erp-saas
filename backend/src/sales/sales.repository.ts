@@ -505,16 +505,19 @@ export class SalesRepository {
           [user.tenantId, saleId, method.payment_method_id, sale.currency_id, patientPayable, dto.referencePayment ?? null, user.userId],
         );
       }
+      let activeCashSession: { cash_session_id: string; workstation_id: string | null; workstation_name: string | null; device_uuid: string | null } | null = null;
       if ((sale.sale_type === 'CASH' || sale.sale_type === 'INSURANCE') && (settlement.amountPaidUsd > 0 || settlement.amountPaidCdf > 0)) {
-        const session = await client.query<{ cash_session_id: string }>(
-          `SELECT cash_session_id
+        const session = await client.query<{ cash_session_id: string; workstation_id: string | null; workstation_name: string | null; device_uuid: string | null }>(
+          `SELECT cash_session_id, workstation_id, workstation_name, device_uuid
            FROM cash_sessions
            WHERE tenant_id=$1 AND site_id=$2 AND user_id=$3 AND status='OPEN'
+             AND ($4::uuid IS NULL OR cash_session_id=$4::uuid)
            ORDER BY opened_at DESC
            LIMIT 1`,
-          [user.tenantId, sale.site_id, user.userId],
+          [user.tenantId, sale.site_id, user.userId, dto.cashSessionId ?? null],
         );
         if (session.rows[0]) {
+          activeCashSession = session.rows[0];
           const currencies = await this.currencyIdsByCode(client);
           const movementRows = [
             settlement.amountPaidUsd > 0 ? { movementType: 'SALE_PAYMENT', amount: settlement.amountPaidUsd, currencyId: currencies.USD, description: `Paiement brut USD vente ${sale.sale_number}` } : null,
@@ -532,7 +535,7 @@ export class SalesRepository {
                VALUES ($1,$2,$3,$4,$5,'SALE',$6,$7,$8)`,
               [
                 user.tenantId,
-                session.rows[0].cash_session_id,
+                activeCashSession.cash_session_id,
                 movement.movementType,
                 movement.amount,
                 movement.currencyId,
@@ -579,7 +582,11 @@ export class SalesRepository {
              settlement_difference_usd=$9,
              settlement_difference_type=$10,
              settlement_difference_reason=$11,
-             settlement_difference_note=$12
+             settlement_difference_note=$12,
+             cash_session_id=$13,
+             workstation_id=$14,
+             workstation_name=$15,
+             device_uuid=$16
          WHERE tenant_id=$1 AND sale_id=$2`,
         [
           user.tenantId,
@@ -594,6 +601,10 @@ export class SalesRepository {
           settlement.settlementDifferenceType,
           settlement.settlementDifferenceReason,
           settlement.settlementDifferenceNote,
+          activeCashSession?.cash_session_id ?? null,
+          activeCashSession?.workstation_id ?? null,
+          activeCashSession?.workstation_name ?? null,
+          activeCashSession?.device_uuid ?? null,
         ],
       );
       await client.query(

@@ -42,6 +42,9 @@ import { InventoriesPage } from './modules/inventories/InventoriesPage';
 import { InventoryDetailPage } from './modules/inventories/InventoryDetailPage';
 import { ProfilePage } from './modules/profile/ProfilePage';
 import { ExchangeRatePage } from './modules/settings/ExchangeRatePage';
+import { WorkstationsPage } from './modules/administration/WorkstationsPage';
+import { ChatPage } from './modules/collaboration/ChatPage';
+import { RecentActivityPage } from './modules/collaboration/RecentActivityPage';
 
 const queryClient = new QueryClient();
 
@@ -149,6 +152,8 @@ export function App() {
                 <Route path="/analytics/suppliers" element={<AnalyticsSuppliersPage />} />
                 <Route path="/analytics/sellers" element={<AnalyticsSellersPage />} />
                 <Route path="/notifications" element={<NotificationsPage />} />
+                <Route path="/chat" element={<ChatPage />} />
+                <Route path="/activity" element={<RecentActivityPage />} />
                 <Route path="/reports" element={<ReportsIndexPage />} />
                 <Route path="/reports/dashboard" element={<ReportsDashboardPage />} />
                 <Route path="/reports/sales-report" element={<SalesReportPage />} />
@@ -165,6 +170,7 @@ export function App() {
                 <Route path="/permissions" element={<PermissionsPage />} />
                 <Route path="/sites" element={<SitesPage />} />
                 <Route path="/administration/cash-registers" element={<CashRegistersAdminPage />} />
+                <Route path="/administration/workstations" element={<WorkstationsPage />} />
                 <Route path="/administration/general-settings" element={<GeneralSettingsPage />} />
                 <Route path="/administration/numbering" element={<NumberingPage />} />
                 <Route path="/administration/audit-logs" element={<AuditLogsPage />} />
