@@ -7,6 +7,13 @@ const LABELS: Record<string, string> = {
   CASH_SESSION_ALREADY_OPEN: 'Une session caisse est deja ouverte pour ce site.',
   PAYMENT_INSUFFICIENT: 'Le paiement est insuffisant.',
   INVALID_SETTLEMENT_AMOUNT: 'Montant de reglement invalide.',
+  ATTACHMENT_FILE_REQUIRED: 'Veuillez selectionner un fichier.',
+  ATTACHMENT_FILE_TOO_LARGE: 'Le fichier depasse la taille maximale autorisee.',
+  ATTACHMENT_TYPE_NOT_ALLOWED: 'Ce type de fichier n est pas autorise.',
+  ATTACHMENT_ALREADY_EXISTS: 'Cette piece jointe existe deja.',
+  SUPABASE_STORAGE_NOT_CONFIGURED: 'Le stockage des pieces jointes n est pas configure.',
+  ATTACHMENT_SUPPLIER_REQUIRED: 'Choisissez un fournisseur avant d ajouter une piece jointe.',
+  ATTACHMENT_SITE_REQUIRED: 'Choisissez un site avant d ajouter une piece jointe.',
   INVALID_SETTLEMENT_RETURN: 'La monnaie rendue depasse le montant remis.',
   CHANGE_NOT_ALLOWED_FOR_NON_CASH: 'La monnaie rendue est reservee aux paiements especes.',
   SETTLEMENT_REASON_REQUIRED: 'Un motif est obligatoire pour cet ecart de reglement.',
@@ -29,6 +36,21 @@ const LABELS: Record<string, string> = {
   INVENTORY_EMPTY: 'Impossible de valider un inventaire vide.',
   INVENTORY_ITEM_NOT_COUNTED: 'Toutes les lignes doivent etre comptees.',
   STOCK_NOT_FOUND: 'Stock introuvable pour ce lot.',
+  PURCHASE_RETURN_NOT_DRAFT: 'Ce retour fournisseur n est plus modifiable.',
+  PURCHASE_RETURN_PURCHASE_NOT_VALIDATED: 'L achat d origine doit etre valide avant de creer un retour.',
+  PURCHASE_RETURN_ITEM_NOT_FOUND: 'La ligne de retour est introuvable.',
+  PURCHASE_RETURN_LOT_NOT_FOUND: 'Le lot de retour est introuvable.',
+  INVALID_RETURN_QUANTITY: 'Quantite de retour invalide.',
+  INVALID_REPLACEMENT_QUANTITY: 'Quantite de remplacement invalide.',
+  INVALID_LOT_NUMBER: 'Numero de lot invalide.',
+  INVALID_EXPIRY_DATE: 'Date d expiration invalide.',
+  RETURN_STOCK_NOT_FOUND: 'Aucun stock disponible pour ce lot sur le site.',
+  RETURN_NOT_AVAILABLE: 'Cette quantite n est plus disponible pour un retour.',
+  RETURN_QUANTITY_EXCEEDS_AVAILABLE: 'La quantite retournee depasse la quantite disponible.',
+  PURCHASE_RETURN_HAS_NO_ITEMS: 'Ajoutez au moins une ligne retour avant validation.',
+  RETURN_SETTLEMENT_EXCEEDS_REFUND: 'Le remboursement saisi depasse le montant attendu.',
+  RETURN_SETTLEMENT_EXCEEDS_ADDITIONAL: 'Le complement saisi depasse le montant attendu.',
+  SUPPLIER_CREDIT_SOURCE_REQUIRED: 'La source doit etre SUPPLIER_CREDIT pour creer un avoir fournisseur.',
   TRANSFER_NOT_DRAFT: 'Ce transfert ne peut plus etre modifie.',
   TRANSFER_EMPTY: 'Impossible de valider un transfert vide.',
   TRANSFER_SAME_SITE: 'Le site source doit etre different du site destination.',
@@ -36,7 +58,7 @@ const LABELS: Record<string, string> = {
 };
 
 export function apiErrorMessage(error: unknown) {
-  const response = error as { response?: { data?: { message?: string; error?: string } } };
-  const code = response.response?.data?.message || response.response?.data?.error;
+  const response = error as { message?: string; response?: { data?: { message?: string; error?: string } } };
+  const code = response.response?.data?.message || response.response?.data?.error || response.message;
   return code ? LABELS[code] ?? code : 'Action impossible pour le moment.';
 }

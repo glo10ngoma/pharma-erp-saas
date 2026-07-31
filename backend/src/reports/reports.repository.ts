@@ -239,7 +239,7 @@ export class ReportsRepository {
        FROM cash_movements cm
        JOIN cash_sessions cs ON cs.cash_session_id=cm.cash_session_id AND cs.tenant_id=cm.tenant_id
        LEFT JOIN currencies cur ON cur.currency_id=cm.currency_id
-       WHERE cm.tenant_id=$1 AND cm.movement_type IN ('SALE_PAYMENT','RECEIVABLE_PAYMENT','CASH_IN','ADVANCE','ADJUSTMENT')
+       WHERE cm.tenant_id=$1 AND cm.movement_type IN ('SALE_PAYMENT','RECEIVABLE_PAYMENT','PURCHASE_REFUND','CASH_IN','ADVANCE','ADJUSTMENT')
          AND cm.movement_date >= $2::date AND cm.movement_date < ($3::date + INTERVAL '1 day')
          AND ($4::uuid IS NULL OR cs.site_id=$4::uuid)`,
       [user.tenantId, scope.from, scope.to, scope.siteId],

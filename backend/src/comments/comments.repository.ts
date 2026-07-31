@@ -27,6 +27,7 @@ type CommentRow = {
 const COMMENT_ENTITY_MAP = {
   SALE: { tableName: 'sales', idColumn: 'sale_id', siteColumn: 'site_id' },
   PURCHASE: { tableName: 'purchases', idColumn: 'purchase_id', siteColumn: 'site_id' },
+  PURCHASE_RETURN: { tableName: 'purchase_returns', idColumn: 'purchase_return_id', siteColumn: 'site_id' },
   INVENTORY: { tableName: 'inventory_sessions', idColumn: 'inventory_id', siteColumn: 'site_id' },
   CASH_SESSION: { tableName: 'cash_sessions', idColumn: 'cash_session_id', siteColumn: 'site_id' },
 } as const;

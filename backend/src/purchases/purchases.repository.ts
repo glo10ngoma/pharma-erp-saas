@@ -41,6 +41,7 @@ type ItemRow = {
   tenant_id: string;
   purchase_id: string;
   article_id: string;
+  lot_id: string | null;
   article_code: string | null;
   commercial_name: string | null;
   lot_number: string;
@@ -334,6 +335,7 @@ export class PurchasesRepository {
       const itemResult = await client.query<ItemRow>(
         `
         SELECT pi.purchase_item_id, pi.tenant_id, pi.purchase_id, pi.article_id,
+               l.lot_id,
                NULL::text AS article_code, NULL::text AS commercial_name, pi.lot_number,
                pi.expiry_date, pi.quantity, pi.purchase_unit_id, pi.purchase_unit_label_snapshot,
                pi.purchase_quantity, pi.conversion_factor, pi.stock_unit_id, pi.stock_unit_label_snapshot,
@@ -341,6 +343,7 @@ export class PurchasesRepository {
                pi.purchase_unit_price, pi.selling_unit_price, pi.line_total
         FROM purchase_items pi
         JOIN articles a ON a.article_id = pi.article_id AND a.tenant_id = pi.tenant_id
+        LEFT JOIN lots l ON l.article_id = pi.article_id AND l.lot_number = pi.lot_number
         WHERE pi.tenant_id=$1 AND pi.purchase_id=$2
         `,
         [user.tenantId, purchaseId],
@@ -438,13 +441,14 @@ export class PurchasesRepository {
     const result = await this.db.query<ItemRow>(
       `
       SELECT pi.purchase_item_id, pi.tenant_id, pi.purchase_id, pi.article_id,
-             a.article_code, a.commercial_name, pi.lot_number, pi.expiry_date,
+             l.lot_id, a.article_code, a.commercial_name, pi.lot_number, pi.expiry_date,
              pi.quantity, pi.purchase_unit_id, pi.purchase_unit_label_snapshot,
              pi.purchase_quantity, pi.conversion_factor, pi.stock_unit_id, pi.stock_unit_label_snapshot,
              pi.stock_quantity, pi.line_order, pi.unit_price_currency, pi.line_total_currency,
              pi.purchase_unit_price, pi.selling_unit_price, pi.line_total
       FROM purchase_items pi
       JOIN articles a ON a.article_id = pi.article_id AND a.tenant_id = pi.tenant_id
+      LEFT JOIN lots l ON l.article_id = pi.article_id AND l.lot_number = pi.lot_number
       WHERE pi.tenant_id=$1 AND pi.purchase_id=$2
       ORDER BY COALESCE(pi.line_order, 0), pi.purchase_item_id
       `,
@@ -794,6 +798,7 @@ export class PurchasesRepository {
       purchaseItemId: row.purchase_item_id,
       purchaseId: row.purchase_id,
       articleId: row.article_id,
+      lotId: row.lot_id,
       articleCode: row.article_code,
       commercialName: row.commercial_name,
       lotNumber: row.lot_number,

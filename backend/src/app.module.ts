@@ -41,6 +41,7 @@ import { WorkstationsModule } from './workstations/workstations.module';
 import { CommentsModule } from './comments/comments.module';
 import { InternalChatModule } from './internal-chat/internal-chat.module';
 import { ActivityModule } from './activity/activity.module';
+import { PurchaseReturnsModule } from './purchase-returns/purchase-returns.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { ActivityModule } from './activity/activity.module';
     SuppliersModule,
     CustomersModule,
     PurchasesModule,
+    PurchaseReturnsModule,
     LotsModule,
     StocksModule,
     StockMovementsModule,

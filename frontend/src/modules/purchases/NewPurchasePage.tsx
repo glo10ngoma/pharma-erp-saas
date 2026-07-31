@@ -13,6 +13,7 @@ import { settingsService } from '../../services/settings.service';
 import { sitesService } from '../../services/sites.service';
 import { stocksService } from '../../services/stocks.service';
 import { formatMoney } from '../../utils/money';
+import { PurchaseAttachmentsCard } from './PurchaseAttachmentsCard';
 
 type PurchaseForm = {
   purchaseNumber: string;
@@ -127,6 +128,7 @@ export function NewPurchasePage() {
   const queryClient = useQueryClient();
   const { permissions } = useAuth();
   const [form, setForm] = useState<PurchaseForm>(initialForm);
+  const [purchaseDraftId, setPurchaseDraftId] = useState('');
   const [draftLines, setDraftLines] = useState<PurchaseDraftLine[]>([]);
   const [quickLine, setQuickLine] = useState<PurchaseDraftLine>(newLine());
   const [articleOptions, setArticleOptions] = useState<Article[]>([]);
@@ -235,25 +237,48 @@ export function NewPurchasePage() {
   const currentSupplier = suppliers.data?.find((supplier) => supplier.supplierId === form.supplierId);
   const currentSite = sites.data?.find((site) => site.siteId === form.siteId);
 
+  function purchasePayload() {
+    return {
+      purchaseNumber: form.purchaseNumber.trim() || undefined,
+      supplierId: form.supplierId,
+      siteId: form.siteId,
+      purchaseDate: form.purchaseDate,
+      currencyCode: form.currencyCode,
+      exchangeRate: numericExchangeRate,
+      paymentStatus: canPayPurchase ? paymentStatusLabel : undefined,
+      paymentSource: canPayPurchase ? form.paymentSource : undefined,
+      paymentMethod: canPayPurchase ? form.paymentMethod : undefined,
+      cashSessionId: canPayPurchase && form.paymentSource === 'CASH_REGISTER' ? form.cashSessionId || undefined : undefined,
+      amountPaidUsd: canPayPurchase ? amountPaidUsd : undefined,
+      amountPaidCdf: canPayPurchase ? amountPaidCdf : undefined,
+      paymentReference: canPayPurchase ? form.paymentReference.trim() || undefined : undefined,
+      paymentNote: canPayPurchase ? form.paymentNote.trim() || undefined : undefined,
+    };
+  }
+
+  const ensureAttachmentDraft = useMutation({
+    mutationFn: async () => {
+      if (purchaseDraftId) {
+        return (await purchasesService.update(purchaseDraftId, purchasePayload())).data;
+      }
+      if (!form.supplierId) throw new Error('ATTACHMENT_SUPPLIER_REQUIRED');
+      if (!form.siteId) throw new Error('ATTACHMENT_SITE_REQUIRED');
+      return (await purchasesService.create(purchasePayload())).data;
+    },
+    onSuccess: async (purchase) => {
+      setPurchaseDraftId(purchase.purchaseId);
+      await queryClient.invalidateQueries({ queryKey: ['purchase', purchase.purchaseId] });
+      await queryClient.invalidateQueries({ queryKey: ['purchases'] });
+    },
+  });
+
   const savePurchase = useMutation({
     mutationFn: async (validateNow: boolean) => {
       const lines = normalizedLines;
-      const purchase = (await purchasesService.create({
-        purchaseNumber: form.purchaseNumber.trim() || undefined,
-        supplierId: form.supplierId,
-        siteId: form.siteId,
-        purchaseDate: form.purchaseDate,
-        currencyCode: form.currencyCode,
-        exchangeRate: numericExchangeRate,
-        paymentStatus: canPayPurchase ? paymentStatusLabel : undefined,
-        paymentSource: canPayPurchase ? form.paymentSource : undefined,
-        paymentMethod: canPayPurchase ? form.paymentMethod : undefined,
-        cashSessionId: canPayPurchase && form.paymentSource === 'CASH_REGISTER' ? form.cashSessionId || undefined : undefined,
-        amountPaidUsd: canPayPurchase ? amountPaidUsd : undefined,
-        amountPaidCdf: canPayPurchase ? amountPaidCdf : undefined,
-        paymentReference: canPayPurchase ? form.paymentReference.trim() || undefined : undefined,
-        paymentNote: canPayPurchase ? form.paymentNote.trim() || undefined : undefined,
-      })).data;
+      const purchase = purchaseDraftId
+        ? (await purchasesService.update(purchaseDraftId, purchasePayload())).data
+        : (await purchasesService.create(purchasePayload())).data;
+      if (!purchaseDraftId) setPurchaseDraftId(purchase.purchaseId);
       for (const [index, line] of lines.entries()) {
         await purchasesService.addItem(purchase.purchaseId, {
           articleId: line.articleId,
@@ -360,12 +385,28 @@ export function NewPurchasePage() {
     const blocking = normalizedLines.map((line, index) => ({ issue: issueForLine(line), index })).find(({ issue }) => issue.blocksSave);
     return blocking ? `Ligne ${blocking.index + 1}: ${blocking.issue.message}` : '';
   }
+  function validateAttachmentDraft() {
+    if (!form.supplierId) return 'Choisissez un fournisseur avant d ajouter une piece jointe.';
+    if (!form.siteId) return 'Choisissez un site avant d ajouter une piece jointe.';
+    if (form.currencyCode !== 'USD' && Number(form.exchangeRate || 0) <= 0) return 'Renseignez un taux de change valide avant l upload.';
+    return '';
+  }
   function submit(event?: FormEvent<HTMLFormElement>, validateNow = false) {
     event?.preventDefault();
     const error = validatePurchaseDraft();
     if (error) { setClientError(error); return; }
     setClientError('');
     savePurchase.mutate(validateNow);
+  }
+  async function ensureDraftAndReturnId() {
+    const error = validateAttachmentDraft();
+    if (error) {
+      setClientError(error);
+      throw new Error(error);
+    }
+    setClientError('');
+    const purchase = await ensureAttachmentDraft.mutateAsync();
+    return purchase.purchaseId;
   }
   function handleGridKey(event: KeyboardEvent<HTMLElement>, row: number, col: number, lineId: string) {
     if (event.ctrlKey && event.key === 'Enter') { event.preventDefault(); if (!savePurchase.isPending) submit(); return; }
@@ -461,6 +502,32 @@ export function NewPurchasePage() {
           </table>
         </div>
       </section>
+      {permissions.includes('purchase_attachments.read') ? (
+        <PurchaseAttachmentsCard
+          title="Pieces jointes"
+          queryKey={['purchase-attachments-draft', purchaseDraftId || 'new']}
+          api={{
+            list: async () => {
+              if (!purchaseDraftId) return { data: [] };
+              return purchasesService.getAttachments(purchaseDraftId);
+            },
+            upload: async (payload) => {
+              const purchaseId = await ensureDraftAndReturnId();
+              return purchasesService.uploadAttachment(purchaseId, payload);
+            },
+            openUrl: async (attachmentId) => {
+              const purchaseId = purchaseDraftId || await ensureDraftAndReturnId();
+              return purchasesService.getAttachmentUrl(purchaseId, attachmentId);
+            },
+            remove: async (attachmentId) => {
+              const purchaseId = purchaseDraftId || await ensureDraftAndReturnId();
+              return purchasesService.deleteAttachment(purchaseId, attachmentId);
+            },
+          }}
+          canCreate={permissions.includes('purchase_attachments.create')}
+          canDelete={permissions.includes('purchase_attachments.delete')}
+        />
+      ) : null}
       <section className="purchase-totals premium-summary compact-summary">
         <div className="form-summary"><span>Lignes</span><strong>{normalizedLines.length}</strong></div>
         <div className="form-summary"><span>Qte achat</span><strong>{totals.quantity}</strong></div>

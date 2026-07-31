@@ -21,6 +21,7 @@ import { FefoHighlightPage } from './modules/fefo/FefoHighlightPage';
 import { FefoRotationPage } from './modules/fefo/FefoRotationPage';
 import { NewPurchasePage } from './modules/purchases/NewPurchasePage';
 import { PurchaseDetailPage } from './modules/purchases/PurchaseDetailPage';
+import { PurchaseReturnDetailPage } from './modules/purchases/PurchaseReturnDetailPage';
 import { PurchasesPage } from './modules/purchases/PurchasesPage';
 import { RolesPage } from './modules/roles/RolesPage';
 import { SitesPage } from './modules/sites/SitesPage';
@@ -113,6 +114,7 @@ export function App() {
                 <Route path="/purchases" element={<PurchasesPage />} />
                 <Route path="/purchases/new" element={<NewPurchasePage />} />
                 <Route path="/purchases/:id" element={<PurchaseDetailPage />} />
+                <Route path="/purchase-returns/:id" element={<PurchaseReturnDetailPage />} />
                 <Route path="/lots" element={<LotsPage />} />
                 <Route path="/fefo/highlight" element={<FefoHighlightPage />} />
                 <Route path="/fefo/rotation" element={<FefoRotationPage />} />

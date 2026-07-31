@@ -245,10 +245,10 @@ export class CashRepository {
       }>(
         `
         SELECT
-          COALESCE(SUM(CASE WHEN movement_type IN ('SALE_PAYMENT','RECEIVABLE_PAYMENT','CASH_IN','ADVANCE','ADJUSTMENT') AND cur.currency_code = 'USD' THEN amount ELSE 0 END),0)::numeric AS total_cash_in_usd,
-          COALESCE(SUM(CASE WHEN movement_type IN ('SALE_CHANGE','EXPENSE','CASH_OUT','BANK_DEPOSIT') AND cur.currency_code = 'USD' THEN amount ELSE 0 END),0)::numeric AS total_cash_out_usd,
-          COALESCE(SUM(CASE WHEN movement_type IN ('SALE_PAYMENT','RECEIVABLE_PAYMENT','CASH_IN','ADVANCE','ADJUSTMENT') AND cur.currency_code = 'CDF' THEN amount ELSE 0 END),0)::numeric AS total_cash_in_cdf,
-          COALESCE(SUM(CASE WHEN movement_type IN ('SALE_CHANGE','EXPENSE','CASH_OUT','BANK_DEPOSIT') AND cur.currency_code = 'CDF' THEN amount ELSE 0 END),0)::numeric AS total_cash_out_cdf
+          COALESCE(SUM(CASE WHEN movement_type IN ('SALE_PAYMENT','RECEIVABLE_PAYMENT','PURCHASE_REFUND','CASH_IN','ADVANCE','ADJUSTMENT') AND cur.currency_code = 'USD' THEN amount ELSE 0 END),0)::numeric AS total_cash_in_usd,
+          COALESCE(SUM(CASE WHEN movement_type IN ('SALE_CHANGE','PURCHASE_EXCHANGE_PAYMENT','EXPENSE','CASH_OUT','BANK_DEPOSIT') AND cur.currency_code = 'USD' THEN amount ELSE 0 END),0)::numeric AS total_cash_out_usd,
+          COALESCE(SUM(CASE WHEN movement_type IN ('SALE_PAYMENT','RECEIVABLE_PAYMENT','PURCHASE_REFUND','CASH_IN','ADVANCE','ADJUSTMENT') AND cur.currency_code = 'CDF' THEN amount ELSE 0 END),0)::numeric AS total_cash_in_cdf,
+          COALESCE(SUM(CASE WHEN movement_type IN ('SALE_CHANGE','PURCHASE_EXCHANGE_PAYMENT','EXPENSE','CASH_OUT','BANK_DEPOSIT') AND cur.currency_code = 'CDF' THEN amount ELSE 0 END),0)::numeric AS total_cash_out_cdf
         FROM cash_movements cm
         LEFT JOIN currencies cur ON cur.currency_id = cm.currency_id
         WHERE tenant_id = $1 AND cash_session_id = $2

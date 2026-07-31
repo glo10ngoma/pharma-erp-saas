@@ -3,9 +3,11 @@ import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
 import { CommentsPanel } from '../../components/CommentsPanel';
 import { apiErrorMessage } from '../../services/apiError';
+import { purchaseReturnsService } from '../../services/purchaseReturns.service';
 import { purchasesService } from '../../services/purchases.service';
 import { formatDate } from '../../utils/date';
 import { formatMoney } from '../../utils/money';
+import { PurchaseAttachmentsCard } from './PurchaseAttachmentsCard';
 
 export function PurchaseDetailPage() {
   const { id = '' } = useParams();
@@ -13,12 +15,21 @@ export function PurchaseDetailPage() {
   const qc = useQueryClient();
   const query = useQuery({ queryKey: ['purchase', id], queryFn: async () => (await purchasesService.getById(id)).data });
   const validate = useMutation({ mutationFn: () => purchasesService.validate(id), onSuccess: () => qc.invalidateQueries({ queryKey: ['purchase', id] }) });
+  const returnsQuery = useQuery({ queryKey: ['purchase-returns', id], queryFn: async () => (await purchaseReturnsService.getAll(id)).data, enabled: Boolean(id) && permissions.includes('purchase_returns.read') });
+  const createReturn = useMutation({
+    mutationFn: () => purchaseReturnsService.create({ purchaseId: id, returnType: 'REFUND' }),
+    onSuccess: async (response) => {
+      await qc.invalidateQueries({ queryKey: ['purchase-returns', id] });
+      window.location.href = `/purchase-returns/${response.data.purchaseReturnId}`;
+    },
+  });
   const purchase = query.data;
   const canReadPaymentHistory = permissions.includes('purchase_payments.read');
+  const canCreateReturn = permissions.includes('purchase_returns.create') && purchase?.status === 'VALIDATED';
   return <>
     <div className="breadcrumb"><Link to="/purchases">Achats</Link><span>&gt;</span><strong>Detail achat</strong></div>
     <h1>Detail achat</h1>
-    {validate.isError && <p className="form-error">{apiErrorMessage(validate.error)}</p>}
+    {(validate.isError || createReturn.isError) && <p className="form-error">{apiErrorMessage(validate.error) || apiErrorMessage(createReturn.error)}</p>}
     {!purchase ? (
       <div className="card">{query.isLoading ? 'Chargement...' : 'Achat introuvable.'}</div>
     ) : (
@@ -28,11 +39,18 @@ export function PurchaseDetailPage() {
             <strong>{purchase.purchaseNumber}</strong>
             <span>{purchase.supplierName} - {purchase.siteName} - {purchase.status} - {formatMoney(purchase.totalAmount, purchase.currencyCode ?? 'USD', purchase.currencySymbol)}</span>
           </div>
-          {purchase.status === 'DRAFT' && (
-            <button className="button" onClick={() => validate.mutate()} disabled={validate.isPending || (purchase.items ?? []).length === 0}>
-              {validate.isPending ? 'Validation...' : 'Valider'}
-            </button>
-          )}
+          <div className="table-actions">
+            {canCreateReturn ? (
+              <button className="ghost-button compact-button" onClick={() => createReturn.mutate()} disabled={createReturn.isPending}>
+                {createReturn.isPending ? 'Creation retour...' : 'Creer un retour'}
+              </button>
+            ) : null}
+            {purchase.status === 'DRAFT' && (
+              <button className="button" onClick={() => validate.mutate()} disabled={validate.isPending || (purchase.items ?? []).length === 0}>
+                {validate.isPending ? 'Validation...' : 'Valider'}
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="card detail-grid">
@@ -149,6 +167,62 @@ export function PurchaseDetailPage() {
             <p className="muted">Historique masque: permission purchase_payments.read requise.</p>
           </div>
         )}
+
+        {permissions.includes('purchase_attachments.read') ? (
+          <PurchaseAttachmentsCard
+            title="Pieces jointes achat"
+            queryKey={['purchase-attachments', id]}
+            api={{
+              list: () => purchasesService.getAttachments(id),
+              upload: (payload) => purchasesService.uploadAttachment(id, payload),
+              openUrl: (attachmentId) => purchasesService.getAttachmentUrl(id, attachmentId),
+              remove: (attachmentId) => purchasesService.deleteAttachment(id, attachmentId),
+            }}
+            canCreate={permissions.includes('purchase_attachments.create')}
+            canDelete={permissions.includes('purchase_attachments.delete')}
+          />
+        ) : null}
+
+        {permissions.includes('purchase_returns.read') ? (
+          <div className="card">
+            <div className="toolbar compact-toolbar">
+              <h2>Retours et echanges</h2>
+              {canCreateReturn ? <button className="ghost-button compact-button" onClick={() => createReturn.mutate()} disabled={createReturn.isPending}>Nouveau retour</button> : null}
+            </div>
+            {!(returnsQuery.data ?? []).length ? (
+              <p className="muted">{returnsQuery.isLoading ? 'Chargement...' : 'Aucun retour sur cet achat.'}</p>
+            ) : (
+              <table className="data-table purchase-detail-table">
+                <thead>
+                  <tr>
+                    <th>Reference</th>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th>Statut</th>
+                    <th>Valeur retour</th>
+                    <th>Valeur echange</th>
+                    <th>Difference</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(returnsQuery.data ?? []).map((purchaseReturn) => (
+                    <tr key={purchaseReturn.purchaseReturnId}>
+                      <td>{purchaseReturn.returnNumber}</td>
+                      <td>{formatDate(purchaseReturn.returnDate)}</td>
+                      <td>{purchaseReturn.returnType}</td>
+                      <td>{purchaseReturn.status}</td>
+                      <td className="numeric-text">{formatMoney(purchaseReturn.returnedValueUsd, 'USD')}</td>
+                      <td className="numeric-text">{formatMoney(purchaseReturn.replacementValueUsd, 'USD')}</td>
+                      <td className="numeric-text">{formatMoney(purchaseReturn.financialDifferenceUsd, 'USD')}</td>
+                      <td><Link className="ghost-button compact-button" to={`/purchase-returns/${purchaseReturn.purchaseReturnId}`}>Voir</Link></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        ) : null}
 
         <CommentsPanel entityType="PURCHASE" entityId={purchase.purchaseId} />
       </>
