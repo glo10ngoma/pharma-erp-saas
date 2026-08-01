@@ -818,15 +818,88 @@ details.nav-group .nav-link {
   margin: 0;
 }
 
-.stock-movement-filters {
+.stock-movements-filter-bar {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+}
+
+.stock-movements-filter-row {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(260px, 1.35fr) repeat(2, 160px) 140px 210px 210px;
+}
+
+.stock-movements-filter-row-secondary {
+  grid-template-columns: 210px 190px 110px minmax(260px, 1fr) auto;
+}
+
+.stock-movements-filter-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.stock-movements-filter-label {
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.stock-movements-search-field .search-box,
+.stock-movements-filter-field .input {
+  width: 100%;
+}
+
+.stock-movements-date-shortcuts,
+.stock-movements-filter-actions {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
 }
 
-.stock-movement-filters .input {
-  max-width: 220px;
+.stock-movements-filter-actions {
+  justify-content: flex-end;
+}
+
+.stock-movements-date-shortcuts .ghost-button,
+.stock-movements-filter-actions .ghost-button,
+.stock-movements-filter-actions .export-menu summary {
+  height: 38px;
+}
+
+.stock-movements-date-shortcuts .ghost-button.is-active {
+  background: var(--surface-soft);
+  border-color: var(--primary);
+  color: var(--text);
+  font-weight: 800;
+}
+
+.stock-movements-reset-button {
+  opacity: .88;
+}
+
+.stock-movements-active-filters {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 10px;
+}
+
+.stock-movements-filter-chip {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text);
+  display: inline-flex;
+  font-size: .8rem;
+  font-weight: 700;
+  padding: 6px 10px;
 }
 
 .stock-movement-kpis {
@@ -862,6 +935,49 @@ details.nav-group .nav-link {
   flex-wrap: wrap;
   gap: 8px;
   margin: 0 0 10px;
+}
+
+[data-theme='dark'] .stock-movements-date-shortcuts .ghost-button.is-active {
+  background: color-mix(in srgb, var(--primary) 18%, var(--surface));
+  border-color: var(--primary);
+  color: var(--text);
+}
+
+[data-theme='dark'] .stock-movements-filter-chip {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+@media (max-width: 1440px) {
+  .stock-movements-filter-row {
+    grid-template-columns: minmax(240px, 1fr) repeat(2, 150px) 140px 190px 190px;
+  }
+
+  .stock-movements-filter-row-secondary {
+    grid-template-columns: 190px 180px 110px minmax(220px, 1fr) auto;
+  }
+}
+
+@media (max-width: 1180px) {
+  .stock-movements-filter-row,
+  .stock-movements-filter-row-secondary {
+    grid-template-columns: repeat(3, minmax(180px, 1fr));
+  }
+
+  .stock-movements-filter-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 780px) {
+  .stock-movements-filter-row,
+  .stock-movements-filter-row-secondary {
+    grid-template-columns: 1fr;
+  }
+
+  .stock-movements-date-shortcuts,
+  .stock-movements-filter-actions {
+    justify-content: flex-start;
+  }
 }
 
 .inventory-sticky-header {

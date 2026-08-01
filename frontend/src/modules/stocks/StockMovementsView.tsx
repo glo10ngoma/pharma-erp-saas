@@ -19,6 +19,7 @@ import {
 } from './stockMovementLabels';
 
 type DirectionFilter = 'ALL' | 'IN' | 'OUT';
+type SortChoice = 'newest' | 'oldest' | 'quantityAsc' | 'quantityDesc' | 'articleAsc' | 'articleDesc';
 
 const DEFAULT_LIMIT = 25;
 
@@ -32,6 +33,7 @@ export function StockMovementsView() {
   const limit = Number(params.get('limit') ?? `${DEFAULT_LIMIT}`);
   const sortBy = params.get('sortBy') ?? 'movementDate';
   const sortOrder = params.get('sortOrder') ?? 'desc';
+  const sortChoice = toSortChoice(sortBy, sortOrder);
   const direction = (params.get('direction') ?? 'ALL') as DirectionFilter;
   const siteId = params.get('siteId') ?? '';
   const movementType = params.get('movementType') ?? '';
@@ -94,6 +96,18 @@ export function StockMovementsView() {
 
   const summary = movements.data?.summary;
   const rows = movements.data?.items ?? [];
+  const dateShortcut = activeDateShortcut(dateFrom, dateTo);
+  const activeFilterChips = buildActiveFilterChips({
+    search: params.get('search') ?? '',
+    direction,
+    movementType,
+    siteId,
+    userId,
+    dateFrom,
+    dateTo,
+    sites: sites.data ?? [],
+    users: users.data ?? [],
+  });
 
   return (
     <>
@@ -109,73 +123,125 @@ export function StockMovementsView() {
         <div className="card kpi-card"><span className="kpi-label">Lots</span><p className="metric small-metric">{summary?.lotsCount ?? 0}</p></div>
       </div>
 
-      <div className="card stock-movement-filters">
-        <SearchBox value={params.get('search') ?? ''} onChange={(value) => updateFilters({ search: value || null })} placeholder="Rechercher article, lot, reference, note..." />
-        <input className="input compact-input" type="date" value={dateFrom} onChange={(event) => updateFilters({ dateFrom: event.target.value || null })} />
-        <input className="input compact-input" type="date" value={dateTo} onChange={(event) => updateFilters({ dateTo: event.target.value || null })} />
-        <select className="input compact-input" value={direction} onChange={(event) => updateFilters({ direction: event.target.value === 'ALL' ? null : event.target.value })}>
-          <option value="ALL">Tous les sens</option>
-          <option value="IN">Entrees</option>
-          <option value="OUT">Sorties</option>
-        </select>
-        <select className="input compact-input" value={movementType} onChange={(event) => updateFilters({ movementType: event.target.value || null })}>
-          <option value="">Tous les types</option>
-          {availableTypes.map((type) => <option key={type} value={type}>{stockMovementLabel(type)}</option>)}
-        </select>
-        <select className="input compact-input" value={siteId} onChange={(event) => updateFilters({ siteId: event.target.value || null })}>
-          <option value="">Tous les sites</option>
-          {(sites.data ?? []).map((site) => <option key={site.siteId} value={site.siteId}>{site.siteName}</option>)}
-        </select>
-        <select className="input compact-input" value={userId} onChange={(event) => updateFilters({ userId: event.target.value || null })}>
-          <option value="">Tous les utilisateurs</option>
-          {(users.data ?? []).map((user) => <option key={user.userId} value={user.userId}>{user.fullName}</option>)}
-        </select>
-        <select className="input compact-input" value={sortBy} onChange={(event) => updateFilters({ sortBy: event.target.value })}>
-          <option value="movementDate">Plus recent</option>
-          <option value="article">Article A-Z</option>
-          <option value="quantity">Quantite</option>
-          <option value="movementType">Type</option>
-        </select>
-        <select className="input compact-input" value={sortOrder} onChange={(event) => updateFilters({ sortOrder: event.target.value }, false)}>
-          <option value="desc">Desc</option>
-          <option value="asc">Asc</option>
-        </select>
-        <select className="input compact-input" value={String(limit)} onChange={(event) => updateFilters({ limit: event.target.value })}>
-          <option value="25">25</option>
-          <option value="50">50</option>
-          <option value="100">100</option>
-        </select>
-        <button className="ghost-button compact-button" type="button" onClick={() => setQuickRange('today', setParams)}>Aujourd&apos;hui</button>
-        <button className="ghost-button compact-button" type="button" onClick={() => setQuickRange('week', setParams)}>Cette semaine</button>
-        <button className="ghost-button compact-button" type="button" onClick={() => setQuickRange('month', setParams)}>Ce mois</button>
-        <button className="ghost-button compact-button" type="button" onClick={() => updateFilters({
-          search: null,
-          dateFrom: monthStart(),
-          dateTo: todayIso(),
-          direction: null,
-          movementType: null,
-          siteId: null,
-          userId: null,
-          articleId: null,
-          lotId: null,
-          referenceType: null,
-          referenceId: null,
-          sortBy: 'movementDate',
-          sortOrder: 'desc',
-          limit: `${DEFAULT_LIMIT}`,
-        })}>Reinitialiser</button>
-        {can('stock_movements.export') && (
-          <div className="export-actions stock-export-actions">
-            <details className="export-menu">
-              <summary className="ghost-button compact-button">Exporter</summary>
-              <div className="export-menu-panel">
-                <button type="button" disabled={rows.length === 0} onClick={() => exportRows('xlsx')}>Excel</button>
-                <button type="button" disabled={rows.length === 0} onClick={() => exportRows('csv')}>CSV</button>
-                <button type="button" disabled={rows.length === 0} onClick={() => exportRows('json')}>JSON</button>
-              </div>
-            </details>
+      <div className="card stock-movements-filter-bar">
+        <div className="stock-movements-filter-row">
+          <div className="stock-movements-filter-field stock-movements-search-field">
+            <label className="stock-movements-filter-label" htmlFor="stock-movements-search">Recherche</label>
+            <SearchBox value={params.get('search') ?? ''} onChange={(value) => updateFilters({ search: value || null })} placeholder="Rechercher article, lot ou référence" />
           </div>
-        )}
+          <div className="stock-movements-filter-field stock-movements-date-field">
+            <label className="stock-movements-filter-label" htmlFor="stock-movements-date-from">Du</label>
+            <input id="stock-movements-date-from" aria-label="Date de début" className="input compact-input" type="date" value={dateFrom} onChange={(event) => updateFilters({ dateFrom: event.target.value || null })} />
+          </div>
+          <div className="stock-movements-filter-field stock-movements-date-field">
+            <label className="stock-movements-filter-label" htmlFor="stock-movements-date-to">Au</label>
+            <input id="stock-movements-date-to" aria-label="Date de fin" className="input compact-input" type="date" value={dateTo} onChange={(event) => updateFilters({ dateTo: event.target.value || null })} />
+          </div>
+          <div className="stock-movements-filter-field stock-movements-sense-field">
+            <label className="stock-movements-filter-label" htmlFor="stock-movements-direction">Sens</label>
+            <select id="stock-movements-direction" className="input compact-input" value={direction} onChange={(event) => updateFilters({ direction: event.target.value === 'ALL' ? null : event.target.value })}>
+              <option value="ALL">Tous les sens</option>
+              <option value="IN">Entrées</option>
+              <option value="OUT">Sorties</option>
+            </select>
+          </div>
+          <div className="stock-movements-filter-field stock-movements-type-field">
+            <label className="stock-movements-filter-label" htmlFor="stock-movements-type">Type</label>
+            <select id="stock-movements-type" className="input compact-input" value={movementType} onChange={(event) => updateFilters({ movementType: event.target.value || null })}>
+              <option value="">Tous les types</option>
+              {availableTypes.map((type) => <option key={type} value={type}>{stockMovementLabel(type)}</option>)}
+            </select>
+          </div>
+          <div className="stock-movements-filter-field stock-movements-site-field">
+            <label className="stock-movements-filter-label" htmlFor="stock-movements-site">Site</label>
+            <select id="stock-movements-site" className="input compact-input" value={siteId} onChange={(event) => updateFilters({ siteId: event.target.value || null })}>
+              <option value="">Tous les sites</option>
+              {(sites.data ?? []).map((site) => <option key={site.siteId} value={site.siteId}>{site.siteName}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div className="stock-movements-filter-row stock-movements-filter-row-secondary">
+          <div className="stock-movements-filter-field stock-movements-user-field">
+            <label className="stock-movements-filter-label" htmlFor="stock-movements-user">Utilisateur</label>
+            <select id="stock-movements-user" className="input compact-input" value={userId} onChange={(event) => updateFilters({ userId: event.target.value || null })}>
+              <option value="">Tous les utilisateurs</option>
+              {(users.data ?? []).map((user) => <option key={user.userId} value={user.userId}>{user.fullName}</option>)}
+            </select>
+          </div>
+          <div className="stock-movements-filter-field stock-movements-sort-field">
+            <label className="stock-movements-filter-label" htmlFor="stock-movements-sort">Trier par</label>
+            <select
+              id="stock-movements-sort"
+              className="input compact-input"
+              value={sortChoice}
+              onChange={(event) => updateFilters(sortChoiceToParams(event.target.value as SortChoice))}
+            >
+              <option value="newest">Plus récent</option>
+              <option value="oldest">Plus ancien</option>
+              <option value="quantityAsc">Quantité croissante</option>
+              <option value="quantityDesc">Quantité décroissante</option>
+              <option value="articleAsc">Article A-Z</option>
+              <option value="articleDesc">Article Z-A</option>
+            </select>
+          </div>
+          <div className="stock-movements-filter-field stock-movements-page-size-field">
+            <label className="stock-movements-filter-label" htmlFor="stock-movements-limit">Lignes</label>
+            <select id="stock-movements-limit" className="input compact-input" value={String(limit)} onChange={(event) => updateFilters({ limit: event.target.value })}>
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </div>
+          <div className="stock-movements-date-shortcuts" aria-label="Raccourcis de période">
+            <button className={`ghost-button compact-button ${dateShortcut === 'today' ? 'is-active' : ''}`} type="button" onClick={() => setQuickRange('today', setParams)}>Aujourd&apos;hui</button>
+            <button className={`ghost-button compact-button ${dateShortcut === 'week' ? 'is-active' : ''}`} type="button" onClick={() => setQuickRange('week', setParams)}>Cette semaine</button>
+            <button className={`ghost-button compact-button ${dateShortcut === 'month' ? 'is-active' : ''}`} type="button" onClick={() => setQuickRange('month', setParams)}>Ce mois</button>
+          </div>
+          <div className="stock-movements-filter-actions">
+            <button className="ghost-button compact-button stock-movements-reset-button" type="button" onClick={() => updateFilters({
+              search: null,
+              dateFrom: monthStart(),
+              dateTo: todayIso(),
+              direction: null,
+              movementType: null,
+              siteId: null,
+              userId: null,
+              articleId: null,
+              lotId: null,
+              referenceType: null,
+              referenceId: null,
+              sortBy: 'movementDate',
+              sortOrder: 'desc',
+              limit: `${DEFAULT_LIMIT}`,
+            })}>Réinitialiser</button>
+            {can('stock_movements.export') && (
+              <div className="export-actions stock-export-actions">
+                <details className="export-menu">
+                  <summary className="ghost-button compact-button">Exporter</summary>
+                  <div className="export-menu-panel">
+                    <button type="button" disabled={rows.length === 0} onClick={() => exportRows('xlsx')}>Excel</button>
+                    <button type="button" disabled={rows.length === 0} onClick={() => exportRows('csv')}>CSV</button>
+                    <button type="button" disabled={rows.length === 0} onClick={() => exportRows('json')}>JSON</button>
+                  </div>
+                </details>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {activeFilterChips.length > 0 ? (
+        <div className="stock-movements-active-filters" aria-label="Filtres actifs">
+          {activeFilterChips.map((chip) => (
+            <span className="stock-movements-filter-chip" key={chip}>{chip}</span>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="stocks-table-meta">
+        <span>{movements.data ? `${movements.data.total} mouvements` : 'Historique des mouvements'}</span>
+        {movements.isFetching ? <span className="muted">Mise à jour...</span> : null}
       </div>
 
       <div className="card">
@@ -323,6 +389,24 @@ function monthStart() {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`;
 }
 
+function toSortChoice(sortBy: string, sortOrder: string): SortChoice {
+  if (sortBy === 'movementDate' && sortOrder === 'asc') return 'oldest';
+  if (sortBy === 'quantity' && sortOrder === 'asc') return 'quantityAsc';
+  if (sortBy === 'quantity' && sortOrder === 'desc') return 'quantityDesc';
+  if (sortBy === 'article' && sortOrder === 'asc') return 'articleAsc';
+  if (sortBy === 'article' && sortOrder === 'desc') return 'articleDesc';
+  return 'newest';
+}
+
+function sortChoiceToParams(choice: SortChoice) {
+  if (choice === 'oldest') return { sortBy: 'movementDate', sortOrder: 'asc' };
+  if (choice === 'quantityAsc') return { sortBy: 'quantity', sortOrder: 'asc' };
+  if (choice === 'quantityDesc') return { sortBy: 'quantity', sortOrder: 'desc' };
+  if (choice === 'articleAsc') return { sortBy: 'article', sortOrder: 'asc' };
+  if (choice === 'articleDesc') return { sortBy: 'article', sortOrder: 'desc' };
+  return { sortBy: 'movementDate', sortOrder: 'desc' };
+}
+
 function formatTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '--:--';
@@ -347,4 +431,43 @@ function setQuickRange(range: 'today' | 'week' | 'month', setParams: ReturnType<
     next.set('page', '1');
     return next;
   });
+}
+
+function activeDateShortcut(dateFrom: string, dateTo: string) {
+  if (dateFrom === todayIso() && dateTo === todayIso()) return 'today';
+  if (dateFrom === monthStart() && dateTo === todayIso()) return 'month';
+
+  const now = new Date();
+  const day = now.getDay();
+  const distance = day === 0 ? 6 : day - 1;
+  now.setDate(now.getDate() - distance);
+  const weekStart = now.toISOString().slice(0, 10);
+  if (dateFrom === weekStart && dateTo === todayIso()) return 'week';
+  return 'custom';
+}
+
+function buildActiveFilterChips(input: {
+  search: string;
+  direction: DirectionFilter;
+  movementType: string;
+  siteId: string;
+  userId: string;
+  dateFrom: string;
+  dateTo: string;
+  sites: Array<{ siteId: string; siteName: string | null }>;
+  users: Array<{ userId: string; fullName: string }>;
+}) {
+  const chips: string[] = [];
+  const shortcut = activeDateShortcut(input.dateFrom, input.dateTo);
+  if (shortcut === 'today') chips.push("Aujourd'hui");
+  else if (shortcut === 'week') chips.push('Cette semaine');
+  else if (shortcut === 'month') chips.push('Ce mois');
+  else if (input.dateFrom || input.dateTo) chips.push(`Période : ${formatDate(input.dateFrom)} - ${formatDate(input.dateTo)}`);
+  if (input.search.trim()) chips.push(`Recherche : ${input.search.trim()}`);
+  if (input.direction === 'IN') chips.push('Entrées');
+  if (input.direction === 'OUT') chips.push('Sorties');
+  if (input.movementType) chips.push(stockMovementLabel(input.movementType));
+  if (input.siteId) chips.push(`Site : ${input.sites.find((site) => site.siteId === input.siteId)?.siteName ?? input.siteId}`);
+  if (input.userId) chips.push(`Utilisateur : ${input.users.find((user) => user.userId === input.userId)?.fullName ?? input.userId}`);
+  return chips;
 }
