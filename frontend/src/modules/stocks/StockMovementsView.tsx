@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Modal } from '../../components/Modal';
@@ -27,7 +27,6 @@ export function StockMovementsView() {
   const { can } = usePermission();
   const [params, setParams] = useSearchParams();
   const [selectedMovement, setSelectedMovement] = useState<StockMovement | null>(null);
-  const [dismissedDefaultChips, setDismissedDefaultChips] = useState<Record<string, boolean>>({});
   const debouncedSearch = useDebouncedValue(params.get('search') ?? '', 300);
 
   const page = Math.max(1, Number(params.get('page') ?? '1'));
@@ -39,8 +38,8 @@ export function StockMovementsView() {
   const siteId = params.get('siteId') ?? '';
   const movementType = params.get('movementType') ?? '';
   const userId = params.get('userId') ?? '';
-  const dateFrom = params.get('dateFrom') ?? monthStart();
-  const dateTo = params.get('dateTo') ?? todayIso();
+  const dateFrom = params.get('dateFrom') ?? '';
+  const dateTo = params.get('dateTo') ?? '';
 
   const queryParams = useMemo(
     () => ({
@@ -51,8 +50,8 @@ export function StockMovementsView() {
       siteId: siteId || undefined,
       movementType: movementType || undefined,
       userId: userId || undefined,
-      dateFrom,
-      dateTo,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
       articleId: params.get('articleId') || undefined,
       lotId: params.get('lotId') || undefined,
       referenceType: params.get('referenceType') || undefined,
@@ -84,25 +83,6 @@ export function StockMovementsView() {
     return [...values].sort();
   }, [movements.data?.items]);
 
-  function updateFilters(next: Record<string, string | null>, resetPage = true) {
-    const nextParams = new URLSearchParams(params);
-    Object.entries(next).forEach(([key, value]) => {
-      if (!value) nextParams.delete(key);
-      else nextParams.set(key, value);
-    });
-    if (resetPage) nextParams.set('page', '1');
-    setParams(nextParams);
-  }
-
-  async function exportRows(format: 'xlsx' | 'csv' | 'json') {
-    const response = (await stocksService.exportMovements({ ...queryParams, page: undefined, limit: undefined })).data;
-    const rows = buildMovementExportRows(response.items);
-    const stamp = fileDateStamp();
-    if (format === 'xlsx') downloadXlsx(`mouvements_stock_${stamp}.xlsx`, [{ name: 'Mouvements', rows }]);
-    if (format === 'csv') downloadCsv(`mouvements_stock_${stamp}.csv`, rows);
-    if (format === 'json') downloadJson(`mouvements_stock_${stamp}.json`, response.items);
-  }
-
   const summary = movements.data?.summary;
   const rows = movements.data?.items ?? [];
   const dateShortcut = activeDateShortcut(dateFrom, dateTo);
@@ -113,21 +93,25 @@ export function StockMovementsView() {
     dateFrom,
     dateTo,
     sites: sites.data ?? [],
-    dismissedDefaultChips,
   });
   const resultFrom = rows.length === 0 ? 0 : (page - 1) * limit + 1;
   const resultTo = rows.length === 0 ? 0 : resultFrom + rows.length - 1;
 
-  useEffect(() => {
-    setDismissedDefaultChips({});
-  }, [direction, movementType, siteId, dateFrom, dateTo]);
+  function updateFilters(next: Record<string, string | null>, resetPage = true) {
+    const nextParams = new URLSearchParams(params);
+    Object.entries(next).forEach(([key, value]) => {
+      if (!value) nextParams.delete(key);
+      else nextParams.set(key, value);
+    });
+    if (resetPage) nextParams.set('page', '1');
+    setParams(nextParams);
+  }
 
   function clearAllFilters() {
-    setDismissedDefaultChips({});
     updateFilters({
       search: null,
-      dateFrom: monthStart(),
-      dateTo: todayIso(),
+      dateFrom: null,
+      dateTo: null,
       direction: null,
       movementType: null,
       siteId: null,
@@ -144,36 +128,29 @@ export function StockMovementsView() {
 
   function dismissChip(key: string) {
     if (key === 'period') {
-      if (dateShortcut === 'custom') {
-        updateFilters({ dateFrom: monthStart(), dateTo: todayIso() });
-        return;
-      }
-      setDismissedDefaultChips((current) => ({ ...current, period: true }));
+      updateFilters({ dateFrom: null, dateTo: null });
       return;
     }
     if (key === 'direction') {
-      if (direction === 'ALL') {
-        setDismissedDefaultChips((current) => ({ ...current, direction: true }));
-        return;
-      }
       updateFilters({ direction: null });
       return;
     }
     if (key === 'movementType') {
-      if (!movementType) {
-        setDismissedDefaultChips((current) => ({ ...current, movementType: true }));
-        return;
-      }
       updateFilters({ movementType: null });
       return;
     }
     if (key === 'site') {
-      if (!siteId) {
-        setDismissedDefaultChips((current) => ({ ...current, site: true }));
-        return;
-      }
       updateFilters({ siteId: null });
     }
+  }
+
+  async function exportRows(format: 'xlsx' | 'csv' | 'json') {
+    const response = (await stocksService.exportMovements({ ...queryParams, page: undefined, limit: undefined })).data;
+    const exportData = buildMovementExportRows(response.items);
+    const stamp = fileDateStamp();
+    if (format === 'xlsx') downloadXlsx(`mouvements_stock_${stamp}.xlsx`, [{ name: 'Mouvements', rows: exportData }]);
+    if (format === 'csv') downloadCsv(`mouvements_stock_${stamp}.csv`, exportData);
+    if (format === 'json') downloadJson(`mouvements_stock_${stamp}.json`, response.items);
   }
 
   return (
@@ -243,7 +220,7 @@ export function StockMovementsView() {
               onChange={(event) => updateFilters({ direction: event.target.value === 'ALL' ? null : event.target.value })}
             >
               <option value="ALL">Tous les sens</option>
-              <option value="IN">Entrees</option>
+              <option value="IN">Entrées</option>
               <option value="OUT">Sorties</option>
             </select>
           </div>
@@ -306,10 +283,10 @@ export function StockMovementsView() {
               value={sortChoice}
               onChange={(event) => updateFilters(sortChoiceToParams(event.target.value as SortChoice))}
             >
-              <option value="newest">Plus recent</option>
+              <option value="newest">Plus récent</option>
               <option value="oldest">Plus ancien</option>
-              <option value="quantityAsc">Quantite croissante</option>
-              <option value="quantityDesc">Quantite decroissante</option>
+              <option value="quantityAsc">Quantité croissante</option>
+              <option value="quantityDesc">Quantité décroissante</option>
               <option value="articleAsc">Article A-Z</option>
               <option value="articleDesc">Article Z-A</option>
             </select>
@@ -327,7 +304,7 @@ export function StockMovementsView() {
               <option value="100">100</option>
             </select>
           </div>
-          <div className="stock-movements-date-shortcuts" aria-label="Raccourcis de periode">
+          <div className="stock-movements-date-shortcuts" aria-label="Raccourcis de période">
             <button className={`ghost-button compact-button ${dateShortcut === 'today' ? 'is-active' : ''}`} type="button" onClick={() => setQuickRange('today', setParams)}>
               Aujourd&apos;hui
             </button>
@@ -340,7 +317,7 @@ export function StockMovementsView() {
           </div>
           <div className="stock-movements-filter-actions">
             <button className="ghost-button compact-button stock-movements-reset-button" type="button" onClick={clearAllFilters}>
-              Reinitialiser
+              Réinitialiser
             </button>
             {can('stock_movements.export') && (
               <div className="export-actions stock-export-actions">
@@ -383,7 +360,7 @@ export function StockMovementsView() {
 
       <div className="stocks-table-meta">
         <span>{movements.data ? `${movements.data.total} mouvements` : 'Historique des mouvements'}</span>
-        {movements.isFetching ? <span className="muted">Mise a jour...</span> : null}
+        {movements.isFetching ? <span className="muted">Mise à jour...</span> : null}
       </div>
 
       <div className="card stock-movements-table-card">
@@ -393,11 +370,11 @@ export function StockMovementsView() {
           <div className="error-state">
             <p>Impossible de charger l&apos;historique des mouvements.</p>
             <button className="ghost-button compact-button" type="button" onClick={() => movements.refetch()}>
-              Reessayer
+              Réessayer
             </button>
           </div>
         ) : rows.length === 0 ? (
-          <p className="empty-state">Aucun mouvement trouve pour cette periode.</p>
+          <p className="empty-state">Aucun mouvement trouvé pour cette période.</p>
         ) : (
           <div className="table-wrap">
             <table className="data-table stocks-table stock-movements-table">
@@ -408,9 +385,9 @@ export function StockMovementsView() {
                   <th>Lot</th>
                   <th>Mouvement</th>
                   <th>Sens</th>
-                  <th>Quantite</th>
-                  <th>Unite</th>
-                  <th>Stock apres</th>
+                  <th>Quantité</th>
+                  <th>Unité</th>
+                  <th>Stock après</th>
                   <th>Origine</th>
                   <th>Utilisateur</th>
                   <th>Site</th>
@@ -465,7 +442,7 @@ export function StockMovementsView() {
           <button
             className="ghost-button compact-button"
             type="button"
-            aria-label="Premiere page"
+            aria-label="Première page"
             disabled={page <= 1 || movements.isFetching}
             onClick={() => updateFilters({ page: '1' }, false)}
           >
@@ -474,7 +451,7 @@ export function StockMovementsView() {
           <button
             className="ghost-button compact-button"
             type="button"
-            aria-label="Page precedente"
+            aria-label="Page précédente"
             disabled={page <= 1 || movements.isFetching}
             onClick={() => updateFilters({ page: String(Math.max(1, page - 1)) }, false)}
           >
@@ -495,7 +472,7 @@ export function StockMovementsView() {
           <button
             className="ghost-button compact-button"
             type="button"
-            aria-label="Derniere page"
+            aria-label="Dernière page"
             disabled={!movements.data || page >= movements.data.totalPages || movements.isFetching}
             onClick={() => updateFilters({ page: String(movements.data?.totalPages ?? 1) }, false)}
           >
@@ -503,11 +480,11 @@ export function StockMovementsView() {
           </button>
         </div>
         <span className="stock-movements-pagination-summary">
-          Affichage de {resultFrom} a {resultTo} sur {movements.data?.total ?? 0} resultats
+          Affichage de {resultFrom} à {resultTo} sur {movements.data?.total ?? 0} résultats
         </span>
       </div>
 
-      <Modal title="Detail mouvement de stock" open={Boolean(selectedMovement)} onClose={() => setSelectedMovement(null)}>
+      <Modal title="Détail mouvement de stock" open={Boolean(selectedMovement)} onClose={() => setSelectedMovement(null)}>
         {selectedMovement && <StockMovementDetail movement={selectedMovement} />}
       </Modal>
     </>
@@ -526,15 +503,15 @@ function StockMovementDetail({ movement }: { movement: StockMovement }) {
         <div><span>Lot</span><strong>{movement.lotNumber ?? '-'}</strong></div>
         <div><span>Type</span><strong>{stockMovementLabel(movement.movementType)}</strong></div>
         <div><span>Sens</span><strong>{stockMovementDirectionLabel(movement.direction)}</strong></div>
-        <div><span>Quantite</span><strong>{movement.quantity}</strong></div>
-        <div><span>Unite</span><strong>{movement.unitLabel ?? 'Non disponible'}</strong></div>
+        <div><span>Quantité</span><strong>{movement.quantity}</strong></div>
+        <div><span>Unité</span><strong>{movement.unitLabel ?? 'Non disponible'}</strong></div>
         <div><span>Stock avant</span><strong>{movement.stockBefore ?? 'Non disponible'}</strong></div>
-        <div><span>Stock apres</span><strong>{movement.stockAfter ?? 'Non disponible'}</strong></div>
+        <div><span>Stock après</span><strong>{movement.stockAfter ?? 'Non disponible'}</strong></div>
         <div><span>Utilisateur</span><strong>{movement.userName ?? 'Utilisateur inconnu'}</strong></div>
         <div><span>Poste</span><strong>{movement.workstationName ?? 'Non disponible'}</strong></div>
         <div><span>Site</span><strong>{movement.siteName ?? '-'}</strong></div>
         <div><span>Document source</span><strong>{stockMovementSourceLabel(movement)}</strong></div>
-        <div><span>Reference</span><strong>{movement.referenceId ?? '-'}</strong></div>
+        <div><span>Référence</span><strong>{movement.referenceId ?? '-'}</strong></div>
         <div><span>Motif</span><strong>{movement.notes ?? '-'}</strong></div>
       </div>
       {sourceRoute ? (
@@ -544,14 +521,14 @@ function StockMovementDetail({ movement }: { movement: StockMovement }) {
       ) : (
         <p className="muted">Document source non disponible.</p>
       )}
-      <p className="muted">Les mouvements de stock sont immuables. Toute correction doit passer par une operation metier de regularisation.</p>
+      <p className="muted">Les mouvements de stock sont immuables. Toute correction doit passer par une opération métier de régularisation.</p>
     </div>
   );
 }
 
 function buildMovementExportRows(items: StockMovement[]) {
   return [
-    ['Date', 'Heure', 'Article', 'Code article', 'Lot', 'Type', 'Sens', 'Quantite', 'Unite', 'Site', 'Utilisateur', 'Origine', 'Reference', 'Note'],
+    ['Date', 'Heure', 'Article', 'Code article', 'Lot', 'Type', 'Sens', 'Quantité', 'Unité', 'Site', 'Utilisateur', 'Origine', 'Référence', 'Note'],
     ...items.map((movement) => [
       formatDate(movement.movementDate),
       formatTime(movement.movementDate),
@@ -571,13 +548,20 @@ function buildMovementExportRows(items: StockMovement[]) {
   ];
 }
 
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+function formatLocalDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function monthStart() {
   const date = new Date();
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`;
+  return formatLocalDate(new Date(date.getFullYear(), date.getMonth(), 1));
+}
+
+function todayLocal() {
+  return formatLocalDate(new Date());
 }
 
 function toSortChoice(sortBy: string, sortOrder: string): SortChoice {
@@ -606,15 +590,21 @@ function formatTime(value: string) {
 
 function setQuickRange(range: 'today' | 'week' | 'month', setParams: ReturnType<typeof useSearchParams>[1]) {
   const now = new Date();
-  const to = todayIso();
+  const to = todayLocal();
   let from = to;
+
   if (range === 'week') {
-    const day = now.getDay();
+    const start = new Date(now);
+    const day = start.getDay();
     const distance = day === 0 ? 6 : day - 1;
-    now.setDate(now.getDate() - distance);
-    from = now.toISOString().slice(0, 10);
+    start.setDate(start.getDate() - distance);
+    from = formatLocalDate(start);
   }
-  if (range === 'month') from = monthStart();
+
+  if (range === 'month') {
+    from = formatLocalDate(new Date(now.getFullYear(), now.getMonth(), 1));
+  }
+
   setParams((current) => {
     const next = new URLSearchParams(current);
     next.set('dateFrom', from);
@@ -625,15 +615,19 @@ function setQuickRange(range: 'today' | 'week' | 'month', setParams: ReturnType<
 }
 
 function activeDateShortcut(dateFrom: string, dateTo: string) {
-  if (dateFrom === todayIso() && dateTo === todayIso()) return 'today';
-  if (dateFrom === monthStart() && dateTo === todayIso()) return 'month';
+  if (!dateFrom && !dateTo) return null;
 
-  const now = new Date();
-  const day = now.getDay();
+  const today = todayLocal();
+  if (dateFrom === today && dateTo === today) return 'today';
+  if (dateFrom === monthStart() && dateTo === today) return 'month';
+
+  const start = new Date();
+  const day = start.getDay();
   const distance = day === 0 ? 6 : day - 1;
-  now.setDate(now.getDate() - distance);
-  const weekStart = now.toISOString().slice(0, 10);
-  if (dateFrom === weekStart && dateTo === todayIso()) return 'week';
+  start.setDate(start.getDate() - distance);
+  const weekStart = formatLocalDate(start);
+
+  if (dateFrom === weekStart && dateTo === today) return 'week';
   return 'custom';
 }
 
@@ -644,24 +638,25 @@ function buildActiveFilterChips(input: {
   dateFrom: string;
   dateTo: string;
   sites: Array<{ siteId: string; siteName: string | null }>;
-  dismissedDefaultChips: Record<string, boolean>;
 }) {
   const chips: Array<{ key: string; label: string }> = [];
   const shortcut = activeDateShortcut(input.dateFrom, input.dateTo);
-  if (!input.dismissedDefaultChips.period) {
-    if (shortcut === 'today') chips.push({ key: 'period', label: "Periode : Aujourd'hui" });
-    else if (shortcut === 'week') chips.push({ key: 'period', label: 'Periode : Cette semaine' });
-    else if (shortcut === 'month') chips.push({ key: 'period', label: 'Periode : Ce mois' });
-    else if (input.dateFrom || input.dateTo) chips.push({ key: 'period', label: `Periode : ${formatDate(input.dateFrom)} - ${formatDate(input.dateTo)}` });
+
+  if (shortcut === 'today') chips.push({ key: 'period', label: "Aujourd'hui" });
+  else if (shortcut === 'week') chips.push({ key: 'period', label: 'Cette semaine' });
+  else if (shortcut === 'month') chips.push({ key: 'period', label: 'Ce mois' });
+  else if (input.dateFrom || input.dateTo) {
+    const fromLabel = input.dateFrom ? formatDate(input.dateFrom) : '...';
+    const toLabel = input.dateTo ? formatDate(input.dateTo) : '...';
+    chips.push({ key: 'period', label: `Période : ${fromLabel} - ${toLabel}` });
   }
-  if (!input.dismissedDefaultChips.direction) {
-    chips.push({ key: 'direction', label: input.direction === 'IN' ? 'Sens : Entrees' : input.direction === 'OUT' ? 'Sens : Sorties' : 'Sens : Tous' });
+
+  if (input.direction === 'IN') chips.push({ key: 'direction', label: 'Sens : Entrées' });
+  if (input.direction === 'OUT') chips.push({ key: 'direction', label: 'Sens : Sorties' });
+  if (input.movementType) chips.push({ key: 'movementType', label: `Type : ${stockMovementLabel(input.movementType)}` });
+  if (input.siteId) {
+    chips.push({ key: 'site', label: `Site : ${input.sites.find((site) => site.siteId === input.siteId)?.siteName ?? input.siteId}` });
   }
-  if (!input.dismissedDefaultChips.movementType) {
-    chips.push({ key: 'movementType', label: `Type : ${input.movementType ? stockMovementLabel(input.movementType) : 'Tous'}` });
-  }
-  if (!input.dismissedDefaultChips.site) {
-    chips.push({ key: 'site', label: `Site : ${input.siteId ? input.sites.find((site) => site.siteId === input.siteId)?.siteName ?? input.siteId : 'Tous'}` });
-  }
+
   return chips;
 }

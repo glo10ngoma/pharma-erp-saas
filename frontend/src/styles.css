@@ -836,16 +836,20 @@ details.nav-group .nav-link {
   align-items: end;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(300px, 2.1fr) 185px 185px 210px 210px 210px;
+  grid-template-columns: minmax(240px, 1.6fr) minmax(150px, 0.8fr) minmax(150px, 0.8fr) minmax(150px, 0.8fr) minmax(180px, 1fr) minmax(180px, 1fr);
+  max-width: 100%;
 }
 
 .stock-movements-filter-row-secondary {
-  grid-template-columns: 260px 190px 150px minmax(290px, 1fr) auto;
+  grid-template-columns: minmax(200px, 1fr) minmax(180px, 0.9fr) minmax(130px, 0.6fr) minmax(300px, 1.2fr) auto;
+  max-width: 100%;
 }
 
 .stock-movements-filter-field {
+  box-sizing: border-box;
   display: grid;
   gap: 6px;
+  max-width: 100%;
   min-width: 0;
 }
 
@@ -881,10 +885,14 @@ details.nav-group .nav-link {
 
 .stock-movements-date-shortcuts {
   justify-content: flex-start;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 2px;
 }
 
 .stock-movements-filter-actions {
   justify-content: flex-end;
+  min-width: 0;
 }
 
 .stock-movements-filter-actions .export-actions {
@@ -909,6 +917,7 @@ details.nav-group .nav-link {
 
 .stock-movements-reset-button {
   opacity: .94;
+  white-space: nowrap;
 }
 
 .stock-movements-active-filters {
@@ -988,6 +997,7 @@ details.nav-group .nav-link {
 
 .stock-movements-export-summary {
   min-width: 138px;
+  white-space: nowrap;
 }
 
 .stock-movement-actions {
@@ -1055,11 +1065,11 @@ details.nav-group .nav-link {
 
 @media (max-width: 1520px) {
   .stock-movements-filter-row {
-    grid-template-columns: minmax(260px, 1.8fr) 170px 170px 190px 190px 190px;
+    grid-template-columns: minmax(220px, 1.35fr) repeat(2, minmax(140px, 0.8fr)) minmax(140px, 0.8fr) minmax(170px, 1fr) minmax(170px, 1fr);
   }
 
   .stock-movements-filter-row-secondary {
-    grid-template-columns: 220px 180px 140px minmax(260px, 1fr) auto;
+    grid-template-columns: minmax(180px, 1fr) minmax(170px, 0.9fr) minmax(120px, 0.6fr) minmax(250px, 1fr) auto;
   }
 }
 
