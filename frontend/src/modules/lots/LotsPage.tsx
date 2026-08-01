@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { Modal } from '../../components/Modal';
 import { SearchBox } from '../../components/SearchBox';
 import { filterRows } from '../../lib/search';
@@ -8,6 +9,7 @@ import { stocksService, Stock, StockMovement } from '../../services/stocks.servi
 import { formatDate, fileDateStamp } from '../../utils/date';
 import { downloadCsv, downloadJson, downloadXlsx } from '../../utils/export';
 import { formatMoney } from '../../utils/money';
+import { stockMovementLabel } from '../stocks/stockMovementLabels';
 
 type ExpiryFilter = 'ALL' | 'EXPIRED' | 'LT30' | 'LT90' | 'VALID';
 type StatusFilter = 'ALL' | 'AVAILABLE' | 'BLOCKED' | 'EXPIRED' | 'NEAR_EXPIRY';
@@ -30,7 +32,11 @@ export function LotsPage() {
 
   const lots = useQuery({ queryKey: ['lots'], queryFn: async () => (await lotsService.getAll()).data });
   const stocks = useQuery({ queryKey: ['stocks'], queryFn: async () => (await stocksService.getAll()).data });
-  const movements = useQuery({ queryKey: ['stock-movements'], queryFn: async () => (await stocksService.getMovements()).data, enabled: Boolean(selectedLotId) });
+  const movements = useQuery({
+    queryKey: ['stock-movements', selectedLotId],
+    queryFn: async () => (await stocksService.getMovements({ lotId: selectedLotId ?? undefined, limit: 100 })).data.items,
+    enabled: Boolean(selectedLotId),
+  });
   const block = useMutation({ mutationFn: (id: string) => lotsService.block(id, 'Blocage manuel'), onSuccess: () => qc.invalidateQueries({ queryKey: ['lots'] }) });
   const unblock = useMutation({ mutationFn: (id: string) => lotsService.unblock(id), onSuccess: () => qc.invalidateQueries({ queryKey: ['lots'] }) });
 
@@ -50,7 +56,7 @@ export function LotsPage() {
 
   const selectedLot = rows.find((lot) => lot.lotId === selectedLotId) ?? lotRows.find((lot) => lot.lotId === selectedLotId) ?? null;
   const selectedStocks = selectedLot ? stocksByLot.get(selectedLot.lotId) ?? [] : [];
-  const selectedMovements = selectedLot ? (movements.data ?? []).filter((movement) => movement.lotNumber === selectedLot.lotNumber).slice(0, 12) : [];
+  const selectedMovements = selectedLot ? (movements.data ?? []).slice(0, 12) : [];
 
   function exportRows(format: 'xlsx' | 'csv' | 'json') {
     const data = lotExportRows(rows);
@@ -164,11 +170,14 @@ function LotDetail({ lot, stocks, movements }: { lot: LotView; stocks: Stock[]; 
       </div>
 
       <h3>Mouvements stock recents</h3>
+      <div className="stock-detail-actions">
+        <Link className="ghost-button compact-button" to={`/stocks/movements?lotId=${lot.lotId}`}>Voir tout l&apos;historique du lot</Link>
+      </div>
       <div className="table-wrap">
         <table className="data-table lots-detail-table">
           <thead><tr><th>Date</th><th>Type</th><th>Site</th><th>Quantite</th><th>Reference</th></tr></thead>
           <tbody>{movements.length === 0 ? <tr><td colSpan={5}>Aucun mouvement accessible.</td></tr> : movements.map((movement) => (
-            <tr key={movement.movementId}><td>{formatDate(movement.movementDate)}</td><td>{movement.movementType}</td><td>{movement.siteName ?? '-'}</td><td className="quantity-cell">{movement.quantity}</td><td>{movement.referenceType ?? '-'}</td></tr>
+            <tr key={movement.movementId}><td>{formatDate(movement.movementDate)}</td><td>{stockMovementLabel(movement.movementType)}</td><td>{movement.siteName ?? '-'}</td><td className="quantity-cell">{movement.quantity}</td><td>{movement.referenceLabel ?? movement.referenceType ?? '-'}</td></tr>
           ))}</tbody>
         </table>
       </div>

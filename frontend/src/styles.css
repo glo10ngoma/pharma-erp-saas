@@ -758,6 +758,31 @@ details.nav-group .nav-link {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
+.stocks-subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.stocks-subnav-link {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text);
+  display: inline-flex;
+  font-weight: 700;
+  padding: 8px 14px;
+  text-decoration: none;
+}
+
+.stocks-subnav-link:hover,
+.stocks-subnav-link.is-active {
+  background: var(--surface-soft);
+  border-color: var(--primary);
+  color: var(--text);
+}
+
 .stocks-table-meta,
 .table-pagination {
   align-items: center;
@@ -791,6 +816,52 @@ details.nav-group .nav-link {
 
 .error-state p {
   margin: 0;
+}
+
+.stock-movement-filters {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.stock-movement-filters .input {
+  max-width: 220px;
+}
+
+.stock-movement-kpis {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.stock-movement-kpi-note {
+  padding: 12px 14px;
+}
+
+.stock-movement-kpi-note p {
+  margin: 0;
+}
+
+.stock-movements-table th,
+.stock-movements-table td {
+  padding-bottom: 8px;
+  padding-top: 8px;
+}
+
+.stock-movements-table td small {
+  display: block;
+}
+
+.stock-movement-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.stock-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 10px;
 }
 
 .inventory-sticky-header {

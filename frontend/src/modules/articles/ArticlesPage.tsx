@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { FloatingSearchPopover } from '../../components/FloatingSearchPopover';
 import { Modal } from '../../components/Modal';
 import { usePermission } from '../../hooks/usePermission';
@@ -680,6 +681,9 @@ function ArticleDetailModal({
             <thead><tr><th>Lot</th><th>Expiration</th><th>Fournisseur</th><th>Prix achat</th><th>Prix vente</th><th>Bloque</th></tr></thead>
             <tbody>{articleLots.length === 0 ? <tr><td colSpan={6}>Aucun lot lie.</td></tr> : articleLots.slice(0, 8).map((lot) => <tr key={lot.lotId}><td>{lot.lotNumber}</td><td>{formatDate(lot.expiryDate)}</td><td>{lot.supplierName ?? '-'}</td><td className="numeric-text">{formatMoney(lot.purchasePrice, lot.currencyCode ?? 'USD', lot.currencySymbol)}</td><td className="numeric-text">{formatMoney(lot.sellingPrice, lot.currencyCode ?? 'USD', lot.currencySymbol)}</td><td>{lot.isBlocked ? 'Oui' : 'Non'}</td></tr>)}</tbody>
           </table>
+        </div>
+        <div className="stock-detail-actions">
+          <Link className="ghost-button compact-button" to={`/stocks/movements?articleId=${article.articleId}`}>Voir les mouvements de cet article</Link>
         </div>
       </div>
     </div>

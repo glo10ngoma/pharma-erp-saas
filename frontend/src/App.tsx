@@ -119,6 +119,8 @@ export function App() {
                 <Route path="/fefo/highlight" element={<FefoHighlightPage />} />
                 <Route path="/fefo/rotation" element={<FefoRotationPage />} />
                 <Route path="/stocks" element={<StocksPage />} />
+                <Route path="/stocks/movements" element={<StocksPage />} />
+                <Route path="/stocks/as-of" element={<StocksPage />} />
                 <Route path="/transfers" element={<TransfersPage />} />
                 <Route path="/transfers/new" element={<NewTransferPage />} />
                 <Route path="/transfers/:id" element={<TransferDetailPage />} />

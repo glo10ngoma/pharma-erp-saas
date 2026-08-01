@@ -40,6 +40,9 @@ export function PurchaseDetailPage() {
             <span>{purchase.supplierName} - {purchase.siteName} - {purchase.status} - {formatMoney(purchase.totalAmount, purchase.currencyCode ?? 'USD', purchase.currencySymbol)}</span>
           </div>
           <div className="table-actions">
+            <Link className="ghost-button compact-button" to={`/stocks/movements?referenceType=PURCHASE&referenceId=${purchase.purchaseId ?? id}`}>
+              Voir mouvements stock
+            </Link>
             {canCreateReturn ? (
               <button className="ghost-button compact-button" onClick={() => createReturn.mutate()} disabled={createReturn.isPending}>
                 {createReturn.isPending ? 'Creation retour...' : 'Creer un retour'}

@@ -60,6 +60,7 @@ export function TransferDetailPage() {
       </section>
       <div className="page-actions">
         <Link className="ghost-button compact-button" to="/transfers">Retour</Link>
+        <Link className="ghost-button compact-button" to={`/stocks/movements?referenceType=TRANSFER&referenceId=${id}`}>Voir mouvements stock</Link>
         <button className="button compact-button" type="button" disabled={!current || current.status !== 'DRAFT' || validate.isPending} onClick={() => validate.mutate()}>{validate.isPending ? 'Validation...' : 'Valider Transfert'}</button>
       </div>
     </div>

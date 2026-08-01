@@ -149,6 +149,7 @@ export function InventoryDetailPage() {
 
       <div className="card inventory-actions">
         <Link className="ghost-button compact-button" to="/inventories">Retour</Link>
+        <Link className="ghost-button compact-button" to={`/stocks/movements?referenceType=INVENTORY&referenceId=${current.inventoryId}`}>Voir mouvements stock</Link>
         {current.status === 'DRAFT' && <button className="button compact-button" onClick={() => start.mutate()} disabled={start.isPending}>Demarrer</button>}
         {current.status === 'IN_PROGRESS' && <button className="button compact-button" onClick={() => close.mutate()} disabled={close.isPending}>Cloturer</button>}
         {current.status === 'CLOSED' && <button className="button compact-button" onClick={() => validate.mutate()} disabled={validate.isPending || rows.length === 0 || hasBlockingError}>Valider</button>}

@@ -212,6 +212,7 @@ VALUES
   ('atc_codes.create', 'Creer code ATC', 'ArticleReferences', 'Creer un code ATC', TRUE),
   ('settings.exchange_rate.read', 'Consulter taux de change', 'Settings', 'Voir le taux USD/CDF du tenant', TRUE),
   ('settings.exchange_rate.update', 'Modifier taux de change', 'Settings', 'Modifier le taux USD/CDF du tenant', TRUE),
+  ('stock_movements.export', 'Exporter mouvements stock', 'StockMovements', 'Exporter les mouvements de stock', TRUE),
   ('purchases.pay', 'Payer achat fournisseur', 'Purchases', 'Enregistrer un paiement fournisseur pour un achat', TRUE),
   ('purchase_payments.read', 'Consulter paiements achat', 'Purchases', 'Voir l historique des paiements fournisseur', TRUE),
   ('purchase_attachments.read', 'Consulter pieces jointes achat', 'Purchases', 'Voir les pieces jointes des achats et retours fournisseur', TRUE),

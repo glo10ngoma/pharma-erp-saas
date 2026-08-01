@@ -1275,6 +1275,9 @@ export function PurchaseReturnDetailPage() {
                 <Link className="ghost-button compact-button" to={current ? `/purchases/${current.purchaseId}` : '/purchases'}>
                   Retour achat
                 </Link>
+                <Link className="ghost-button compact-button" to={current ? `/stocks/movements?referenceType=PURCHASE_RETURN&referenceId=${current.purchaseReturnId}` : '/stocks/movements'}>
+                  Voir mouvements stock
+                </Link>
                 {canEdit ? (
                   <button className="ghost-button compact-button" type="button" onClick={() => cancelReturn.mutate()} disabled={cancelReturn.isPending}>
                     Annuler retour
