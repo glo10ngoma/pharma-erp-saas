@@ -35,6 +35,7 @@ type TransferItemRow = {
   quantity_sent: string | null;
   quantity_received: string | null;
   notes: string | null;
+  created_at: Date;
 };
 
 @Injectable()
@@ -155,11 +156,13 @@ export class TransfersRepository {
         SELECT ti.transfer_item_id, ti.transfer_id, ti.tenant_id, ti.article_id,
                NULL::text AS article_code, NULL::text AS commercial_name,
                ti.lot_id, NULL::text AS lot_number, NULL::date AS expiry_date,
-               ti.quantity_requested, ti.quantity_sent, ti.quantity_received, ti.notes
+               ti.quantity_requested, ti.quantity_sent, ti.quantity_received, ti.notes,
+               ti.created_at
         FROM stock_transfer_items ti
         JOIN articles a ON a.article_id = ti.article_id AND a.tenant_id = ti.tenant_id
         JOIN lots l ON l.lot_id = ti.lot_id AND l.tenant_id = ti.tenant_id AND l.article_id = ti.article_id
         WHERE ti.tenant_id=$1 AND ti.transfer_id=$2
+        ORDER BY ti.created_at ASC, ti.transfer_item_id ASC
         `,
         [user.tenantId, transferId],
       );
@@ -265,12 +268,13 @@ export class TransfersRepository {
       `
       SELECT ti.transfer_item_id, ti.transfer_id, ti.tenant_id, ti.article_id,
              a.article_code, a.commercial_name, ti.lot_id, l.lot_number, l.expiry_date,
-             ti.quantity_requested, ti.quantity_sent, ti.quantity_received, ti.notes
+             ti.quantity_requested, ti.quantity_sent, ti.quantity_received, ti.notes,
+             ti.created_at
       FROM stock_transfer_items ti
       JOIN articles a ON a.article_id = ti.article_id AND a.tenant_id = ti.tenant_id
       JOIN lots l ON l.lot_id = ti.lot_id AND l.tenant_id = ti.tenant_id
       WHERE ti.tenant_id=$1 AND ti.transfer_id=$2
-      ORDER BY ti.transfer_item_id
+      ORDER BY ti.created_at ASC, ti.transfer_item_id ASC
       `,
       [user.tenantId, transferId],
     );

@@ -137,6 +137,7 @@ export function NewPurchasePage() {
   const [activeAutocomplete, setActiveAutocomplete] = useState('');
   const [activeUnitPopover, setActiveUnitPopover] = useState('');
   const [clientError, setClientError] = useState('');
+  const [pendingFocusTarget, setPendingFocusTarget] = useState<{ lineId: string; col: number } | null>(null);
   const canPayPurchase = permissions.includes('purchases.pay');
 
   const suppliers = useQuery({ queryKey: ['suppliers'], queryFn: async () => (await referenceService.suppliers.getAll()).data });
@@ -310,15 +311,37 @@ export function NewPurchasePage() {
     if (form.currencyCode === 'USD' && form.exchangeRate !== '1') setForm((current) => ({ ...current, exchangeRate: '1' }));
   }, [form.currencyCode, form.exchangeRate]);
 
+  useEffect(() => {
+    if (!pendingFocusTarget) return;
+    const cell = document.querySelector<HTMLElement>(`[data-line-id="${pendingFocusTarget.lineId}"][data-line-col="${pendingFocusTarget.col}"]`);
+    const target = cell?.querySelector<HTMLElement>('input, button, [tabindex]:not([tabindex="-1"])');
+    cell?.closest('tr')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    target?.focus();
+    if (target instanceof HTMLInputElement) target.select();
+    setPendingFocusTarget(null);
+  }, [draftLines, pendingFocusTarget, quickLine.id]);
+
   function update<K extends keyof PurchaseForm>(key: K, value: PurchaseForm[K]) { setForm((current) => ({ ...current, [key]: value })); }
   function updateLine(id: string, patch: Partial<PurchaseDraftLine>) { setDraftLines((current) => current.map((line) => line.id === id ? { ...line, ...patch } : line)); }
   function updateQuickLine(patch: Partial<PurchaseDraftLine>) { setQuickLine((current) => ({ ...current, ...patch })); }
+  function queueFocus(lineId: string, col = 0) { setPendingFocusTarget({ lineId, col }); }
   function focusCell(row: number, col: number) { document.querySelector<HTMLElement>(`[data-grid-cell="${row}-${col}"]`)?.focus(); }
+  // ERP rule: the quick row is the canonical append point, so every new line is committed at the end.
   function addLine() {
-    const line = newLine();
-    setDraftLines((current) => [...current, line]);
-    setSelectedLineId(line.id);
-    setTimeout(() => focusCell(draftLines.length, 0), 0);
+    const issue = issueForLine(quickLine);
+    if (quickLineHasInput) {
+      if (issue.blocksSave) {
+        setClientError(`Ligne rapide: ${issue.message}`);
+        setSelectedLineId(quickLine.id);
+        queueFocus(quickLine.id, 0);
+        return;
+      }
+      commitQuickLine();
+      return;
+    }
+    setClientError('');
+    setSelectedLineId(quickLine.id);
+    queueFocus(quickLine.id, 0);
   }
   function commitQuickLine() {
     const issue = issueForLine(quickLine);
@@ -328,7 +351,7 @@ export function NewPurchasePage() {
     setQuickLine(next);
     setSelectedLineId(next.id);
     setClientError('');
-    setTimeout(() => focusCell(draftLines.length + 1, 0), 0);
+    queueFocus(next.id, 0);
   }
   function duplicateSelectedLine() {
     const line = draftLines.find((item) => item.id === selectedLineId);
@@ -336,6 +359,7 @@ export function NewPurchasePage() {
     const copy = { ...line, id: `${Date.now()}-${Math.random().toString(36).slice(2)}` };
     setDraftLines((current) => [...current, copy]);
     setSelectedLineId(copy.id);
+    queueFocus(copy.id, 0);
   }
   function removeLine(id: string) { setDraftLines((current) => current.filter((line) => line.id !== id)); }
   function removeSelectedLine() { if (selectedLineId) removeLine(selectedLineId); }
@@ -356,7 +380,7 @@ export function NewPurchasePage() {
     };
     if (lineId === quickLine.id) updateQuickLine(patch); else updateLine(lineId, patch);
     setActiveAutocomplete('');
-    setTimeout(() => document.querySelector<HTMLElement>(`[data-grid-cell="${lineId === quickLine.id ? draftLines.length : draftLines.findIndex((line) => line.id === lineId)}-2"]`)?.focus(), 0);
+    queueFocus(lineId, 2);
   }
   function unitSuggestions(line: PurchaseDraftLine) {
     const query = line.purchaseUnitQuery.trim().toLowerCase();
@@ -569,7 +593,7 @@ function PurchaseGridRow(props: { action?: ReactNode; activeAutocomplete: string
   return <Fragment><tr className={`erp-grid-row line-${issue.level} ${selected ? 'selected' : ''}`} onClick={() => setSelectedLineId(line.id)}>
     <td><span className={`line-indicator ${issue.level}`}></span></td>
     <SharedArticleCell activeAutocomplete={activeAutocomplete} currencyCode={currencyCode} line={line} rowIndex={rowIndex} selectArticle={selectArticle} setActiveAutocomplete={setActiveAutocomplete} setSelectedLineId={setSelectedLineId} stockByArticle={stockByArticle} suggestions={suggestions} updateLine={updateLine} handleGridKey={handleGridKey} />
-    <td className="unit-cell">
+    <td className="unit-cell" data-line-id={line.id} data-line-col="1">
       <FloatingSearchPopover
         columns={[
           { header: 'Code', render: (unit) => unit.unitCode },
@@ -590,14 +614,14 @@ function PurchaseGridRow(props: { action?: ReactNode; activeAutocomplete: string
         value={line.purchaseUnitQuery}
       />
     </td>
-    <td><input className="input compact-input numeric-cell" data-grid-cell={`${rowIndex}-2`} type="number" min="0.001" step="0.001" placeholder="Qte achat" value={line.quantity} onKeyDown={(event) => handleGridKey(event, rowIndex, 2, line.id)} onChange={(event) => updateLine({ quantity: event.target.value })} /></td>
-    <td><input className="input compact-input numeric-cell" data-grid-cell={`${rowIndex}-3`} type="number" min="0.0001" step="0.0001" placeholder="Facteur" value={line.conversionFactor} onKeyDown={(event) => handleGridKey(event, rowIndex, 3, line.id)} onChange={(event) => updateLine({ conversionFactor: event.target.value })} /></td>
+    <td data-line-id={line.id} data-line-col="2"><input className="input compact-input numeric-cell" data-grid-cell={`${rowIndex}-2`} type="number" min="0.001" step="0.001" placeholder="Qte achat" value={line.quantity} onKeyDown={(event) => handleGridKey(event, rowIndex, 2, line.id)} onChange={(event) => updateLine({ quantity: event.target.value })} /></td>
+    <td data-line-id={line.id} data-line-col="3"><input className="input compact-input numeric-cell" data-grid-cell={`${rowIndex}-3`} type="number" min="0.0001" step="0.0001" placeholder="Facteur" value={line.conversionFactor} onKeyDown={(event) => handleGridKey(event, rowIndex, 3, line.id)} onChange={(event) => updateLine({ conversionFactor: event.target.value })} /></td>
     <td className="numeric-text"><strong>{lineStockQuantity(line)}</strong><small>{line.stockUnitLabel || 'Unite'}</small></td>
-    <td><input className="input compact-input numeric-cell" data-grid-cell={`${rowIndex}-4`} type="number" min="0.01" step="0.01" placeholder="PA" value={line.purchaseUnitPrice} onKeyDown={(event) => handleGridKey(event, rowIndex, 4, line.id)} onChange={(event) => updateLine({ purchaseUnitPrice: event.target.value })} /></td>
-    <td><input className="input compact-input numeric-cell" data-grid-cell={`${rowIndex}-5`} type="number" min="0" step="0.01" placeholder="PV" value={line.sellingUnitPrice} onKeyDown={(event) => handleGridKey(event, rowIndex, 5, line.id)} onChange={(event) => updateLine({ sellingUnitPrice: event.target.value })} /></td>
+    <td data-line-id={line.id} data-line-col="4"><input className="input compact-input numeric-cell" data-grid-cell={`${rowIndex}-4`} type="number" min="0.01" step="0.01" placeholder="PA" value={line.purchaseUnitPrice} onKeyDown={(event) => handleGridKey(event, rowIndex, 4, line.id)} onChange={(event) => updateLine({ purchaseUnitPrice: event.target.value })} /></td>
+    <td data-line-id={line.id} data-line-col="5"><input className="input compact-input numeric-cell" data-grid-cell={`${rowIndex}-5`} type="number" min="0" step="0.01" placeholder="PV" value={line.sellingUnitPrice} onKeyDown={(event) => handleGridKey(event, rowIndex, 5, line.id)} onChange={(event) => updateLine({ sellingUnitPrice: event.target.value })} /></td>
     <td className="numeric-text"><strong>{formatMoney(lineTotal(line), currencyCode)}</strong></td>
-    <td><input className="input compact-input" data-grid-cell={`${rowIndex}-6`} placeholder="Lot" value={line.lotNumber} onKeyDown={(event) => handleGridKey(event, rowIndex, 6, line.id)} onChange={(event) => updateLine({ lotNumber: event.target.value })} /></td>
-    <td><input className="input compact-input" data-grid-cell={`${rowIndex}-7`} type="date" value={line.expiryDate} onKeyDown={(event) => handleGridKey(event, rowIndex, 7, line.id)} onChange={(event) => updateLine({ expiryDate: event.target.value })} /></td>
+    <td data-line-id={line.id} data-line-col="6"><input className="input compact-input" data-grid-cell={`${rowIndex}-6`} placeholder="Lot" value={line.lotNumber} onKeyDown={(event) => handleGridKey(event, rowIndex, 6, line.id)} onChange={(event) => updateLine({ lotNumber: event.target.value })} /></td>
+    <td data-line-id={line.id} data-line-col="7"><input className="input compact-input" data-grid-cell={`${rowIndex}-7`} type="date" value={line.expiryDate} onKeyDown={(event) => handleGridKey(event, rowIndex, 7, line.id)} onChange={(event) => updateLine({ expiryDate: event.target.value })} /></td>
     <td>{action ?? <button aria-label="Supprimer la ligne" className="ghost-button compact-button row-action-button icon-only danger" title="Supprimer la ligne" type="button" onClick={() => removeLine(line.id)}><TrashIcon /></button>}</td>
   </tr>{issue.level !== 'valid' && <tr className="line-message-row"><td className={`line-message ${issue.level}`} colSpan={12}>{issue.message}</td></tr>}</Fragment>;
 }
@@ -608,7 +632,7 @@ function SharedArticleCell({ activeAutocomplete, currencyCode, handleGridKey, li
     setActiveAutocomplete(line.id);
     updateLine({ articleQuery: value, articleId: '' });
   };
-  return <td className="autocomplete-cell sticky-article-cell">
+  return <td className="autocomplete-cell sticky-article-cell" data-line-id={line.id} data-line-col="0">
     <FloatingSearchPopover
       columns={[
         { header: 'Code', render: (article) => article.articleCode },

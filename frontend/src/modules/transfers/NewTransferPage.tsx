@@ -27,12 +27,22 @@ export function NewTransferPage() {
   const [activePicker, setActivePicker] = useState('');
   const [selectedLineId, setSelectedLineId] = useState('');
   const [clientError, setClientError] = useState('');
+  const [pendingFocusTarget, setPendingFocusTarget] = useState<{ lineId: string; col: number } | null>(null);
 
   const sites = useQuery({ queryKey: ['sites'], queryFn: async () => (await sitesService.getAll()).data });
   const stocks = useQuery({ queryKey: ['stocks', 'transfer-new'], queryFn: async () => (await stocksService.getAll()).data });
   const nextCode = useQuery({ queryKey: ['next-code', 'transfers'], queryFn: async () => (await codeGeneratorService.next('transfers')).data.code });
 
   useEffect(() => { if (!form.transferNumber && nextCode.data) setForm((current) => ({ ...current, transferNumber: nextCode.data ?? '' })); }, [form.transferNumber, nextCode.data]);
+  useEffect(() => {
+    if (!pendingFocusTarget) return;
+    const cell = document.querySelector<HTMLElement>(`[data-transfer-line-id="${pendingFocusTarget.lineId}"][data-transfer-col="${pendingFocusTarget.col}"]`);
+    const target = cell?.querySelector<HTMLElement>('input, button, [tabindex]:not([tabindex="-1"])');
+    cell?.closest('tr')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    target?.focus();
+    if (target instanceof HTMLInputElement) target.select();
+    setPendingFocusTarget(null);
+  }, [lines, pendingFocusTarget, quickLine.id]);
 
   const currentSource = sites.data?.find((site) => site.siteId === form.fromSiteId);
   const currentDestination = sites.data?.find((site) => site.siteId === form.toSiteId);
@@ -73,27 +83,44 @@ export function NewTransferPage() {
   }
   function updateLine(id: string, patch: Partial<TransferDraftLine>) { setLines((current) => current.map((line) => line.id === id ? { ...line, ...patch } : line)); }
   function updateQuickLine(patch: Partial<TransferDraftLine>) { setQuickLine((current) => ({ ...current, ...patch })); }
+  function queueFocus(lineId: string, col = 0) { setPendingFocusTarget({ lineId, col }); }
   function stockSuggestions(line: TransferDraftLine) {
     const query = line.articleQuery.trim().toLowerCase();
     if (!query) return availableStocks.slice(0, 80);
     return availableStocks.filter((stock) => [stock.articleCode, stock.commercialName, stock.lotNumber].some((value) => String(value ?? '').toLowerCase().includes(query)));
   }
+  // ERP rule: the quick row is the canonical append point, so every new line is committed at the end.
   function selectStock(lineId: string, stock: Stock) {
     const patch = { stockId: stock.stockId, articleId: stock.articleId, articleQuery: `${stock.articleCode ?? ''} - ${stock.commercialName ?? ''} / ${stock.lotNumber}`, lotId: stock.lotId, lotNumber: stock.lotNumber, available: Number(stock.quantityAvailable), expiryDate: stock.expiryDate };
     if (lineId === quickLine.id) updateQuickLine(patch); else updateLine(lineId, patch);
     setActivePicker('');
+    queueFocus(lineId, 4);
   }
   function commitQuickLine() {
     const error = lineError(quickLine);
     if (error) { setClientError(`Ligne rapide: ${error}`); return; }
     setLines((current) => [...current, quickLine]);
-    setQuickLine(newLine());
+    const next = newLine();
+    setQuickLine(next);
     setClientError('');
+    setSelectedLineId(next.id);
+    queueFocus(next.id, 0);
   }
   function addLine() {
-    const line = newLine();
-    setLines((current) => [...current, line]);
-    setSelectedLineId(line.id);
+    const error = lineError(quickLine);
+    if (quickLine.articleQuery.trim() || quickLine.articleId || Number(quickLine.quantity || 0) > 0) {
+      if (error) {
+        setClientError(`Ligne rapide: ${error}`);
+        setSelectedLineId(quickLine.id);
+        queueFocus(quickLine.id, 0);
+        return;
+      }
+      commitQuickLine();
+      return;
+    }
+    setClientError('');
+    setSelectedLineId(quickLine.id);
+    queueFocus(quickLine.id, 0);
   }
   function removeLine(id: string) { setLines((current) => current.filter((line) => line.id !== id)); }
   function handleKeys(event: KeyboardEvent<HTMLElement>, lineId: string) {
@@ -177,7 +204,7 @@ function TransferLineRow({ activePicker, commitQuickLine, handleKeys, index, lin
 }) {
   const error = lineError(line);
   return <tr className={`erp-grid-row ${selected ? 'selected' : ''}`} onClick={() => setSelectedLineId(line.id)}>
-    <td className="autocomplete-cell">
+    <td className="autocomplete-cell" data-transfer-line-id={line.id} data-transfer-col="0">
       <FloatingSearchPopover
         columns={[
           { header: 'Code', render: (stock) => stock.articleCode ?? '-' },
@@ -204,7 +231,7 @@ function TransferLineRow({ activePicker, commitQuickLine, handleKeys, index, lin
     <td><strong>{line.lotNumber || '-'}</strong></td>
     <td>{line.expiryDate ? formatDate(line.expiryDate) : '-'}</td>
     <td className="quantity-cell">{line.available || '-'}</td>
-    <td><input className="input compact-input numeric-cell" type="number" min="0.001" step="0.001" value={line.quantity} onKeyDown={(event) => handleKeys(event, line.id)} onChange={(event) => updateLine({ quantity: event.target.value })} /></td>
+    <td data-transfer-line-id={line.id} data-transfer-col="4"><input className="input compact-input numeric-cell" type="number" min="0.001" step="0.001" value={line.quantity} onKeyDown={(event) => handleKeys(event, line.id)} onChange={(event) => updateLine({ quantity: event.target.value })} /></td>
     <td><span className={`badge compact-badge ${error ? 'badge-warning' : 'badge-success'}`}>{error ? 'A completer' : 'OK'}</span></td>
     <td>{quick ? <button aria-label="Ajouter la ligne" className="ghost-button compact-button row-action-button icon-only add" type="button" disabled={Boolean(error)} onClick={commitQuickLine}>+</button> : <button aria-label="Supprimer la ligne" className="ghost-button compact-button row-action-button icon-only danger" type="button" onClick={() => removeLine(line.id)}>X</button>}</td>
   </tr>;
