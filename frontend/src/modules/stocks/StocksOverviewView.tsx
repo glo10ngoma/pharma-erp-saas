@@ -48,6 +48,8 @@ type StockLotDetail = {
 };
 
 const PAGE_LIMIT = 25;
+const SNAPSHOT_ARTICLES_LIMIT = 100;
+const SNAPSHOT_MOVEMENTS_LIMIT = 100;
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
@@ -157,7 +159,15 @@ export function StocksOverviewView({ mode }: { mode: 'current' | 'as-of' }) {
   const isRefreshing = isSnapshot
     ? snapshotMovements.isFetching || snapshotLots.isFetching || snapshotArticles.isFetching
     : summary.isFetching;
-  const errorMessage = error ? apiErrorMessage(error) : 'Impossible de charger les stocks pour le moment.';
+  const errorMessage = !error
+    ? 'Impossible de charger les stocks pour le moment.'
+    : snapshotMovements.error
+      ? `Impossible de charger les mouvements necessaires au stock a date : ${apiErrorMessage(snapshotMovements.error)}`
+      : snapshotArticles.error
+        ? `Impossible de charger les articles necessaires au stock a date : ${apiErrorMessage(snapshotArticles.error)}`
+        : snapshotLots.error
+          ? `Impossible de charger les lots necessaires au stock a date : ${apiErrorMessage(snapshotLots.error)}`
+          : apiErrorMessage(error);
 
   function retry() {
     if (isSnapshot) {
@@ -301,23 +311,39 @@ export function StocksOverviewView({ mode }: { mode: 'current' | 'as-of' }) {
 
 async function fetchAllSnapshotMovements(stockDate: string) {
   const items: StockMovement[] = [];
-  const first = (await stocksService.getMovements({ page: 1, limit: 500, dateTo: stockDate, sortBy: 'movementDate', sortOrder: 'asc' })).data;
-  items.push(...first.items);
-  for (let page = 2; page <= first.totalPages; page += 1) {
-    const next = (await stocksService.getMovements({ page, limit: 500, dateTo: stockDate, sortBy: 'movementDate', sortOrder: 'asc' })).data;
-    items.push(...next.items);
+  let page = 1;
+  let totalPages = 1;
+  while (page <= totalPages) {
+    const response = (
+      await stocksService.getMovements({
+        page,
+        limit: SNAPSHOT_MOVEMENTS_LIMIT,
+        dateTo: stockDate,
+        sortBy: 'movementDate',
+        sortOrder: 'asc',
+      })
+    ).data;
+    items.push(...response.items);
+    totalPages = Math.max(1, response.totalPages);
+    if (response.items.length < SNAPSHOT_MOVEMENTS_LIMIT || items.length >= response.total || page >= totalPages) {
+      break;
+    }
+    page += 1;
   }
   return items;
 }
 
 async function fetchAllSnapshotArticles() {
   const items: Article[] = [];
-  const first = (await articlesService.getAll({ page: 1, limit: 100 })).data;
-  const totalPages = Math.max(1, Math.ceil(first.total / first.limit));
-  items.push(...first.items);
-  for (let page = 2; page <= totalPages; page += 1) {
-    const next = (await articlesService.getAll({ page, limit: 100 })).data;
-    items.push(...next.items);
+  let page = 1;
+  while (true) {
+    const response = (await articlesService.getAll({ page, limit: SNAPSHOT_ARTICLES_LIMIT })).data;
+    items.push(...response.items);
+    const totalPages = Math.max(1, Math.ceil(response.total / response.limit));
+    if (response.items.length < SNAPSHOT_ARTICLES_LIMIT || items.length >= response.total || page >= totalPages) {
+      break;
+    }
+    page += 1;
   }
   return items;
 }
