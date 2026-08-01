@@ -7,6 +7,7 @@ import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { filterRows } from '../../lib/search';
 import { Article, articlesService } from '../../services/articles.service';
 import { Lot, lotsService } from '../../services/lots.service';
+import { apiErrorMessage } from '../../services/apiError';
 import { sitesService } from '../../services/sites.service';
 import { Stock, StockDetail, StockMovement, StockSummary, stocksService } from '../../services/stocks.service';
 import { formatDate, fileDateStamp } from '../../utils/date';
@@ -96,7 +97,7 @@ export function StocksOverviewView({ mode }: { mode: 'current' | 'as-of' }) {
   });
   const snapshotArticles = useQuery({
     queryKey: ['articles', 'stocks-snapshot'],
-    queryFn: async () => (await articlesService.getAll({ limit: 1000 })).data.items,
+    queryFn: fetchAllSnapshotArticles,
     enabled: isSnapshot,
   });
 
@@ -156,6 +157,7 @@ export function StocksOverviewView({ mode }: { mode: 'current' | 'as-of' }) {
   const isRefreshing = isSnapshot
     ? snapshotMovements.isFetching || snapshotLots.isFetching || snapshotArticles.isFetching
     : summary.isFetching;
+  const errorMessage = error ? apiErrorMessage(error) : 'Impossible de charger les stocks pour le moment.';
 
   function retry() {
     if (isSnapshot) {
@@ -242,7 +244,7 @@ export function StocksOverviewView({ mode }: { mode: 'current' | 'as-of' }) {
           <StocksSkeleton />
         ) : error ? (
           <div className="error-state">
-            <p>Impossible de charger les stocks pour le moment.</p>
+            <p>{errorMessage}</p>
             <button className="ghost-button compact-button" type="button" onClick={retry}>Reessayer</button>
           </div>
         ) : visibleRows.length === 0 ? (
@@ -303,6 +305,18 @@ async function fetchAllSnapshotMovements(stockDate: string) {
   items.push(...first.items);
   for (let page = 2; page <= first.totalPages; page += 1) {
     const next = (await stocksService.getMovements({ page, limit: 500, dateTo: stockDate, sortBy: 'movementDate', sortOrder: 'asc' })).data;
+    items.push(...next.items);
+  }
+  return items;
+}
+
+async function fetchAllSnapshotArticles() {
+  const items: Article[] = [];
+  const first = (await articlesService.getAll({ page: 1, limit: 100 })).data;
+  const totalPages = Math.max(1, Math.ceil(first.total / first.limit));
+  items.push(...first.items);
+  for (let page = 2; page <= totalPages; page += 1) {
+    const next = (await articlesService.getAll({ page, limit: 100 })).data;
     items.push(...next.items);
   }
   return items;
