@@ -676,7 +676,15 @@ details.nav-group .nav-link {
 
 .search-box span {
   color: var(--muted);
-  font-weight: 800;
+  display: inline-flex;
+  flex: 0 0 auto;
+  justify-content: center;
+  width: 18px;
+}
+
+.search-box svg {
+  height: 16px;
+  width: 16px;
 }
 
 .purchase-filters {
@@ -820,38 +828,47 @@ details.nav-group .nav-link {
 
 .stock-movements-filter-bar {
   display: grid;
-  gap: 10px;
-  padding: 12px 14px;
+  gap: 12px;
+  padding: 14px 16px;
 }
 
 .stock-movements-filter-row {
   align-items: end;
   display: grid;
-  gap: 10px;
-  grid-template-columns: minmax(260px, 1.35fr) repeat(2, 160px) 140px 210px 210px;
+  gap: 12px;
+  grid-template-columns: minmax(300px, 2.1fr) 185px 185px 210px 210px 210px;
 }
 
 .stock-movements-filter-row-secondary {
-  grid-template-columns: 210px 190px 110px minmax(260px, 1fr) auto;
+  grid-template-columns: 260px 190px 150px minmax(290px, 1fr) auto;
 }
 
 .stock-movements-filter-field {
   display: grid;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
 }
 
 .stock-movements-filter-label {
-  color: var(--muted);
-  font-size: .72rem;
-  font-weight: 800;
-  line-height: 1;
-  text-transform: uppercase;
+  color: #475569;
+  font-size: .95rem;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 .stock-movements-search-field .search-box,
 .stock-movements-filter-field .input {
   width: 100%;
+}
+
+.stock-movements-search-field .search-box {
+  width: 100%;
+}
+
+.stock-movements-search-field .search-box .input,
+.stock-movements-filter-field .input {
+  min-height: 42px;
+  padding: 10px 12px;
 }
 
 .stock-movements-date-shortcuts,
@@ -862,72 +879,127 @@ details.nav-group .nav-link {
   gap: 8px;
 }
 
+.stock-movements-date-shortcuts {
+  justify-content: flex-start;
+}
+
 .stock-movements-filter-actions {
   justify-content: flex-end;
+}
+
+.stock-movements-filter-actions .export-actions {
+  margin-left: 0;
 }
 
 .stock-movements-date-shortcuts .ghost-button,
 .stock-movements-filter-actions .ghost-button,
 .stock-movements-filter-actions .export-menu summary {
-  height: 38px;
+  height: 42px;
+  margin-top: 0;
+  min-width: 0;
+  width: auto;
 }
 
 .stock-movements-date-shortcuts .ghost-button.is-active {
-  background: var(--surface-soft);
+  background: rgba(15, 118, 110, 0.08);
   border-color: var(--primary);
-  color: var(--text);
+  color: var(--primary-dark);
   font-weight: 800;
 }
 
 .stock-movements-reset-button {
-  opacity: .88;
+  opacity: .94;
 }
 
 .stock-movements-active-filters {
   align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto 1fr auto;
+  margin: 0 0 10px;
+  padding: 12px 16px;
+}
+
+.stock-movements-active-label {
+  align-self: center;
+  color: var(--text);
+  font-size: .95rem;
+}
+
+.stock-movements-chip-list {
+  align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin: 8px 0 10px;
 }
 
 .stock-movements-filter-chip {
+  align-items: center;
   background: var(--surface-soft);
   border: 1px solid var(--line);
   border-radius: 999px;
   color: var(--text);
+  cursor: pointer;
   display: inline-flex;
-  font-size: .8rem;
+  font-size: .86rem;
   font-weight: 700;
-  padding: 6px 10px;
+  gap: 8px;
+  padding: 7px 12px;
+}
+
+.stock-movements-filter-chip:hover {
+  border-color: var(--primary);
+}
+
+.stock-movements-clear-all {
+  align-self: center;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  cursor: pointer;
+  font-size: .95rem;
+  font-weight: 700;
+  justify-self: end;
+  padding: 0;
 }
 
 .stock-movement-kpis {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
-.stock-movement-kpi-note {
-  padding: 12px 14px;
-}
-
-.stock-movement-kpi-note p {
-  margin: 0;
+.stock-movements-table-card {
+  padding: 12px 14px 8px;
 }
 
 .stock-movements-table th,
 .stock-movements-table td {
-  padding-bottom: 8px;
-  padding-top: 8px;
+  padding-bottom: 10px;
+  padding-top: 10px;
+}
+
+.stock-movements-table th {
+  white-space: nowrap;
 }
 
 .stock-movements-table td small {
   display: block;
+  margin-top: 3px;
+}
+
+.stock-movements-export-summary {
+  min-width: 138px;
 }
 
 .stock-movement-actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 6px;
+  justify-items: start;
+}
+
+.stock-movement-actions .compact-button {
+  margin-top: 0;
+  min-width: 76px;
+  width: auto;
 }
 
 .stock-detail-actions {
@@ -935,6 +1007,36 @@ details.nav-group .nav-link {
   flex-wrap: wrap;
   gap: 8px;
   margin: 0 0 10px;
+}
+
+.stock-movements-pagination {
+  align-items: center;
+  margin-top: 8px;
+}
+
+.stock-movements-pagination-controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.stock-movements-pagination-controls .compact-button {
+  margin-top: 0;
+  min-width: 38px;
+  width: auto;
+}
+
+.stock-movements-page-indicator {
+  color: var(--text);
+}
+
+.stock-movements-pagination-summary {
+  text-align: right;
+}
+
+[data-theme='dark'] .stock-movements-filter-label {
+  color: #d2deea;
 }
 
 [data-theme='dark'] .stock-movements-date-shortcuts .ghost-button.is-active {
@@ -947,17 +1049,21 @@ details.nav-group .nav-link {
   background: rgba(255, 255, 255, 0.04);
 }
 
-@media (max-width: 1440px) {
+[data-theme='dark'] .stock-movements-clear-all {
+  color: var(--text);
+}
+
+@media (max-width: 1520px) {
   .stock-movements-filter-row {
-    grid-template-columns: minmax(240px, 1fr) repeat(2, 150px) 140px 190px 190px;
+    grid-template-columns: minmax(260px, 1.8fr) 170px 170px 190px 190px 190px;
   }
 
   .stock-movements-filter-row-secondary {
-    grid-template-columns: 190px 180px 110px minmax(220px, 1fr) auto;
+    grid-template-columns: 220px 180px 140px minmax(260px, 1fr) auto;
   }
 }
 
-@media (max-width: 1180px) {
+@media (max-width: 1240px) {
   .stock-movements-filter-row,
   .stock-movements-filter-row-secondary {
     grid-template-columns: repeat(3, minmax(180px, 1fr));
@@ -965,6 +1071,14 @@ details.nav-group .nav-link {
 
   .stock-movements-filter-actions {
     justify-content: flex-start;
+  }
+
+  .stock-movements-active-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .stock-movements-clear-all {
+    justify-self: start;
   }
 }
 
@@ -977,6 +1091,15 @@ details.nav-group .nav-link {
   .stock-movements-date-shortcuts,
   .stock-movements-filter-actions {
     justify-content: flex-start;
+  }
+
+  .stock-movements-pagination {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .stock-movements-pagination-summary {
+    text-align: left;
   }
 }
 

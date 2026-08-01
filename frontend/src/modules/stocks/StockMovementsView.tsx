@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Modal } from '../../components/Modal';
@@ -27,6 +27,7 @@ export function StockMovementsView() {
   const { can } = usePermission();
   const [params, setParams] = useSearchParams();
   const [selectedMovement, setSelectedMovement] = useState<StockMovement | null>(null);
+  const [dismissedDefaultChips, setDismissedDefaultChips] = useState<Record<string, boolean>>({});
   const debouncedSearch = useDebouncedValue(params.get('search') ?? '', 300);
 
   const page = Math.max(1, Number(params.get('page') ?? '1'));
@@ -67,8 +68,16 @@ export function StockMovementsView() {
     queryFn: async () => (await stocksService.getMovements(queryParams)).data,
     placeholderData: (previous) => previous,
   });
-  const sites = useQuery({ queryKey: ['sites', 'stock-movements'], queryFn: async () => (await sitesService.getAll()).data, staleTime: 5 * 60 * 1000 });
-  const users = useQuery({ queryKey: ['users', 'stock-movements'], queryFn: async () => (await usersService.getAll()).data, staleTime: 5 * 60 * 1000 });
+  const sites = useQuery({
+    queryKey: ['sites', 'stock-movements'],
+    queryFn: async () => (await sitesService.getAll()).data,
+    staleTime: 5 * 60 * 1000,
+  });
+  const users = useQuery({
+    queryKey: ['users', 'stock-movements'],
+    queryFn: async () => (await usersService.getAll()).data,
+    staleTime: 5 * 60 * 1000,
+  });
 
   const availableTypes = useMemo(() => {
     const values = new Set((movements.data?.items ?? []).map((item) => item.movementType));
@@ -98,65 +107,176 @@ export function StockMovementsView() {
   const rows = movements.data?.items ?? [];
   const dateShortcut = activeDateShortcut(dateFrom, dateTo);
   const activeFilterChips = buildActiveFilterChips({
-    search: params.get('search') ?? '',
     direction,
     movementType,
     siteId,
-    userId,
     dateFrom,
     dateTo,
     sites: sites.data ?? [],
-    users: users.data ?? [],
+    dismissedDefaultChips,
   });
+  const resultFrom = rows.length === 0 ? 0 : (page - 1) * limit + 1;
+  const resultTo = rows.length === 0 ? 0 : resultFrom + rows.length - 1;
+
+  useEffect(() => {
+    setDismissedDefaultChips({});
+  }, [direction, movementType, siteId, dateFrom, dateTo]);
+
+  function clearAllFilters() {
+    setDismissedDefaultChips({});
+    updateFilters({
+      search: null,
+      dateFrom: monthStart(),
+      dateTo: todayIso(),
+      direction: null,
+      movementType: null,
+      siteId: null,
+      userId: null,
+      articleId: null,
+      lotId: null,
+      referenceType: null,
+      referenceId: null,
+      sortBy: 'movementDate',
+      sortOrder: 'desc',
+      limit: `${DEFAULT_LIMIT}`,
+    });
+  }
+
+  function dismissChip(key: string) {
+    if (key === 'period') {
+      if (dateShortcut === 'custom') {
+        updateFilters({ dateFrom: monthStart(), dateTo: todayIso() });
+        return;
+      }
+      setDismissedDefaultChips((current) => ({ ...current, period: true }));
+      return;
+    }
+    if (key === 'direction') {
+      if (direction === 'ALL') {
+        setDismissedDefaultChips((current) => ({ ...current, direction: true }));
+        return;
+      }
+      updateFilters({ direction: null });
+      return;
+    }
+    if (key === 'movementType') {
+      if (!movementType) {
+        setDismissedDefaultChips((current) => ({ ...current, movementType: true }));
+        return;
+      }
+      updateFilters({ movementType: null });
+      return;
+    }
+    if (key === 'site') {
+      if (!siteId) {
+        setDismissedDefaultChips((current) => ({ ...current, site: true }));
+        return;
+      }
+      updateFilters({ siteId: null });
+    }
+  }
 
   return (
     <>
-      <div className="card stock-movement-kpi-note">
-        <p className="muted">Les KPI de mouvements utilisent des comptes de mouvements et d&apos;articles. Les quantites ne sont pas additionnees globalement pour eviter de melanger des unites differentes.</p>
-      </div>
-
       <div className="stats-grid stock-kpis stock-movement-kpis">
-        <div className="card kpi-card"><span className="kpi-label">Mouvements</span><p className="metric small-metric">{summary?.movementCount ?? 0}</p></div>
-        <div className="card kpi-card"><span className="kpi-label">Entrees</span><p className="metric small-metric">{summary?.entryCount ?? 0}</p></div>
-        <div className="card kpi-card"><span className="kpi-label">Sorties</span><p className="metric small-metric">{summary?.exitCount ?? 0}</p></div>
-        <div className="card kpi-card"><span className="kpi-label">Articles</span><p className="metric small-metric">{summary?.articlesCount ?? 0}</p></div>
-        <div className="card kpi-card"><span className="kpi-label">Lots</span><p className="metric small-metric">{summary?.lotsCount ?? 0}</p></div>
+        <div className="card kpi-card">
+          <span className="kpi-label">Mouvements</span>
+          <p className="metric small-metric">{summary?.movementCount ?? 0}</p>
+        </div>
+        <div className="card kpi-card">
+          <span className="kpi-label">Entrees</span>
+          <p className="metric small-metric">{summary?.entryCount ?? 0}</p>
+        </div>
+        <div className="card kpi-card">
+          <span className="kpi-label">Sorties</span>
+          <p className="metric small-metric">{summary?.exitCount ?? 0}</p>
+        </div>
+        <div className="card kpi-card">
+          <span className="kpi-label">Articles</span>
+          <p className="metric small-metric">{summary?.articlesCount ?? 0}</p>
+        </div>
+        <div className="card kpi-card">
+          <span className="kpi-label">Lots</span>
+          <p className="metric small-metric">{summary?.lotsCount ?? 0}</p>
+        </div>
       </div>
 
       <div className="card stock-movements-filter-bar">
         <div className="stock-movements-filter-row">
           <div className="stock-movements-filter-field stock-movements-search-field">
             <label className="stock-movements-filter-label" htmlFor="stock-movements-search">Recherche</label>
-            <SearchBox value={params.get('search') ?? ''} onChange={(value) => updateFilters({ search: value || null })} placeholder="Rechercher article, lot ou référence" />
+            <SearchBox
+              inputId="stock-movements-search"
+              value={params.get('search') ?? ''}
+              onChange={(value) => updateFilters({ search: value || null })}
+              placeholder="Rechercher article, lot ou référence"
+            />
           </div>
           <div className="stock-movements-filter-field stock-movements-date-field">
             <label className="stock-movements-filter-label" htmlFor="stock-movements-date-from">Du</label>
-            <input id="stock-movements-date-from" aria-label="Date de début" className="input compact-input" type="date" value={dateFrom} onChange={(event) => updateFilters({ dateFrom: event.target.value || null })} />
+            <input
+              id="stock-movements-date-from"
+              aria-label="Date de début"
+              className="input compact-input"
+              type="date"
+              value={dateFrom}
+              onChange={(event) => updateFilters({ dateFrom: event.target.value || null })}
+            />
           </div>
           <div className="stock-movements-filter-field stock-movements-date-field">
             <label className="stock-movements-filter-label" htmlFor="stock-movements-date-to">Au</label>
-            <input id="stock-movements-date-to" aria-label="Date de fin" className="input compact-input" type="date" value={dateTo} onChange={(event) => updateFilters({ dateTo: event.target.value || null })} />
+            <input
+              id="stock-movements-date-to"
+              aria-label="Date de fin"
+              className="input compact-input"
+              type="date"
+              value={dateTo}
+              onChange={(event) => updateFilters({ dateTo: event.target.value || null })}
+            />
           </div>
           <div className="stock-movements-filter-field stock-movements-sense-field">
             <label className="stock-movements-filter-label" htmlFor="stock-movements-direction">Sens</label>
-            <select id="stock-movements-direction" className="input compact-input" value={direction} onChange={(event) => updateFilters({ direction: event.target.value === 'ALL' ? null : event.target.value })}>
+            <select
+              id="stock-movements-direction"
+              className="input compact-input"
+              value={direction}
+              onChange={(event) => updateFilters({ direction: event.target.value === 'ALL' ? null : event.target.value })}
+            >
               <option value="ALL">Tous les sens</option>
-              <option value="IN">Entrées</option>
+              <option value="IN">Entrees</option>
               <option value="OUT">Sorties</option>
             </select>
           </div>
           <div className="stock-movements-filter-field stock-movements-type-field">
             <label className="stock-movements-filter-label" htmlFor="stock-movements-type">Type</label>
-            <select id="stock-movements-type" className="input compact-input" value={movementType} onChange={(event) => updateFilters({ movementType: event.target.value || null })}>
+            <select
+              id="stock-movements-type"
+              className="input compact-input"
+              value={movementType}
+              onChange={(event) => updateFilters({ movementType: event.target.value || null })}
+            >
               <option value="">Tous les types</option>
-              {availableTypes.map((type) => <option key={type} value={type}>{stockMovementLabel(type)}</option>)}
+              {availableTypes.map((type) => (
+                <option key={type} value={type}>
+                  {stockMovementLabel(type)}
+                </option>
+              ))}
             </select>
           </div>
           <div className="stock-movements-filter-field stock-movements-site-field">
             <label className="stock-movements-filter-label" htmlFor="stock-movements-site">Site</label>
-            <select id="stock-movements-site" className="input compact-input" value={siteId} onChange={(event) => updateFilters({ siteId: event.target.value || null })}>
+            <select
+              id="stock-movements-site"
+              className="input compact-input"
+              value={siteId}
+              onChange={(event) => updateFilters({ siteId: event.target.value || null })}
+            >
               <option value="">Tous les sites</option>
-              {(sites.data ?? []).map((site) => <option key={site.siteId} value={site.siteId}>{site.siteName}</option>)}
+              {(sites.data ?? []).map((site) => (
+                <option key={site.siteId} value={site.siteId}>
+                  {site.siteName}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -164,9 +284,18 @@ export function StockMovementsView() {
         <div className="stock-movements-filter-row stock-movements-filter-row-secondary">
           <div className="stock-movements-filter-field stock-movements-user-field">
             <label className="stock-movements-filter-label" htmlFor="stock-movements-user">Utilisateur</label>
-            <select id="stock-movements-user" className="input compact-input" value={userId} onChange={(event) => updateFilters({ userId: event.target.value || null })}>
+            <select
+              id="stock-movements-user"
+              className="input compact-input"
+              value={userId}
+              onChange={(event) => updateFilters({ userId: event.target.value || null })}
+            >
               <option value="">Tous les utilisateurs</option>
-              {(users.data ?? []).map((user) => <option key={user.userId} value={user.userId}>{user.fullName}</option>)}
+              {(users.data ?? []).map((user) => (
+                <option key={user.userId} value={user.userId}>
+                  {user.fullName}
+                </option>
+              ))}
             </select>
           </div>
           <div className="stock-movements-filter-field stock-movements-sort-field">
@@ -177,52 +306,56 @@ export function StockMovementsView() {
               value={sortChoice}
               onChange={(event) => updateFilters(sortChoiceToParams(event.target.value as SortChoice))}
             >
-              <option value="newest">Plus récent</option>
+              <option value="newest">Plus recent</option>
               <option value="oldest">Plus ancien</option>
-              <option value="quantityAsc">Quantité croissante</option>
-              <option value="quantityDesc">Quantité décroissante</option>
+              <option value="quantityAsc">Quantite croissante</option>
+              <option value="quantityDesc">Quantite decroissante</option>
               <option value="articleAsc">Article A-Z</option>
               <option value="articleDesc">Article Z-A</option>
             </select>
           </div>
           <div className="stock-movements-filter-field stock-movements-page-size-field">
-            <label className="stock-movements-filter-label" htmlFor="stock-movements-limit">Lignes</label>
-            <select id="stock-movements-limit" className="input compact-input" value={String(limit)} onChange={(event) => updateFilters({ limit: event.target.value })}>
+            <label className="stock-movements-filter-label" htmlFor="stock-movements-limit">Lignes par page</label>
+            <select
+              id="stock-movements-limit"
+              className="input compact-input"
+              value={String(limit)}
+              onChange={(event) => updateFilters({ limit: event.target.value })}
+            >
               <option value="25">25</option>
               <option value="50">50</option>
               <option value="100">100</option>
             </select>
           </div>
-          <div className="stock-movements-date-shortcuts" aria-label="Raccourcis de période">
-            <button className={`ghost-button compact-button ${dateShortcut === 'today' ? 'is-active' : ''}`} type="button" onClick={() => setQuickRange('today', setParams)}>Aujourd&apos;hui</button>
-            <button className={`ghost-button compact-button ${dateShortcut === 'week' ? 'is-active' : ''}`} type="button" onClick={() => setQuickRange('week', setParams)}>Cette semaine</button>
-            <button className={`ghost-button compact-button ${dateShortcut === 'month' ? 'is-active' : ''}`} type="button" onClick={() => setQuickRange('month', setParams)}>Ce mois</button>
+          <div className="stock-movements-date-shortcuts" aria-label="Raccourcis de periode">
+            <button className={`ghost-button compact-button ${dateShortcut === 'today' ? 'is-active' : ''}`} type="button" onClick={() => setQuickRange('today', setParams)}>
+              Aujourd&apos;hui
+            </button>
+            <button className={`ghost-button compact-button ${dateShortcut === 'week' ? 'is-active' : ''}`} type="button" onClick={() => setQuickRange('week', setParams)}>
+              Cette semaine
+            </button>
+            <button className={`ghost-button compact-button ${dateShortcut === 'month' ? 'is-active' : ''}`} type="button" onClick={() => setQuickRange('month', setParams)}>
+              Ce mois
+            </button>
           </div>
           <div className="stock-movements-filter-actions">
-            <button className="ghost-button compact-button stock-movements-reset-button" type="button" onClick={() => updateFilters({
-              search: null,
-              dateFrom: monthStart(),
-              dateTo: todayIso(),
-              direction: null,
-              movementType: null,
-              siteId: null,
-              userId: null,
-              articleId: null,
-              lotId: null,
-              referenceType: null,
-              referenceId: null,
-              sortBy: 'movementDate',
-              sortOrder: 'desc',
-              limit: `${DEFAULT_LIMIT}`,
-            })}>Réinitialiser</button>
+            <button className="ghost-button compact-button stock-movements-reset-button" type="button" onClick={clearAllFilters}>
+              Reinitialiser
+            </button>
             {can('stock_movements.export') && (
               <div className="export-actions stock-export-actions">
                 <details className="export-menu">
-                  <summary className="ghost-button compact-button">Exporter</summary>
+                  <summary className="button compact-button stock-movements-export-summary">Exporter</summary>
                   <div className="export-menu-panel">
-                    <button type="button" disabled={rows.length === 0} onClick={() => exportRows('xlsx')}>Excel</button>
-                    <button type="button" disabled={rows.length === 0} onClick={() => exportRows('csv')}>CSV</button>
-                    <button type="button" disabled={rows.length === 0} onClick={() => exportRows('json')}>JSON</button>
+                    <button type="button" disabled={rows.length === 0} onClick={() => exportRows('xlsx')}>
+                      Excel
+                    </button>
+                    <button type="button" disabled={rows.length === 0} onClick={() => exportRows('csv')}>
+                      CSV
+                    </button>
+                    <button type="button" disabled={rows.length === 0} onClick={() => exportRows('json')}>
+                      JSON
+                    </button>
                   </div>
                 </details>
               </div>
@@ -232,25 +365,36 @@ export function StockMovementsView() {
       </div>
 
       {activeFilterChips.length > 0 ? (
-        <div className="stock-movements-active-filters" aria-label="Filtres actifs">
-          {activeFilterChips.map((chip) => (
-            <span className="stock-movements-filter-chip" key={chip}>{chip}</span>
-          ))}
+        <div className="card stock-movements-active-filters" aria-label="Filtres actifs">
+          <strong className="stock-movements-active-label">Filtres actifs :</strong>
+          <div className="stock-movements-chip-list">
+            {activeFilterChips.map((chip) => (
+              <button className="stock-movements-filter-chip" key={chip.key} type="button" onClick={() => dismissChip(chip.key)}>
+                <span>{chip.label}</span>
+                <span aria-hidden="true">×</span>
+              </button>
+            ))}
+          </div>
+          <button className="stock-movements-clear-all" type="button" onClick={clearAllFilters}>
+            Effacer tous
+          </button>
         </div>
       ) : null}
 
       <div className="stocks-table-meta">
         <span>{movements.data ? `${movements.data.total} mouvements` : 'Historique des mouvements'}</span>
-        {movements.isFetching ? <span className="muted">Mise à jour...</span> : null}
+        {movements.isFetching ? <span className="muted">Mise a jour...</span> : null}
       </div>
 
-      <div className="card">
+      <div className="card stock-movements-table-card">
         {movements.isLoading ? (
           <p className="loading-state">Chargement de l&apos;historique des mouvements...</p>
         ) : movements.isError ? (
           <div className="error-state">
             <p>Impossible de charger l&apos;historique des mouvements.</p>
-            <button className="ghost-button compact-button" type="button" onClick={() => movements.refetch()}>Reessayer</button>
+            <button className="ghost-button compact-button" type="button" onClick={() => movements.refetch()}>
+              Reessayer
+            </button>
           </div>
         ) : rows.length === 0 ? (
           <p className="empty-state">Aucun mouvement trouve pour cette periode.</p>
@@ -259,7 +403,7 @@ export function StockMovementsView() {
             <table className="data-table stocks-table stock-movements-table">
               <thead>
                 <tr>
-                  <th>Date</th>
+                  <th>Date ↓</th>
                   <th>Article</th>
                   <th>Lot</th>
                   <th>Mouvement</th>
@@ -288,7 +432,9 @@ export function StockMovementsView() {
                       </td>
                       <td className="stocks-cell">{movement.lotNumber ?? '-'}</td>
                       <td className="stocks-cell">{stockMovementLabel(movement.movementType)}</td>
-                      <td className="stocks-cell"><span className={`badge compact-badge ${stockMovementDirectionClass(movement.direction)}`}>{stockMovementDirectionLabel(movement.direction)}</span></td>
+                      <td className="stocks-cell">
+                        <span className={`badge compact-badge ${stockMovementDirectionClass(movement.direction)}`}>{stockMovementDirectionLabel(movement.direction)}</span>
+                      </td>
                       <td className="stocks-cell quantity-cell">{movement.quantity}</td>
                       <td className="stocks-cell">{movement.unitLabel ?? 'Non disponible'}</td>
                       <td className="stocks-cell quantity-cell">{movement.stockAfter ?? '-'}</td>
@@ -296,8 +442,14 @@ export function StockMovementsView() {
                       <td className="stocks-cell">{movement.userName ?? 'Utilisateur inconnu'}</td>
                       <td className="stocks-cell">{movement.siteName ?? '-'}</td>
                       <td className="stocks-cell stock-movement-actions">
-                        <button className="ghost-button compact-button" type="button" onClick={() => setSelectedMovement(movement)}>Voir</button>
-                        {sourceRoute ? <Link className="ghost-button compact-button" to={sourceRoute}>Ouvrir</Link> : null}
+                        <button className="ghost-button compact-button" type="button" onClick={() => setSelectedMovement(movement)}>
+                          Voir
+                        </button>
+                        {sourceRoute ? (
+                          <Link className="ghost-button compact-button" to={sourceRoute}>
+                            Ouvrir
+                          </Link>
+                        ) : null}
                       </td>
                     </tr>
                   );
@@ -308,13 +460,52 @@ export function StockMovementsView() {
         )}
       </div>
 
-      {movements.data && movements.data.totalPages > 1 && (
-        <div className="table-pagination">
-          <button className="ghost-button compact-button" type="button" disabled={page <= 1 || movements.isFetching} onClick={() => updateFilters({ page: String(Math.max(1, page - 1)) }, false)}>Precedent</button>
-          <span>Page {movements.data.page} / {movements.data.totalPages}</span>
-          <button className="ghost-button compact-button" type="button" disabled={page >= movements.data.totalPages || movements.isFetching} onClick={() => updateFilters({ page: String(page + 1) }, false)}>Suivant</button>
+      <div className="table-pagination stock-movements-pagination">
+        <div className="stock-movements-pagination-controls">
+          <button
+            className="ghost-button compact-button"
+            type="button"
+            aria-label="Premiere page"
+            disabled={page <= 1 || movements.isFetching}
+            onClick={() => updateFilters({ page: '1' }, false)}
+          >
+            &laquo;
+          </button>
+          <button
+            className="ghost-button compact-button"
+            type="button"
+            aria-label="Page precedente"
+            disabled={page <= 1 || movements.isFetching}
+            onClick={() => updateFilters({ page: String(Math.max(1, page - 1)) }, false)}
+          >
+            &lsaquo;
+          </button>
+          <span className="stock-movements-page-indicator">
+            Page <strong>{movements.data?.page ?? 1}</strong> sur <strong>{movements.data?.totalPages ?? 1}</strong>
+          </span>
+          <button
+            className="ghost-button compact-button"
+            type="button"
+            aria-label="Page suivante"
+            disabled={!movements.data || page >= movements.data.totalPages || movements.isFetching}
+            onClick={() => updateFilters({ page: String(page + 1) }, false)}
+          >
+            &rsaquo;
+          </button>
+          <button
+            className="ghost-button compact-button"
+            type="button"
+            aria-label="Derniere page"
+            disabled={!movements.data || page >= movements.data.totalPages || movements.isFetching}
+            onClick={() => updateFilters({ page: String(movements.data?.totalPages ?? 1) }, false)}
+          >
+            &raquo;
+          </button>
         </div>
-      )}
+        <span className="stock-movements-pagination-summary">
+          Affichage de {resultFrom} a {resultTo} sur {movements.data?.total ?? 0} resultats
+        </span>
+      </div>
 
       <Modal title="Detail mouvement de stock" open={Boolean(selectedMovement)} onClose={() => setSelectedMovement(null)}>
         {selectedMovement && <StockMovementDetail movement={selectedMovement} />}
@@ -447,27 +638,30 @@ function activeDateShortcut(dateFrom: string, dateTo: string) {
 }
 
 function buildActiveFilterChips(input: {
-  search: string;
   direction: DirectionFilter;
   movementType: string;
   siteId: string;
-  userId: string;
   dateFrom: string;
   dateTo: string;
   sites: Array<{ siteId: string; siteName: string | null }>;
-  users: Array<{ userId: string; fullName: string }>;
+  dismissedDefaultChips: Record<string, boolean>;
 }) {
-  const chips: string[] = [];
+  const chips: Array<{ key: string; label: string }> = [];
   const shortcut = activeDateShortcut(input.dateFrom, input.dateTo);
-  if (shortcut === 'today') chips.push("Aujourd'hui");
-  else if (shortcut === 'week') chips.push('Cette semaine');
-  else if (shortcut === 'month') chips.push('Ce mois');
-  else if (input.dateFrom || input.dateTo) chips.push(`Période : ${formatDate(input.dateFrom)} - ${formatDate(input.dateTo)}`);
-  if (input.search.trim()) chips.push(`Recherche : ${input.search.trim()}`);
-  if (input.direction === 'IN') chips.push('Entrées');
-  if (input.direction === 'OUT') chips.push('Sorties');
-  if (input.movementType) chips.push(stockMovementLabel(input.movementType));
-  if (input.siteId) chips.push(`Site : ${input.sites.find((site) => site.siteId === input.siteId)?.siteName ?? input.siteId}`);
-  if (input.userId) chips.push(`Utilisateur : ${input.users.find((user) => user.userId === input.userId)?.fullName ?? input.userId}`);
+  if (!input.dismissedDefaultChips.period) {
+    if (shortcut === 'today') chips.push({ key: 'period', label: "Periode : Aujourd'hui" });
+    else if (shortcut === 'week') chips.push({ key: 'period', label: 'Periode : Cette semaine' });
+    else if (shortcut === 'month') chips.push({ key: 'period', label: 'Periode : Ce mois' });
+    else if (input.dateFrom || input.dateTo) chips.push({ key: 'period', label: `Periode : ${formatDate(input.dateFrom)} - ${formatDate(input.dateTo)}` });
+  }
+  if (!input.dismissedDefaultChips.direction) {
+    chips.push({ key: 'direction', label: input.direction === 'IN' ? 'Sens : Entrees' : input.direction === 'OUT' ? 'Sens : Sorties' : 'Sens : Tous' });
+  }
+  if (!input.dismissedDefaultChips.movementType) {
+    chips.push({ key: 'movementType', label: `Type : ${input.movementType ? stockMovementLabel(input.movementType) : 'Tous'}` });
+  }
+  if (!input.dismissedDefaultChips.site) {
+    chips.push({ key: 'site', label: `Site : ${input.siteId ? input.sites.find((site) => site.siteId === input.siteId)?.siteName ?? input.siteId : 'Tous'}` });
+  }
   return chips;
 }
