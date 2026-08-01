@@ -995,6 +995,29 @@ details.nav-group .nav-link {
   margin-top: 3px;
 }
 
+.inventory-lot-cell,
+.inventory-lot-status,
+.stock-movement-lot-cell {
+  display: grid;
+  gap: 4px;
+}
+
+.inventory-lot-head,
+.stock-movement-lot-head,
+.stock-movement-detail-lot {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.inventory-lot-reason,
+.stock-movement-lot-reason {
+  color: var(--muted);
+  display: block;
+  line-height: 1.3;
+}
+
 .stock-movements-export-summary {
   min-width: 138px;
   white-space: nowrap;

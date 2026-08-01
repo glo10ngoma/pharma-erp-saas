@@ -25,6 +25,8 @@ type MovementRow = {
   user_id: string | null;
   user_name: string | null;
   unit_label: string | null;
+  is_blocked: boolean | null;
+  block_reason: string | null;
   total_count?: number;
 };
 
@@ -94,6 +96,8 @@ export class StockMovementsRepository {
           a.dci,
           sm.lot_id,
           l.lot_number,
+          l.is_blocked,
+          l.block_reason,
           sm.movement_type,
           sm.quantity,
           sm.reference_type,
@@ -323,6 +327,8 @@ export class StockMovementsRepository {
       userName: row.user_name,
       workstationId: null,
       workstationName: null,
+      isBlocked: Boolean(row.is_blocked),
+      blockReason: row.block_reason,
     };
   }
 

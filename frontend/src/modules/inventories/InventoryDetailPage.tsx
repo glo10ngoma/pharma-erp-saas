@@ -8,7 +8,7 @@ import { Modal } from '../../components/Modal';
 import { apiErrorMessage } from '../../services/apiError';
 import { articlesService } from '../../services/articles.service';
 import { FillEmptyWithZeroResult, inventoriesService, Inventory, InventoryItem } from '../../services/inventories.service';
-import { lotsService } from '../../services/lots.service';
+import { Lot, lotsService } from '../../services/lots.service';
 import { stocksService, Stock } from '../../services/stocks.service';
 import { formatDate, fileDateStamp } from '../../utils/date';
 import { downloadCsv, downloadJson, downloadXlsx } from '../../utils/export';
@@ -70,6 +70,7 @@ export function InventoryDetailPage() {
     () => new Map((lots.data ?? []).map((lot) => [lot.lotId, { purchasePrice: lot.purchasePrice, sellingPrice: lot.sellingPrice }])),
     [lots.data],
   );
+  const lotById = useMemo(() => new Map((lots.data ?? []).map((lot) => [lot.lotId, lot])), [lots.data]);
   const articleById = useMemo(() => new Map((articles.data ?? []).map((article) => [article.articleId, article])), [articles.data]);
   const selectedStock = availableStocks.find((stock) => stock.stockId === quickLine.stockId);
   const suggestions = inventoryStockSuggestions(availableStocks, quickLine.query, articleById).slice(0, 50);
@@ -633,7 +634,7 @@ export function InventoryDetailPage() {
                       <strong>{item.commercialName ?? '-'}</strong>
                       <small>{item.articleCode ?? ''}</small>
                     </td>
-                    <td>{item.lotNumber ?? '-'}</td>
+                    <td>{renderInventoryLot(item.lotNumber, lotById.get(item.lotId))}</td>
                     <td>{formatDate(item.expiryDate)}</td>
                     <td>{item.stockUnitLabel ?? 'Non renseignee'}</td>
                     <td className="quantity-cell">{formatQuantity(item.systemQuantity)}</td>
@@ -707,7 +708,8 @@ export function InventoryDetailPage() {
                         { header: 'Barcode', render: (stock) => articleById.get(stock.articleId)?.barcode ?? '-' },
                         { header: 'Nom', render: (stock) => <strong>{stock.commercialName ?? '-'}</strong> },
                         { header: 'DCI', render: (stock) => articleById.get(stock.articleId)?.dci ?? '-' },
-                        { header: 'Lot', render: (stock) => stock.lotNumber },
+                        { header: 'Lot', render: (stock) => renderInventoryLot(stock.lotNumber, lotById.get(stock.lotId), false) },
+                        { header: 'Statut', render: (stock) => renderInventoryLotStatus(lotById.get(stock.lotId)) },
                         { header: 'Expiration', render: (stock) => formatDate(stock.expiryDate) },
                         { header: 'Stock', render: (stock) => formatQuantity(stock.quantityAvailable) },
                       ]}
@@ -726,7 +728,7 @@ export function InventoryDetailPage() {
                       value={quickLine.query}
                     />
                   </td>
-                  <td>{selectedStock?.lotNumber ?? '-'}</td>
+                  <td>{selectedStock ? renderInventoryLot(selectedStock.lotNumber, lotById.get(selectedStock.lotId)) : '-'}</td>
                   <td>{formatDate(selectedStock?.expiryDate)}</td>
                   <td>{selectedStock ? resolveStockUnitLabel(selectedStock.articleId, articleById) : '-'}</td>
                   <td className="quantity-cell">{selectedStock ? formatQuantity(selectedStock.quantityAvailable) : '-'}</td>
@@ -875,6 +877,38 @@ function readInventoryDraft(storageKey: string) {
   } catch {
     return null;
   }
+}
+
+function renderInventoryLot(lotNumber: string | null, lot?: Lot, showReason = true) {
+  return (
+    <div className="inventory-lot-cell">
+      <div className="inventory-lot-head">
+        <span>{lotNumber ?? '-'}</span>
+        {lot?.isBlocked ? (
+          <span className="badge compact-badge badge-danger" title={lot.blockReason ?? 'Aucun motif renseigné'}>
+            Bloque
+          </span>
+        ) : null}
+      </div>
+      {showReason && lot?.isBlocked ? (
+        <small className="inventory-lot-reason">
+          Motif du blocage : {lot.blockReason ?? 'Aucun motif renseigné'}
+        </small>
+      ) : null}
+    </div>
+  );
+}
+
+function renderInventoryLotStatus(lot?: Lot) {
+  if (!lot?.isBlocked) return <span className="badge compact-badge badge-success">Actif</span>;
+  return (
+    <div className="inventory-lot-status">
+      <span className="badge compact-badge badge-danger" title={lot.blockReason ?? 'Aucun motif renseigné'}>
+        Bloque
+      </span>
+      <small className="inventory-lot-reason">{lot.blockReason ?? 'Aucun motif renseigné'}</small>
+    </div>
+  );
 }
 
 function inventoryStockSuggestions(

@@ -28,6 +28,8 @@ export type StockMovement = {
   userName?: string | null;
   workstationId?: string | null;
   workstationName?: string | null;
+  isBlocked?: boolean;
+  blockReason?: string | null;
 };
 export type StockMovementSummary = {
   movementCount: number;

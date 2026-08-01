@@ -407,7 +407,23 @@ export function StockMovementsView() {
                         <strong>{movement.commercialName ?? '-'}</strong>
                         <small>{movement.articleCode ?? '-'}</small>
                       </td>
-                      <td className="stocks-cell">{movement.lotNumber ?? '-'}</td>
+                      <td className="stocks-cell">
+                        <div className="stock-movement-lot-cell">
+                          <div className="stock-movement-lot-head">
+                            <span>{movement.lotNumber ?? '-'}</span>
+                            {movement.isBlocked ? (
+                              <span className="badge compact-badge badge-danger" title={movement.blockReason ?? 'Aucun motif renseigné'}>
+                                Bloque
+                              </span>
+                            ) : null}
+                          </div>
+                          {movement.isBlocked ? (
+                            <small className="stock-movement-lot-reason">
+                              Motif du blocage : {movement.blockReason ?? 'Aucun motif renseigné'}
+                            </small>
+                          ) : null}
+                        </div>
+                      </td>
                       <td className="stocks-cell">{stockMovementLabel(movement.movementType)}</td>
                       <td className="stocks-cell">
                         <span className={`badge compact-badge ${stockMovementDirectionClass(movement.direction)}`}>{stockMovementDirectionLabel(movement.direction)}</span>
@@ -500,7 +516,15 @@ function StockMovementDetail({ movement }: { movement: StockMovement }) {
         <div><span>Date</span><strong>{formatDate(movement.movementDate)} {formatTime(movement.movementDate)}</strong></div>
         <div><span>Article</span><strong>{movement.commercialName ?? '-'}</strong></div>
         <div><span>Code article</span><strong>{movement.articleCode ?? '-'}</strong></div>
-        <div><span>Lot</span><strong>{movement.lotNumber ?? '-'}</strong></div>
+        <div>
+          <span>Lot</span>
+          <strong className="stock-movement-detail-lot">
+            <span>{movement.lotNumber ?? '-'}</span>
+            {movement.isBlocked ? <span className="badge compact-badge badge-danger">Bloque</span> : null}
+          </strong>
+        </div>
+        <div><span>Statut actuel</span><strong>{movement.isBlocked ? 'Bloque' : 'Actif'}</strong></div>
+        <div><span>Motif du blocage</span><strong>{movement.isBlocked ? (movement.blockReason ?? 'Aucun motif renseigné') : '-'}</strong></div>
         <div><span>Type</span><strong>{stockMovementLabel(movement.movementType)}</strong></div>
         <div><span>Sens</span><strong>{stockMovementDirectionLabel(movement.direction)}</strong></div>
         <div><span>Quantité</span><strong>{movement.quantity}</strong></div>
