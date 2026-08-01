@@ -2262,6 +2262,39 @@ details.nav-group .nav-link {
   min-width: 900px;
 }
 
+.purchase-return-replacement-form {
+  display: grid;
+  gap: 12px;
+}
+
+.purchase-return-form-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.purchase-return-article-field {
+  grid-column: span 2;
+}
+
+.purchase-return-inline-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.purchase-return-form-actions {
+  justify-content: flex-end;
+}
+
+.purchase-return-local-scroll {
+  overflow-x: auto;
+}
+
+.purchase-return-exchange-table {
+  min-width: 1080px;
+}
+
 .purchase-return-step-actions {
   display: flex;
   justify-content: flex-end;
@@ -4804,6 +4837,10 @@ details.nav-group .nav-link {
 @media (max-width: 700px) {
   .purchase-return-stepper {
     grid-template-columns: 1fr;
+  }
+
+  .purchase-return-article-field {
+    grid-column: span 1;
   }
 
   .purchase-return-step-header {

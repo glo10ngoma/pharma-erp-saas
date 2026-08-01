@@ -202,6 +202,18 @@ export class PurchaseReturnsRepository {
   async addItem(user: AuthUser, purchaseReturnId: string, dto: AddPurchaseReturnItemDto) {
     const current = await this.assertDraftReturn(user, purchaseReturnId);
     const purchaseItem = await this.assertPurchaseItem(current.purchase_id, dto.purchaseItemId, dto.articleId);
+    const duplicateItem = await this.db.query<{ purchase_return_item_id: string }>(
+      `
+      SELECT purchase_return_item_id
+      FROM purchase_return_items
+      WHERE tenant_id = $1
+        AND purchase_return_id = $2::uuid
+        AND purchase_item_id = $3::uuid
+      LIMIT 1
+      `,
+      [user.tenantId, purchaseReturnId, dto.purchaseItemId],
+    );
+    if (duplicateItem.rows[0]) throw new Error('PURCHASE_RETURN_ITEM_ALREADY_EXISTS');
     await this.assertLot(user, dto.lotId, dto.articleId);
     const stockRow = await this.findStockForLot(user, current.site_id, dto.lotId);
     const returnedPurchaseQuantity = Number(dto.returnedPurchaseQuantity);
