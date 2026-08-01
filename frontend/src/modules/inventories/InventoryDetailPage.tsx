@@ -149,6 +149,12 @@ export function InventoryDetailPage() {
   const canValidate = permissions.includes('inventories.validate');
   const canPrint = permissions.includes('inventories.print') || currentUser?.role === 'ADMIN';
   const canFillZero = permissions.includes('inventories.fill_empty_zero');
+  const isPrivilegedUser = ['ADMIN', 'MANAGER', 'SUPER_ADMIN'].includes(currentUser?.role ?? '');
+  const fillZeroUnavailableReason = current?.status !== 'IN_PROGRESS'
+    ? 'Disponible lorsque l inventaire est en cours de comptage.'
+    : !canFillZero
+      ? 'Action reservee aux utilisateurs autorises.'
+      : '';
 
   useEffect(() => {
     if (!draftStorageKey) return;
@@ -507,7 +513,7 @@ export function InventoryDetailPage() {
         <Link className="ghost-button compact-button" to="/inventories">Retour</Link>
         <Link className="ghost-button compact-button" to={`/stocks/movements?referenceType=INVENTORY&referenceId=${current.inventoryId}`}>Voir mouvements stock</Link>
         {current.status === 'DRAFT' && <button className="button compact-button" onClick={() => start.mutate()} disabled={start.isPending}>Demarrer</button>}
-        {current.status === 'IN_PROGRESS' && canFillZero && (
+        {(current.status === 'IN_PROGRESS' && canFillZero) ? (
           <button
             className="ghost-button compact-button"
             type="button"
@@ -516,7 +522,16 @@ export function InventoryDetailPage() {
           >
             Remplir les non saisis a 0
           </button>
-        )}
+        ) : isPrivilegedUser ? (
+          <button
+            className="ghost-button compact-button"
+            type="button"
+            disabled
+            title={fillZeroUnavailableReason}
+          >
+            Remplir les non saisis a 0
+          </button>
+        ) : null}
         {current.status === 'IN_PROGRESS' && canClose && (
           <button
             className="button compact-button"
