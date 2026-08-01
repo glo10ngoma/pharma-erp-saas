@@ -276,15 +276,8 @@ export function PurchaseReturnDetailPage() {
     window.localStorage.removeItem(returnWizardStorageKey(id));
   }
 
-  function canAccessStep(step: WizardStep) {
-    if (!current) return step === 1;
-    if (current.status !== 'DRAFT') return true;
-    if (step === 1) return true;
-    return stepCompletion.productsReturned;
-  }
-
   function goToStep(step: WizardStep) {
-    if (canAccessStep(step)) setActiveStep(step);
+    setActiveStep(step);
   }
 
   function handleStepKeyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -299,12 +292,12 @@ export function PurchaseReturnDetailPage() {
   }
 
   function stepStatus(step: WizardStep) {
-    if (current?.status !== 'DRAFT') return 'Accessible';
-    if (step === 1) return stepCompletion.productsReturned ? 'Complete' : 'Courant';
-    if (step === 2) return stepCompletion.productsExchanged ? 'Complete' : 'Disponible';
-    if (step === 3) return stepCompletion.settled ? 'Complete' : 'Disponible';
-    if (step === 4) return 'Optionnel';
-    if (step === 5) return stepCompletion.validated ? 'Valide' : 'Final';
+    if (step === activeStep) return 'Courante';
+    if (step === 1) return stepCompletion.productsReturned ? 'Complete' : 'A completer';
+    if (step === 2) return stepCompletion.productsExchanged ? 'Complete' : 'A completer';
+    if (step === 3) return stepCompletion.settled ? 'Complete' : 'A completer';
+    if (step === 4) return 'Optionnelle';
+    if (step === 5) return stepCompletion.validated ? 'Resume disponible' : 'A valider';
     return 'Etape';
   }
 
@@ -369,17 +362,18 @@ export function PurchaseReturnDetailPage() {
                 [5, 'Validation', stepCompletion.validated],
               ] as const).map(([step, label, completed]) => {
                 const isActive = activeStep === step;
-                const isLocked = !canAccessStep(step);
                 return (
                   <button
                     key={step}
                     type="button"
                     role="tab"
+                    id={`purchase-return-step-${step}`}
+                    aria-controls={`purchase-return-panel-${step}`}
                     aria-selected={isActive}
                     aria-current={isActive ? 'step' : undefined}
-                    className={`purchase-return-step${isActive ? ' is-active' : ''}${completed ? ' is-complete' : ''}${isLocked ? ' is-locked' : ''}`}
+                    className={`purchase-return-step${isActive ? ' is-active' : ''}${completed ? ' is-complete' : ''}`}
                     onClick={() => goToStep(step)}
-                    disabled={isLocked}
+                    tabIndex={0}
                   >
                     <span className="purchase-return-step-index">{step}</span>
                     <span className="purchase-return-step-label">{label}</span>
@@ -391,14 +385,14 @@ export function PurchaseReturnDetailPage() {
           </div>
 
           {activeStep === 1 && (
-            <section className="card purchase-return-step-section">
+            <section className="card purchase-return-step-section" id="purchase-return-panel-1" aria-labelledby="purchase-return-step-1">
               <div className="purchase-return-step-header">
                 <div>
                   <h2>1. Produits retournes</h2>
                   <p className="muted">Choisissez la ligne d'achat et saisissez la quantite retournee.</p>
                 </div>
                 <div className="table-actions">
-                  <button className="ghost-button compact-button" type="button" onClick={() => goToStep(2)} disabled={!canAccessStep(2)}>
+                  <button className="ghost-button compact-button" type="button" onClick={() => goToStep(2)}>
                     Etape suivante
                   </button>
                 </div>
@@ -568,7 +562,7 @@ export function PurchaseReturnDetailPage() {
               </div>
 
               <div className="purchase-return-step-actions">
-                <button className="ghost-button compact-button" type="button" onClick={() => goToStep(5)} disabled={!canAccessStep(5)}>
+                <button className="ghost-button compact-button" type="button" onClick={() => goToStep(5)}>
                   Passer a la validation
                 </button>
               </div>
@@ -576,7 +570,7 @@ export function PurchaseReturnDetailPage() {
           )}
 
           {activeStep === 2 && (
-            <section className="card purchase-return-step-section">
+            <section className="card purchase-return-step-section" id="purchase-return-panel-2" aria-labelledby="purchase-return-step-2">
               <div className="purchase-return-step-header">
                 <div>
                   <h2>2. Produits recu en echange</h2>
@@ -586,11 +580,17 @@ export function PurchaseReturnDetailPage() {
                   <button className="ghost-button compact-button" type="button" onClick={() => goToStep(1)}>
                     Etape precedente
                   </button>
-                  <button className="ghost-button compact-button" type="button" onClick={() => goToStep(3)} disabled={!canAccessStep(3)}>
+                  <button className="ghost-button compact-button" type="button" onClick={() => goToStep(3)}>
                     Etape suivante
                   </button>
                 </div>
               </div>
+
+              {returnLines.length === 0 ? (
+                <div className="form-summary">
+                  <span>Aucun produit retourne n'est encore enregistre. Vous pouvez preparer les produits recus en echange, mais les calculs definitifs seront disponibles apres l'ajout des produits retournes.</span>
+                </div>
+              ) : null}
 
               <div className="purchase-return-split-grid">
                 <div className="card compact-card purchase-return-inner-card">
@@ -719,7 +719,7 @@ export function PurchaseReturnDetailPage() {
           )}
 
           {activeStep === 3 && (
-            <section className="card purchase-return-step-section">
+            <section className="card purchase-return-step-section" id="purchase-return-panel-3" aria-labelledby="purchase-return-step-3">
               <div className="purchase-return-step-header">
                 <div>
                   <h2>3. Regularisation financiere</h2>
@@ -734,6 +734,12 @@ export function PurchaseReturnDetailPage() {
                   </button>
                 </div>
               </div>
+
+              {returnLines.length === 0 || exchangeLines.length === 0 ? (
+                <div className="form-summary">
+                  <span>La regularisation definitive sera calculee lorsque les produits retournes et les produits recus auront ete renseignes.</span>
+                </div>
+              ) : null}
 
               <div className="detail-grid purchase-return-financial-grid">
                 <div><span>Valeur retour</span><strong>{formatMoney(current.returnedValueUsd, 'USD')}</strong></div>
@@ -894,7 +900,7 @@ export function PurchaseReturnDetailPage() {
           )}
 
           {activeStep === 4 && (
-            <section className="card purchase-return-step-section">
+            <section className="card purchase-return-step-section" id="purchase-return-panel-4" aria-labelledby="purchase-return-step-4">
               <div className="purchase-return-step-header">
                 <div>
                   <h2>4. Pieces jointes</h2>
@@ -934,7 +940,7 @@ export function PurchaseReturnDetailPage() {
           )}
 
           {activeStep === 5 && (
-            <section className="card purchase-return-step-section">
+            <section className="card purchase-return-step-section" id="purchase-return-panel-5" aria-labelledby="purchase-return-step-5">
               <div className="purchase-return-step-header">
                 <div>
                   <h2>5. Validation</h2>
@@ -959,7 +965,7 @@ export function PurchaseReturnDetailPage() {
               <div className="purchase-return-checklist">
                 <div className={`purchase-return-checkitem${stepCompletion.productsReturned ? ' is-done' : ''}`}>
                   <strong>Produits retournes</strong>
-                  <span>{stepCompletion.productsReturned ? 'Complete' : 'En attente'}</span>
+                  <span>{stepCompletion.productsReturned ? 'Complete' : 'A completer'}</span>
                 </div>
                 <div className={`purchase-return-checkitem${stepCompletion.productsExchanged ? ' is-done' : ''}`}>
                   <strong>Produits echange</strong>
@@ -975,12 +981,18 @@ export function PurchaseReturnDetailPage() {
                 </div>
               </div>
 
+              {!(current.items ?? []).length || !(current.replacementItems ?? []).length ? (
+                <div className="form-summary">
+                  <span>Elements a completer : {!(current.items ?? []).length ? 'Ajouter au moins un produit retourne.' : ''}{!(current.items ?? []).length && !(current.replacementItems ?? []).length ? ' ' : ''}{!(current.replacementItems ?? []).length ? 'Renseigner les produits recus en echange si necessaire.' : ''}</span>
+                </div>
+              ) : null}
+
               <CommentsPanel entityType="PURCHASE_RETURN" entityId={current.purchaseReturnId} title="Commentaires et traces" />
 
               <div className="page-actions">
                 <Link className="ghost-button compact-button" to={current ? `/purchases/${current.purchaseId}` : '/purchases'}>Retour achat</Link>
                 {canEdit ? <button className="ghost-button compact-button" type="button" onClick={() => cancelReturn.mutate()} disabled={cancelReturn.isPending}>Annuler retour</button> : null}
-                {canEdit ? <button className="button compact-button" type="button" onClick={() => validateReturn.mutate()} disabled={validateReturn.isPending || !returnLines.length}>{validateReturn.isPending ? 'Validation...' : 'Valider retour'}</button> : null}
+                {canEdit ? <button className="button compact-button" type="button" onClick={() => validateReturn.mutate()} disabled={validateReturn.isPending || !returnLines.length}>{validateReturn.isPending ? 'Validation...' : 'Valider le retour'}</button> : null}
               </div>
             </section>
           )}
