@@ -10,6 +10,7 @@ import { stocksService, Stock } from '../../services/stocks.service';
 import { lotsService } from '../../services/lots.service';
 import { formatDate, fileDateStamp } from '../../utils/date';
 import { downloadCsv, downloadJson, downloadXlsx } from '../../utils/export';
+import { fetchAllPages } from '../../utils/fetchAllPages';
 import { formatMoney } from '../../utils/money';
 
 type QuickLine = { stockId: string; query: string; physicalQuantity: string; reason: string };
@@ -29,7 +30,14 @@ export function InventoryDetailPage() {
   const inventory = useQuery({ queryKey: ['inventory', id], queryFn: async () => (await inventoriesService.getById(id)).data });
   const stocks = useQuery({ queryKey: ['stocks'], queryFn: async () => (await stocksService.getAll()).data });
   const lots = useQuery({ queryKey: ['lots'], queryFn: async () => (await lotsService.getAll()).data });
-  const articles = useQuery({ queryKey: ['articles', 'inventory-detail'], queryFn: async () => (await articlesService.getAll({ limit: 1000 })).data.items });
+  const articles = useQuery({
+    queryKey: ['articles', 'inventory-detail'],
+    queryFn: async () =>
+      fetchAllPages(
+        async ({ page, limit }) => (await articlesService.getAll({ page, limit })).data,
+        { getKey: (article) => article.articleId },
+      ),
+  });
   const current = inventory.data;
   const rows = current?.items ?? [];
   const availableStocks = (stocks.data ?? []).filter((stock) => !current?.siteId || stock.siteId === current.siteId);

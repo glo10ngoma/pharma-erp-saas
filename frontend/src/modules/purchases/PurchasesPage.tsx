@@ -13,6 +13,7 @@ import { SearchBox } from '../../components/SearchBox';
 import { filterRows } from '../../lib/search';
 import { formatDate, fileDateStamp } from '../../utils/date';
 import { downloadCsv, downloadJson, downloadXlsx } from '../../utils/export';
+import { fetchAllPages } from '../../utils/fetchAllPages';
 import { formatMoney } from '../../utils/money';
 
 type PurchaseForm = {
@@ -195,7 +196,14 @@ export function PurchasesPage() {
   const purchases = useQuery({ queryKey: ['purchases', status], queryFn: async () => (await purchasesService.getAll(status)).data });
   const suppliers = useQuery({ queryKey: ['suppliers'], queryFn: async () => (await referenceService.suppliers.getAll()).data });
   const sites = useQuery({ queryKey: ['sites'], queryFn: async () => (await sitesService.getAll()).data });
-  const articles = useQuery({ queryKey: ['articles'], queryFn: async () => (await articlesService.getAll({ limit: 500 })).data.items });
+  const articles = useQuery({
+    queryKey: ['articles'],
+    queryFn: async () =>
+      fetchAllPages(
+        async ({ page, limit }) => (await articlesService.getAll({ page, limit })).data,
+        { getKey: (article) => article.articleId },
+      ),
+  });
   const categories = useQuery({ queryKey: ['categories'], queryFn: async () => (await referenceService.categories.getAll()).data });
   const forms = useQuery({ queryKey: ['galenic-forms'], queryFn: async () => (await referenceService.galenicForms.getAll()).data });
   const stocks = useQuery({ queryKey: ['stocks'], queryFn: async () => (await stocksService.getAll()).data });

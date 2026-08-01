@@ -26,6 +26,7 @@ import { settingsService } from '../../services/settings.service';
 import { sitesService } from '../../services/sites.service';
 import { stocksService } from '../../services/stocks.service';
 import { formatDate } from '../../utils/date';
+import { fetchAllPages } from '../../utils/fetchAllPages';
 import { formatMoney } from '../../utils/money';
 import { buildFefoKpis, buildFefoRiskRows, buildRotationKpis, buildRotationRows } from '../fefo/fefo-utils';
 import { canReadNotifications, readNotificationState, useGeneratedNotifications } from '../notifications/notifications-data';
@@ -57,7 +58,15 @@ export function ReportsDashboardPage() {
   const exchangeRate = useQuery({ queryKey: ['settings', 'exchange-rate'], queryFn: async () => (await settingsService.getExchangeRate()).data, enabled: canSeeReports });
   const lots = useQuery({ queryKey: ['lots', 'reports-fefo'], queryFn: async () => (await lotsService.getAll()).data, enabled: canSeeReports });
   const stocks = useQuery({ queryKey: ['stocks', 'reports-fefo'], queryFn: async () => (await stocksService.getAll()).data, enabled: canSeeReports });
-  const articles = useQuery({ queryKey: ['articles', 'reports-fefo'], queryFn: async () => (await articlesService.getAll({ limit: 1000 })).data.items, enabled: canSeeReports });
+  const articles = useQuery({
+    queryKey: ['articles', 'reports-fefo'],
+    queryFn: async () =>
+      fetchAllPages(
+        async ({ page, limit }) => (await articlesService.getAll({ page, limit })).data,
+        { getKey: (article) => article.articleId },
+      ),
+    enabled: canSeeReports,
+  });
 
   const selectedSite = (sites.data ?? []).find((site) => site.siteId === filters.siteId);
   const kpis = dashboard.data;

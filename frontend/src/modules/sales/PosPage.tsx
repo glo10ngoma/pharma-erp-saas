@@ -14,6 +14,7 @@ import { settingsService } from '../../services/settings.service';
 import { sitesService } from '../../services/sites.service';
 import { stocksService } from '../../services/stocks.service';
 import { formatDate } from '../../utils/date';
+import { fetchAllPages } from '../../utils/fetchAllPages';
 import { formatMoney } from '../../utils/money';
 
 type PosForm = {
@@ -60,7 +61,14 @@ export function PosPage() {
   const deviceUuid = useMemo(() => getOrCreateDeviceUuid(), []);
 
   const sites = useQuery({ queryKey: ['sites'], queryFn: async () => (await sitesService.getAll()).data });
-  const articles = useQuery({ queryKey: ['articles', 'pos'], queryFn: async () => (await articlesService.getAll({ limit: 1000 })).data.items });
+  const articles = useQuery({
+    queryKey: ['articles', 'pos'],
+    queryFn: async () =>
+      fetchAllPages(
+        async ({ page, limit }) => (await articlesService.getAll({ page, limit })).data,
+        { getKey: (article) => article.articleId },
+      ),
+  });
   const lots = useQuery({ queryKey: ['lots', 'pos'], queryFn: async () => (await lotsService.getAll()).data });
   const stocks = useQuery({ queryKey: ['stocks', 'pos'], queryFn: async () => (await stocksService.getAll()).data });
   const customers = useQuery({ queryKey: ['customers'], queryFn: async () => (await referenceService.customers.getAll()).data });

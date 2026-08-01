@@ -12,6 +12,7 @@ import { sitesService } from '../../services/sites.service';
 import { Stock, StockDetail, StockMovement, StockSummary, stocksService } from '../../services/stocks.service';
 import { formatDate, fileDateStamp } from '../../utils/date';
 import { downloadCsv, downloadJson, downloadXlsx } from '../../utils/export';
+import { fetchAllPages } from '../../utils/fetchAllPages';
 import { formatMoney } from '../../utils/money';
 import { stockMovementLabel, stockMovementSourceRoute } from './stockMovementLabels';
 
@@ -48,8 +49,6 @@ type StockLotDetail = {
 };
 
 const PAGE_LIMIT = 25;
-const SNAPSHOT_ARTICLES_LIMIT = 100;
-const SNAPSHOT_MOVEMENTS_LIMIT = 100;
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
@@ -310,42 +309,26 @@ export function StocksOverviewView({ mode }: { mode: 'current' | 'as-of' }) {
 }
 
 async function fetchAllSnapshotMovements(stockDate: string) {
-  const items: StockMovement[] = [];
-  let page = 1;
-  let totalPages = 1;
-  while (page <= totalPages) {
-    const response = (
-      await stocksService.getMovements({
-        page,
-        limit: SNAPSHOT_MOVEMENTS_LIMIT,
-        dateTo: stockDate,
-        sortBy: 'movementDate',
-        sortOrder: 'asc',
-      })
-    ).data;
-    items.push(...response.items);
-    totalPages = Math.max(1, response.totalPages);
-    if (response.items.length < SNAPSHOT_MOVEMENTS_LIMIT || items.length >= response.total || page >= totalPages) {
-      break;
-    }
-    page += 1;
-  }
-  return items;
+  return fetchAllPages(
+    async ({ page, limit }) =>
+      (
+        await stocksService.getMovements({
+          page,
+          limit,
+          dateTo: stockDate,
+          sortBy: 'movementDate',
+          sortOrder: 'asc',
+        })
+      ).data,
+    { getKey: (movement) => movement.movementId },
+  );
 }
 
 async function fetchAllSnapshotArticles() {
-  const items: Article[] = [];
-  let page = 1;
-  while (true) {
-    const response = (await articlesService.getAll({ page, limit: SNAPSHOT_ARTICLES_LIMIT })).data;
-    items.push(...response.items);
-    const totalPages = Math.max(1, Math.ceil(response.total / response.limit));
-    if (response.items.length < SNAPSHOT_ARTICLES_LIMIT || items.length >= response.total || page >= totalPages) {
-      break;
-    }
-    page += 1;
-  }
-  return items;
+  return fetchAllPages(
+    async ({ page, limit }) => (await articlesService.getAll({ page, limit })).data,
+    { getKey: (article) => article.articleId },
+  );
 }
 
 function StocksSkeleton() {

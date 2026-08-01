@@ -7,6 +7,7 @@ import { referenceService } from '../../services/reference.service';
 import { stocksService } from '../../services/stocks.service';
 import { downloadCsv, downloadJson, downloadXlsx } from '../../utils/export';
 import { formatDate, fileDateStamp } from '../../utils/date';
+import { fetchAllPages } from '../../utils/fetchAllPages';
 import { formatMoney } from '../../utils/money';
 import { buildFefoKpis, buildFefoRiskRows, priorityClass, priorityLabel, type FefoRiskRow } from './fefo-utils';
 
@@ -19,7 +20,14 @@ export function FefoHighlightPage() {
   const [categoryId, setCategoryId] = useState('');
   const lots = useQuery({ queryKey: ['lots'], queryFn: async () => (await lotsService.getAll()).data });
   const stocks = useQuery({ queryKey: ['stocks'], queryFn: async () => (await stocksService.getAll()).data });
-  const articles = useQuery({ queryKey: ['articles', 'fefo'], queryFn: async () => (await articlesService.getAll({ limit: 1000 })).data.items });
+  const articles = useQuery({
+    queryKey: ['articles', 'fefo'],
+    queryFn: async () =>
+      fetchAllPages(
+        async ({ page, limit }) => (await articlesService.getAll({ page, limit })).data,
+        { getKey: (article) => article.articleId },
+      ),
+  });
   const categories = useQuery({ queryKey: ['categories'], queryFn: async () => (await referenceService.categories.getAll()).data });
   const error = [lots, stocks, articles, categories].find((query) => query.isError)?.error;
 

@@ -6,6 +6,7 @@ import { lotsService } from '../../services/lots.service';
 import { stocksService } from '../../services/stocks.service';
 import { downloadCsv, downloadJson, downloadXlsx } from '../../utils/export';
 import { fileDateStamp, formatDate } from '../../utils/date';
+import { fetchAllPages } from '../../utils/fetchAllPages';
 import { formatMoney } from '../../utils/money';
 import { buildFefoRiskRows, buildRotationKpis, buildRotationRows, priorityClass, priorityLabel, type FefoRotationRow } from './fefo-utils';
 
@@ -14,7 +15,14 @@ export function FefoRotationPage() {
   const [siteId, setSiteId] = useState('');
   const lots = useQuery({ queryKey: ['lots'], queryFn: async () => (await lotsService.getAll()).data });
   const stocks = useQuery({ queryKey: ['stocks'], queryFn: async () => (await stocksService.getAll()).data });
-  const articles = useQuery({ queryKey: ['articles', 'fefo'], queryFn: async () => (await articlesService.getAll({ limit: 1000 })).data.items });
+  const articles = useQuery({
+    queryKey: ['articles', 'fefo'],
+    queryFn: async () =>
+      fetchAllPages(
+        async ({ page, limit }) => (await articlesService.getAll({ page, limit })).data,
+        { getKey: (article) => article.articleId },
+      ),
+  });
   const error = [lots, stocks, articles].find((query) => query.isError)?.error;
   const rows = useMemo(() => {
     const riskRows = buildFefoRiskRows(lots.data ?? [], stocks.data ?? [], articles.data ?? []);
