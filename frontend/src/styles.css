@@ -2161,7 +2161,7 @@ details.nav-group .nav-link {
 .purchase-return-stepper {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 .purchase-return-step {
@@ -2281,6 +2281,38 @@ details.nav-group .nav-link {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+}
+
+.purchase-return-difference-card {
+  display: grid;
+  gap: 6px;
+}
+
+.purchase-return-difference-card strong,
+.purchase-return-validation-callout strong {
+  font-size: .95rem;
+}
+
+.purchase-return-difference-card.is-success {
+  border-color: rgba(21, 128, 61, .35);
+}
+
+.purchase-return-difference-card.is-warning {
+  border-color: rgba(217, 119, 6, .35);
+}
+
+.purchase-return-difference-card.is-muted {
+  border-color: var(--line);
+}
+
+.purchase-return-difference-card small {
+  color: var(--muted);
+  font-size: .82rem;
+}
+
+.purchase-return-validation-callout {
+  display: grid;
+  gap: 4px;
 }
 
 .purchase-return-form-actions {

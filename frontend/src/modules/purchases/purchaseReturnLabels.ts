@@ -16,8 +16,16 @@ export const RETURN_TYPE_LABELS: Record<string, string> = {
 
 export const SETTLEMENT_KIND_OPTIONS = [
   { value: 'REFUND', label: 'Remboursement fournisseur', help: 'Le fournisseur rembourse la différence.' },
-  { value: 'ADDITIONAL_PAYMENT', label: 'Complément à payer', help: "L'entreprise règle un complément au fournisseur." },
+  { value: 'ADDITIONAL_PAYMENT', label: 'Complément payé', help: "L'entreprise règle un complément au fournisseur." },
   { value: 'SUPPLIER_CREDIT', label: 'Avoir fournisseur', help: 'La différence devient un crédit utilisable plus tard.' },
+] as const;
+
+export const SETTLEMENT_FLOW_OPTIONS = [
+  { value: 'NONE', label: 'Aucun règlement', help: 'Aucun mouvement financier ne sera créé.' },
+  { value: 'REFUND', label: 'Remboursement fournisseur', help: 'Le fournisseur rembourse la différence.' },
+  { value: 'SUPPLIER_CREDIT', label: 'Avoir fournisseur', help: 'La différence devient un crédit utilisable plus tard.' },
+  { value: 'ADDITIONAL_PAYMENT', label: 'Complément payé', help: "L'entreprise règle un complément au fournisseur." },
+  { value: 'MIXED', label: 'Régularisation mixte', help: 'Ajoutez plusieurs lignes de régularisation pour répartir le traitement.' },
 ] as const;
 
 export const PAYMENT_SOURCE_OPTIONS = [
@@ -42,6 +50,10 @@ export function getReturnTypeLabel(value: string) {
 
 export function getSettlementKindLabel(value: string) {
   return optionLabel(SETTLEMENT_KIND_OPTIONS, value);
+}
+
+export function getSettlementFlowLabel(value: string) {
+  return optionLabel(SETTLEMENT_FLOW_OPTIONS, value);
 }
 
 export function getPaymentSourceLabel(value: string) {

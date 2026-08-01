@@ -14,9 +14,11 @@ import {
   getPaymentSourceLabel,
   getReturnConditionLabel,
   getReturnTypeLabel,
+  getSettlementFlowLabel,
   getSettlementKindLabel,
   PAYMENT_SOURCE_OPTIONS,
   RETURN_CONDITION_OPTIONS,
+  SETTLEMENT_FLOW_OPTIONS,
   SETTLEMENT_KIND_OPTIONS,
 } from './purchaseReturnLabels';
 
@@ -24,7 +26,8 @@ const LazyPurchaseAttachmentsCard = lazy(() =>
   import('./PurchaseAttachmentsCard').then((module) => ({ default: module.PurchaseAttachmentsCard })),
 );
 
-type WizardStep = 1 | 2 | 3 | 4 | 5;
+type WizardStep = 1 | 2 | 3 | 4 | 5 | 6;
+type SettlementFlowMode = 'NONE' | 'REFUND' | 'SUPPLIER_CREDIT' | 'ADDITIONAL_PAYMENT' | 'MIXED';
 
 type ItemFormState = {
   purchaseItemId: string;
@@ -57,7 +60,11 @@ type SettlementFormState = {
 const returnWizardStorageKey = (id: string) => `purchase-return-wizard:${id}`;
 
 function isWizardStep(value: unknown): value is WizardStep {
-  return value === 1 || value === 2 || value === 3 || value === 4 || value === 5;
+  return value === 1 || value === 2 || value === 3 || value === 4 || value === 5 || value === 6;
+}
+
+function isSettlementFlowMode(value: unknown): value is SettlementFlowMode {
+  return value === 'NONE' || value === 'REFUND' || value === 'SUPPLIER_CREDIT' || value === 'ADDITIONAL_PAYMENT' || value === 'MIXED';
 }
 
 function lotDatePart(value?: string | null) {
@@ -69,6 +76,10 @@ function lotBase(article: Pick<Article, 'articleCode'>, referenceDate?: string |
   return `${code}-${lotDatePart(referenceDate)}`;
 }
 
+function quantity(value: unknown) {
+  return Number(value ?? 0);
+}
+
 export function PurchaseReturnDetailPage() {
   const { id = '' } = useParams();
   const { permissions } = useAuth();
@@ -78,6 +89,7 @@ export function PurchaseReturnDetailPage() {
 
   const [activeStep, setActiveStep] = useState<WizardStep>(1);
   const [replacementLotIsManual, setReplacementLotIsManual] = useState(false);
+  const [settlementFlowMode, setSettlementFlowMode] = useState<SettlementFlowMode>('NONE');
   const [itemForm, setItemForm] = useState<ItemFormState>({
     purchaseItemId: '',
     quantity: '1',
@@ -137,11 +149,13 @@ export function PurchaseReturnDetailPage() {
       if (!raw) return;
       const parsed = JSON.parse(raw) as {
         activeStep?: unknown;
+        settlementFlowMode?: unknown;
         itemForm?: Partial<ItemFormState>;
         replacementForm?: Partial<ReplacementFormState>;
         settlementForm?: Partial<SettlementFormState>;
       };
       if (isWizardStep(parsed.activeStep)) setActiveStep(parsed.activeStep);
+      if (isSettlementFlowMode(parsed.settlementFlowMode)) setSettlementFlowMode(parsed.settlementFlowMode);
       if (parsed.itemForm) setItemForm((currentValue) => ({ ...currentValue, ...parsed.itemForm }));
       if (parsed.replacementForm) setReplacementForm((currentValue) => ({ ...currentValue, ...parsed.replacementForm }));
       if (parsed.settlementForm) setSettlementForm((currentValue) => ({ ...currentValue, ...parsed.settlementForm }));
@@ -156,8 +170,11 @@ export function PurchaseReturnDetailPage() {
       window.localStorage.removeItem(returnWizardStorageKey(id));
       return;
     }
-    window.localStorage.setItem(returnWizardStorageKey(id), JSON.stringify({ activeStep, itemForm, replacementForm, settlementForm }));
-  }, [activeStep, id, itemForm, query.data?.status, replacementForm, settlementForm]);
+    window.localStorage.setItem(
+      returnWizardStorageKey(id),
+      JSON.stringify({ activeStep, settlementFlowMode, itemForm, replacementForm, settlementForm }),
+    );
+  }, [activeStep, id, itemForm, query.data?.status, replacementForm, settlementFlowMode, settlementForm]);
 
   const current = query.data;
   const purchaseLines = originalPurchase.data?.items ?? [];
@@ -183,24 +200,82 @@ export function PurchaseReturnDetailPage() {
   );
 
   const replacementLineTotal = useMemo(
-    () => Number(replacementForm.quantity || 0) * Number(replacementForm.unitValue || 0),
+    () => quantity(replacementForm.quantity) * quantity(replacementForm.unitValue),
     [replacementForm.quantity, replacementForm.unitValue],
   );
 
   const replacementStockQuantity = useMemo(
-    () => Number(replacementForm.quantity || 0) * Number(replacementForm.conversionFactor || 0),
+    () => quantity(replacementForm.quantity) * quantity(replacementForm.conversionFactor),
     [replacementForm.conversionFactor, replacementForm.quantity],
   );
+
+  const returnedStockImpact = useMemo(
+    () => returnLines.reduce((sum, line) => sum + quantity(line.returnedStockQuantity), 0),
+    [returnLines],
+  );
+
+  const replacementStockImpact = useMemo(
+    () => exchangeLines.reduce((sum, line) => sum + quantity(line.receivedStockQuantity), 0),
+    [exchangeLines],
+  );
+
+  const financialImpactSummary = useMemo(() => {
+    const refundCount = settlementLines.filter((entry) => entry.settlementKind === 'REFUND').length;
+    const additionalCount = settlementLines.filter((entry) => entry.settlementKind === 'ADDITIONAL_PAYMENT').length;
+    const creditCount = settlementLines.filter((entry) => entry.settlementKind === 'SUPPLIER_CREDIT').length;
+    if (!settlementLines.length) return 'Aucun mouvement financier enregistré';
+    const parts = [];
+    if (refundCount) parts.push(`${refundCount} remboursement${refundCount > 1 ? 's' : ''}`);
+    if (creditCount) parts.push(`${creditCount} avoir${creditCount > 1 ? 's' : ''}`);
+    if (additionalCount) parts.push(`${additionalCount} complément${additionalCount > 1 ? 's' : ''}`);
+    return parts.join(' • ');
+  }, [settlementLines]);
+
+  const differenceDirection = useMemo(() => {
+    const difference = quantity(current?.financialDifferenceUsd);
+    if (difference > 0.0001) {
+      return {
+        tone: 'success',
+        title: "L'entreprise doit recevoir",
+        amount: formatMoney(difference, 'USD'),
+        description: 'La différence est positive, mais aucun mouvement financier ne sera créé automatiquement.',
+      };
+    }
+    if (difference < -0.0001) {
+      return {
+        tone: 'warning',
+        title: "L'entreprise doit payer",
+        amount: formatMoney(Math.abs(difference), 'USD'),
+        description: 'La différence est négative, mais aucun mouvement financier ne sera créé automatiquement.',
+      };
+    }
+    return {
+      tone: 'muted',
+      title: 'Aucune différence',
+      amount: formatMoney(0, 'USD'),
+      description: "Le retour est équilibré. Aucun mouvement financier n'est attendu par défaut.",
+    };
+  }, [current?.financialDifferenceUsd]);
+
+  const canProceedToValidation = returnLines.length > 0;
 
   const stepCompletion = useMemo(
     () => ({
       productsReturned: returnLines.length > 0,
       productsExchanged: exchangeLines.length > 0,
-      settled: settlementLines.length > 0,
+      calculated: returnLines.length > 0 || exchangeLines.length > 0,
+      settlements: settlementLines.length > 0 || settlementFlowMode === 'NONE',
       validated: current?.status === 'VALIDATED',
     }),
-    [current?.status, exchangeLines.length, returnLines.length, settlementLines.length],
+    [current?.status, exchangeLines.length, returnLines.length, settlementFlowMode, settlementLines.length],
   );
+
+  const visiblePaymentSources = useMemo(() => {
+    if (settlementFlowMode === 'SUPPLIER_CREDIT') {
+      return PAYMENT_SOURCE_OPTIONS.filter((option) => option.value === 'SUPPLIER_CREDIT');
+    }
+    return PAYMENT_SOURCE_OPTIONS.filter((option) => option.value !== 'SUPPLIER_CREDIT');
+  }, [settlementFlowMode]);
 
   useEffect(() => {
     if (!selectedReplacementArticle) return;
@@ -215,6 +290,16 @@ export function PurchaseReturnDetailPage() {
     });
   }, [current?.returnDate, exchangeLines.length, replacementLotIsManual, selectedReplacementArticle]);
 
+  useEffect(() => {
+    if (settlementFlowMode === 'NONE') return;
+    if (settlementFlowMode === 'MIXED') return;
+    setSettlementForm((currentValue) => ({
+      ...currentValue,
+      settlementKind: settlementFlowMode,
+      paymentSource: settlementFlowMode === 'SUPPLIER_CREDIT' ? 'SUPPLIER_CREDIT' : currentValue.paymentSource === 'SUPPLIER_CREDIT' ? 'CASH_REGISTER' : currentValue.paymentSource,
+    }));
+  }, [settlementFlowMode]);
+
   const addItem = useMutation({
     mutationFn: () => {
       const selected = purchaseLines.find((entry) => entry.purchaseItemId === itemForm.purchaseItemId);
@@ -223,8 +308,8 @@ export function PurchaseReturnDetailPage() {
         purchaseItemId: selected.purchaseItemId,
         articleId: selected.articleId,
         lotId: selected.lotId,
-        returnedPurchaseQuantity: Number(itemForm.quantity),
-        returnUnitValue: itemForm.returnUnitValue ? Number(itemForm.returnUnitValue) : undefined,
+        returnedPurchaseQuantity: quantity(itemForm.quantity),
+        returnUnitValue: itemForm.returnUnitValue ? quantity(itemForm.returnUnitValue) : undefined,
         reason: itemForm.reason || undefined,
         conditionStatus: itemForm.conditionStatus,
       });
@@ -247,11 +332,11 @@ export function PurchaseReturnDetailPage() {
     mutationFn: () =>
       purchaseReturnsService.addReplacement(id, {
         articleId: replacementForm.articleId,
-        receivedPurchaseQuantity: Number(replacementForm.quantity),
-        conversionFactor: Number(replacementForm.conversionFactor || 1),
+        receivedPurchaseQuantity: quantity(replacementForm.quantity),
+        conversionFactor: quantity(replacementForm.conversionFactor || 1),
         lotNumber: replacementForm.lotNumber,
         expiryDate: replacementForm.expiryDate,
-        unitValue: Number(replacementForm.unitValue),
+        unitValue: quantity(replacementForm.unitValue),
       }),
     onSuccess: async () => {
       setReplacementForm({
@@ -285,8 +370,8 @@ export function PurchaseReturnDetailPage() {
         settlementKind: settlementForm.settlementKind,
         paymentSource: settlementForm.paymentSource,
         currencyCode: settlementForm.currencyCode,
-        exchangeRateApplied: Number(settlementForm.exchangeRateApplied || 1),
-        amount: Number(settlementForm.amount),
+        exchangeRateApplied: quantity(settlementForm.exchangeRateApplied || 1),
+        amount: quantity(settlementForm.amount),
         cashSessionId:
           settlementForm.paymentSource === 'CASH_REGISTER'
             ? settlementForm.cashSessionId || currentCashSession.data?.cashSessionId
@@ -312,7 +397,7 @@ export function PurchaseReturnDetailPage() {
     mutationFn: () => purchaseReturnsService.validate(id),
     onSuccess: async () => {
       clearWizardDraft();
-      setActiveStep(5);
+      setActiveStep(6);
       await qc.invalidateQueries({ queryKey: ['purchase-return', id] });
     },
   });
@@ -349,6 +434,7 @@ export function PurchaseReturnDetailPage() {
 
   function submitSettlement(event: FormEvent) {
     event.preventDefault();
+    if (settlementFlowMode === 'NONE') return;
     addSettlement.mutate();
   }
 
@@ -380,7 +466,7 @@ export function PurchaseReturnDetailPage() {
   function handleStepKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key === 'ArrowRight') {
       event.preventDefault();
-      goToStep(Math.min(5, activeStep + 1) as WizardStep);
+      goToStep(Math.min(6, activeStep + 1) as WizardStep);
     }
     if (event.key === 'ArrowLeft') {
       event.preventDefault();
@@ -391,10 +477,11 @@ export function PurchaseReturnDetailPage() {
   function stepStatus(step: WizardStep) {
     if (step === activeStep) return 'Courante';
     if (step === 1) return stepCompletion.productsReturned ? 'Complète' : 'À compléter';
-    if (step === 2) return stepCompletion.productsExchanged ? 'Complète' : 'À compléter';
-    if (step === 3) return stepCompletion.settled ? 'Complète' : 'À compléter';
-    if (step === 4) return 'Optionnelle';
-    if (step === 5) return stepCompletion.validated ? 'Résumé disponible' : 'À valider';
+    if (step === 2) return stepCompletion.productsExchanged ? 'Complète' : 'Optionnelle';
+    if (step === 3) return stepCompletion.calculated ? 'Disponible' : 'À calculer';
+    if (step === 4) return stepCompletion.settlements ? 'Prête' : 'Optionnelle';
+    if (step === 5) return 'Optionnelle';
+    if (step === 6) return stepCompletion.validated ? 'Résumé disponible' : 'À valider';
     return 'Étape';
   }
 
@@ -440,7 +527,7 @@ export function PurchaseReturnDetailPage() {
             <div className="toolbar compact-toolbar">
               <div>
                 <h2>Parcours guidé</h2>
-                <p className="muted">Navigation clavier possible avec les flèches gauche et droite.</p>
+                <p className="muted">L’ERP calcule, puis l’utilisateur décide de la régularisation réelle.</p>
               </div>
               <span className="badge compact-badge badge-muted">
                 {current.status === 'DRAFT' ? 'Brouillon auto-sauvegardé' : `Statut ${current.status}`}
@@ -454,10 +541,11 @@ export function PurchaseReturnDetailPage() {
             >
               {([
                 [1, 'Produits retournés', stepCompletion.productsReturned],
-                [2, 'Produits reçus en échange', stepCompletion.productsExchanged],
-                [3, 'Régularisation financière', stepCompletion.settled],
-                [4, 'Pièces jointes', false],
-                [5, 'Validation', stepCompletion.validated],
+                [2, 'Produits reçus', stepCompletion.productsExchanged],
+                [3, 'Différence calculée', stepCompletion.calculated],
+                [4, 'Régularisations', stepCompletion.settlements],
+                [5, 'Pièces jointes', false],
+                [6, 'Validation', stepCompletion.validated],
               ] as const).map(([step, label, completed]) => {
                 const isActive = activeStep === step;
                 return (
@@ -487,7 +575,7 @@ export function PurchaseReturnDetailPage() {
               <div className="purchase-return-step-header">
                 <div>
                   <h2>1. Produits retournés</h2>
-                  <p className="muted">Choisissez la ligne d'achat et saisissez la quantité retournée.</p>
+                  <p className="muted">Le stock ne sera diminué qu’à la validation finale.</p>
                 </div>
                 <div className="table-actions">
                   <button className="ghost-button compact-button" type="button" onClick={() => goToStep(2)}>
@@ -513,10 +601,7 @@ export function PurchaseReturnDetailPage() {
                             <th>Lot</th>
                             <th>Expiration</th>
                             <th>Qté achat</th>
-                            <th>Unité achat</th>
-                            <th>PA</th>
-                            <th>PV</th>
-                            <th>Total</th>
+                            <th>Valeur</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -526,9 +611,6 @@ export function PurchaseReturnDetailPage() {
                               <td>{item.lotNumber}</td>
                               <td>{formatDate(item.expiryDate)}</td>
                               <td className="quantity-cell">{item.purchaseQuantity ?? item.quantity}</td>
-                              <td>{item.purchaseUnitLabelSnapshot ?? '-'}</td>
-                              <td className="numeric-text">{formatMoney(item.purchaseUnitPrice, current.currencyCode ?? 'USD')}</td>
-                              <td className="numeric-text">{formatMoney(item.sellingUnitPrice, current.currencyCode ?? 'USD')}</td>
                               <td className="numeric-text">{formatMoney(item.lineTotal, current.currencyCode ?? 'USD')}</td>
                             </tr>
                           ))}
@@ -561,7 +643,21 @@ export function PurchaseReturnDetailPage() {
                         </select>
                       </label>
                       <label className="field-block">
-                        <span>Qté retour</span>
+                        <span>État</span>
+                        <select
+                          className="input"
+                          value={itemForm.conditionStatus}
+                          onChange={(event) => setItemForm((currentValue) => ({ ...currentValue, conditionStatus: event.target.value }))}
+                        >
+                          {RETURN_CONDITION_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="field-block">
+                        <span>Quantité</span>
                         <input
                           className="input"
                           type="number"
@@ -582,20 +678,6 @@ export function PurchaseReturnDetailPage() {
                           value={itemForm.returnUnitValue}
                           onChange={(event) => setItemForm((currentValue) => ({ ...currentValue, returnUnitValue: event.target.value }))}
                         />
-                      </label>
-                      <label className="field-block">
-                        <span>État</span>
-                        <select
-                          className="input"
-                          value={itemForm.conditionStatus}
-                          onChange={(event) => setItemForm((currentValue) => ({ ...currentValue, conditionStatus: event.target.value }))}
-                        >
-                          {RETURN_CONDITION_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
                       </label>
                       <label className="field-block">
                         <span>Motif</span>
@@ -631,10 +713,9 @@ export function PurchaseReturnDetailPage() {
                         <tr>
                           <th>Article</th>
                           <th>Lot</th>
-                          <th>Qté achat</th>
-                          <th>Qté stock</th>
-                          <th>Valeur</th>
                           <th>État</th>
+                          <th>Quantité</th>
+                          <th>Valeur</th>
                           <th>Motif</th>
                           <th>Actions</th>
                         </tr>
@@ -644,10 +725,9 @@ export function PurchaseReturnDetailPage() {
                           <tr key={item.purchaseReturnItemId}>
                             <td>{item.commercialName}</td>
                             <td>{item.lotNumber}</td>
-                            <td className="quantity-cell">{item.returnedPurchaseQuantity}</td>
-                            <td className="quantity-cell">{item.returnedStockQuantity}</td>
-                            <td className="numeric-text">{formatMoney(item.lineReturnValue, 'USD')}</td>
                             <td>{getReturnConditionLabel(item.conditionStatus)}</td>
+                            <td className="quantity-cell">{item.returnedPurchaseQuantity}</td>
+                            <td className="numeric-text">{formatMoney(item.lineReturnValue, current.currencyCode ?? 'USD')}</td>
                             <td>{item.reason ?? '-'}</td>
                             <td>
                               {canEdit ? (
@@ -671,7 +751,7 @@ export function PurchaseReturnDetailPage() {
               <div className="purchase-return-step-header">
                 <div>
                   <h2>2. Produits reçus en échange</h2>
-                  <p className="muted">Ajoutez les produits obtenus en échange avant la régularisation financière.</p>
+                  <p className="muted">Les produits reçus ne seront créés qu’à la validation finale.</p>
                 </div>
                 <div className="table-actions">
                   <button className="ghost-button compact-button" type="button" onClick={() => goToStep(1)}>
@@ -682,15 +762,6 @@ export function PurchaseReturnDetailPage() {
                   </button>
                 </div>
               </div>
-
-              {returnLines.length === 0 ? (
-                <div className="form-summary">
-                  <span>
-                    Aucun produit retourné n'est encore enregistré. Vous pouvez préparer les produits reçus en échange,
-                    mais les calculs définitifs seront fiables après l'ajout des produits retournés.
-                  </span>
-                </div>
-              ) : null}
 
               <div className="card compact-card purchase-return-inner-card">
                 <div className="toolbar compact-toolbar">
@@ -717,7 +788,7 @@ export function PurchaseReturnDetailPage() {
                         </select>
                       </label>
                       <label className="field-block">
-                        <span>Qté achat</span>
+                        <span>Quantité achat</span>
                         <input
                           className="input"
                           type="number"
@@ -726,10 +797,6 @@ export function PurchaseReturnDetailPage() {
                           value={replacementForm.quantity}
                           onChange={(event) => setReplacementForm((currentValue) => ({ ...currentValue, quantity: event.target.value }))}
                         />
-                      </label>
-                      <label className="field-block">
-                        <span>Unité achat</span>
-                        <input className="input" value={selectedReplacementArticle?.packaging ?? '-'} disabled />
                       </label>
                       <label className="field-block">
                         <span>Facteur</span>
@@ -743,7 +810,7 @@ export function PurchaseReturnDetailPage() {
                         />
                       </label>
                       <label className="field-block">
-                        <span>Qté stock</span>
+                        <span>Quantité stock</span>
                         <input className="input" value={replacementStockQuantity ? String(replacementStockQuantity) : ''} disabled />
                       </label>
                       <label className="field-block">
@@ -807,12 +874,8 @@ export function PurchaseReturnDetailPage() {
                           <th>Article</th>
                           <th>Lot</th>
                           <th>Expiration</th>
-                          <th>Qté achat</th>
-                          <th>Unité</th>
-                          <th>Facteur</th>
-                          <th>Qté stock</th>
-                          <th>Valeur unitaire</th>
-                          <th>Valeur totale</th>
+                          <th>Quantité</th>
+                          <th>Valeur</th>
                           <th>Actions</th>
                         </tr>
                       </thead>
@@ -823,10 +886,6 @@ export function PurchaseReturnDetailPage() {
                             <td>{item.lotNumber}</td>
                             <td>{formatDate(item.expiryDate)}</td>
                             <td className="quantity-cell">{item.receivedPurchaseQuantity}</td>
-                            <td>{item.purchaseUnitLabelSnapshot ?? '-'}</td>
-                            <td className="quantity-cell">{item.conversionFactor}</td>
-                            <td className="quantity-cell">{item.receivedStockQuantity}</td>
-                            <td className="numeric-text">{formatMoney(item.unitValue, current.currencyCode ?? 'USD')}</td>
                             <td className="numeric-text">{formatMoney(item.lineValue, current.currencyCode ?? 'USD')}</td>
                             <td>
                               {canEdit ? (
@@ -849,8 +908,8 @@ export function PurchaseReturnDetailPage() {
             <section className="card purchase-return-step-section" id="purchase-return-panel-3" aria-labelledby="purchase-return-step-3">
               <div className="purchase-return-step-header">
                 <div>
-                  <h2>3. Régularisation financière</h2>
-                  <p className="muted">Contrôlez le remboursement, le complément ou l'avoir fournisseur.</p>
+                  <h2>3. Différence calculée</h2>
+                  <p className="muted">Étape informative uniquement. Aucun mouvement de caisse, banque ou avoir n’est créé ici.</p>
                 </div>
                 <div className="table-actions">
                   <button className="ghost-button compact-button" type="button" onClick={() => goToStep(2)}>
@@ -862,60 +921,138 @@ export function PurchaseReturnDetailPage() {
                 </div>
               </div>
 
-              {returnLines.length === 0 || exchangeLines.length === 0 ? (
-                <div className="form-summary">
-                  <span>La régularisation définitive sera calculée lorsque les produits retournés et reçus seront renseignés.</span>
+              <div className="detail-grid purchase-return-financial-grid">
+                <div><span>Valeur produits retournés</span><strong>{formatMoney(current.returnedValueUsd, 'USD')}</strong></div>
+                <div><span>Valeur produits reçus</span><strong>{formatMoney(current.replacementValueUsd, 'USD')}</strong></div>
+                <div><span>Différence calculée</span><strong>{formatMoney(current.financialDifferenceUsd, 'USD')}</strong></div>
+              </div>
+
+              <div className={`form-summary purchase-return-difference-card is-${differenceDirection.tone}`}>
+                <strong>{differenceDirection.title}</strong>
+                <span>{differenceDirection.amount}</span>
+                <small>{differenceDirection.description}</small>
+              </div>
+
+              <div className="card compact-card purchase-return-inner-card">
+                <h3>Lecture métier</h3>
+                <div className="purchase-return-checklist">
+                  <div className="purchase-return-checkitem">
+                    <strong>Calcul</strong>
+                    <span>Le système compare la valeur retournée et la valeur échangée.</span>
+                  </div>
+                  <div className="purchase-return-checkitem">
+                    <strong>Aucun mouvement automatique</strong>
+                    <span>Aucun remboursement, paiement, avoir ou dette n’est créé à cette étape.</span>
+                  </div>
+                  <div className="purchase-return-checkitem">
+                    <strong>Décision utilisateur</strong>
+                    <span>La régularisation réelle se fait uniquement à l’étape suivante.</span>
+                  </div>
                 </div>
-              ) : null}
+              </div>
+            </section>
+          )}
+
+          {activeStep === 4 && (
+            <section className="card purchase-return-step-section" id="purchase-return-panel-4" aria-labelledby="purchase-return-step-4">
+              <div className="purchase-return-step-header">
+                <div>
+                  <h2>4. Régularisations enregistrées</h2>
+                  <p className="muted">Seules les lignes ajoutées ici produiront un mouvement financier réel à la validation.</p>
+                </div>
+                <div className="table-actions">
+                  <button className="ghost-button compact-button" type="button" onClick={() => goToStep(3)}>
+                    Étape précédente
+                  </button>
+                  <button className="ghost-button compact-button" type="button" onClick={() => goToStep(5)}>
+                    Étape suivante
+                  </button>
+                </div>
+              </div>
 
               <div className="detail-grid purchase-return-financial-grid">
-                <div><span>Valeur retour</span><strong>{formatMoney(current.returnedValueUsd, 'USD')}</strong></div>
-                <div><span>Valeur échange</span><strong>{formatMoney(current.replacementValueUsd, 'USD')}</strong></div>
-                <div><span>Différence</span><strong>{formatMoney(current.financialDifferenceUsd, 'USD')}</strong></div>
-                <div><span>Remboursement dû</span><strong>{formatMoney(current.refundDueUsd, 'USD')}</strong></div>
-                <div><span>Complément dû</span><strong>{formatMoney(current.additionalPaymentDueUsd, 'USD')}</strong></div>
-                <div><span>Avoir fournisseur</span><strong>{formatMoney(current.supplierCreditUsd, 'USD')}</strong></div>
+                <div><span>Différence calculée</span><strong>{formatMoney(current.financialDifferenceUsd, 'USD')}</strong></div>
+                <div><span>Remboursement restant</span><strong>{formatMoney(current.refundDueUsd, 'USD')}</strong></div>
+                <div><span>Complément restant</span><strong>{formatMoney(current.additionalPaymentDueUsd, 'USD')}</strong></div>
+                <div><span>Avoir enregistré</span><strong>{formatMoney(current.supplierCreditUsd, 'USD')}</strong></div>
               </div>
 
               <div className="purchase-return-split-grid">
                 <div className="card compact-card purchase-return-inner-card">
                   <div className="toolbar compact-toolbar">
-                    <h3>Régularisation active</h3>
-                    <span className="badge compact-badge badge-muted">{getSettlementKindLabel(settlementForm.settlementKind)}</span>
+                    <h3>Ajouter une régularisation</h3>
+                    <span className="badge compact-badge badge-muted">{getSettlementFlowLabel(settlementFlowMode)}</span>
                   </div>
-                  {canEdit ? (
+
+                  <label className="field-block">
+                    <span>Mode de traitement</span>
+                    <select
+                      className="input"
+                      value={settlementFlowMode}
+                      onChange={(event) => setSettlementFlowMode(event.target.value as SettlementFlowMode)}
+                    >
+                      {SETTLEMENT_FLOW_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <small className="muted">
+                      {SETTLEMENT_FLOW_OPTIONS.find((option) => option.value === settlementFlowMode)?.help}
+                    </small>
+                  </label>
+
+                  {settlementFlowMode === 'NONE' ? (
+                    <div className="form-summary">
+                      <span>Aucune régularisation n’est ajoutée. La validation ne créera donc aucun mouvement financier.</span>
+                    </div>
+                  ) : (
                     <form className="modal-form" onSubmit={submitSettlement}>
-                      <label className="field-block">
-                        <span>Type</span>
-                        <select
-                          className="input"
-                          value={settlementForm.settlementKind}
-                          onChange={(event) => setSettlementForm((currentValue) => ({ ...currentValue, settlementKind: event.target.value }))}
-                        >
-                          {SETTLEMENT_KIND_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                        <small className="muted">
-                          {SETTLEMENT_KIND_OPTIONS.find((option) => option.value === settlementForm.settlementKind)?.help}
-                        </small>
-                      </label>
+                      {settlementFlowMode === 'MIXED' ? (
+                        <label className="field-block">
+                          <span>Type de ligne</span>
+                          <select
+                            className="input"
+                            value={settlementForm.settlementKind}
+                            onChange={(event) => setSettlementForm((currentValue) => ({ ...currentValue, settlementKind: event.target.value }))}
+                          >
+                            {SETTLEMENT_KIND_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : null}
+
                       <label className="field-block">
                         <span>Source</span>
                         <select
                           className="input"
                           value={settlementForm.paymentSource}
+                          disabled={settlementFlowMode === 'SUPPLIER_CREDIT'}
                           onChange={(event) => setSettlementForm((currentValue) => ({ ...currentValue, paymentSource: event.target.value }))}
                         >
-                          {PAYMENT_SOURCE_OPTIONS.map((option) => (
+                          {visiblePaymentSources.map((option) => (
                             <option key={option.value} value={option.value}>
                               {option.label}
                             </option>
                           ))}
                         </select>
                       </label>
+
+                      <label className="field-block">
+                        <span>Montant</span>
+                        <input
+                          className="input"
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          value={settlementForm.amount}
+                          onChange={(event) => setSettlementForm((currentValue) => ({ ...currentValue, amount: event.target.value }))}
+                        />
+                      </label>
+
                       <label className="field-block">
                         <span>Devise</span>
                         <select
@@ -927,6 +1064,7 @@ export function PurchaseReturnDetailPage() {
                           <option value="CDF">CDF</option>
                         </select>
                       </label>
+
                       <label className="field-block">
                         <span>Taux</span>
                         <input
@@ -939,17 +1077,7 @@ export function PurchaseReturnDetailPage() {
                           onChange={(event) => setSettlementForm((currentValue) => ({ ...currentValue, exchangeRateApplied: event.target.value }))}
                         />
                       </label>
-                      <label className="field-block">
-                        <span>Montant</span>
-                        <input
-                          className="input"
-                          type="number"
-                          min="0.01"
-                          step="0.01"
-                          value={settlementForm.amount}
-                          onChange={(event) => setSettlementForm((currentValue) => ({ ...currentValue, amount: event.target.value }))}
-                        />
-                      </label>
+
                       {settlementForm.paymentSource === 'CASH_REGISTER' ? (
                         <label className="field-block">
                           <span>Session caisse</span>
@@ -967,6 +1095,7 @@ export function PurchaseReturnDetailPage() {
                           </select>
                         </label>
                       ) : null}
+
                       <label className="field-block">
                         <span>Référence</span>
                         <input
@@ -975,22 +1104,22 @@ export function PurchaseReturnDetailPage() {
                           onChange={(event) => setSettlementForm((currentValue) => ({ ...currentValue, reference: event.target.value }))}
                         />
                       </label>
+
                       <label className="field-block">
-                        <span>Note</span>
+                        <span>Commentaire</span>
                         <input
                           className="input"
                           value={settlementForm.note}
                           onChange={(event) => setSettlementForm((currentValue) => ({ ...currentValue, note: event.target.value }))}
                         />
                       </label>
+
                       <div className="modal-actions">
                         <button className="button compact-button" type="submit" disabled={addSettlement.isPending || !settlementForm.amount}>
-                          {addSettlement.isPending ? 'Ajout...' : 'Ajouter régularisation'}
+                          {addSettlement.isPending ? 'Ajout...' : 'Ajouter une régularisation'}
                         </button>
                       </div>
                     </form>
-                  ) : (
-                    <p className="muted">Cette étape est en lecture seule pour le retour validé.</p>
                   )}
                 </div>
 
@@ -1000,7 +1129,7 @@ export function PurchaseReturnDetailPage() {
                     <span className="badge compact-badge badge-muted">{settlementLines.length}</span>
                   </div>
                   {settlementLines.length === 0 ? (
-                    <p className="muted">Aucune régularisation enregistrée.</p>
+                    <p className="muted">Aucune régularisation enregistrée pour le moment.</p>
                   ) : (
                     <div className="table-scroll">
                       <table className="data-table purchase-detail-table">
@@ -1010,9 +1139,11 @@ export function PurchaseReturnDetailPage() {
                             <th>Source</th>
                             <th>Devise</th>
                             <th>Montant</th>
-                            <th>Eq. USD</th>
                             <th>Référence</th>
-                            <th>Actions</th>
+                            <th>Date</th>
+                            <th>Utilisateur</th>
+                            <th>État</th>
+                            <th>Action</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1022,8 +1153,10 @@ export function PurchaseReturnDetailPage() {
                               <td>{getPaymentSourceLabel(settlement.paymentSource)}</td>
                               <td>{settlement.currencyCode}</td>
                               <td className="numeric-text">{formatMoney(settlement.amount, settlement.currencyCode)}</td>
-                              <td className="numeric-text">{formatMoney(settlement.amountEquivalentUsd, 'USD')}</td>
                               <td>{settlement.reference ?? '-'}</td>
+                              <td>{formatDate(settlement.createdAt)}</td>
+                              <td>{settlement.createdBy ?? '-'}</td>
+                              <td>Enregistré</td>
                               <td>
                                 {canEdit ? (
                                   <button className="ghost-button compact-button" type="button" onClick={() => removeSettlement.mutate(settlement.purchaseReturnSettlementId)}>
@@ -1042,18 +1175,18 @@ export function PurchaseReturnDetailPage() {
             </section>
           )}
 
-          {activeStep === 4 && (
-            <section className="card purchase-return-step-section" id="purchase-return-panel-4" aria-labelledby="purchase-return-step-4">
+          {activeStep === 5 && (
+            <section className="card purchase-return-step-section" id="purchase-return-panel-5" aria-labelledby="purchase-return-step-5">
               <div className="purchase-return-step-header">
                 <div>
-                  <h2>4. Pièces jointes</h2>
-                  <p className="muted">Les justificatifs se chargent à la demande pour garder la page légère.</p>
+                  <h2>5. Pièces jointes</h2>
+                  <p className="muted">Les justificatifs restent facultatifs mais utiles pour tracer le dossier fournisseur.</p>
                 </div>
                 <div className="table-actions">
-                  <button className="ghost-button compact-button" type="button" onClick={() => goToStep(3)}>
+                  <button className="ghost-button compact-button" type="button" onClick={() => goToStep(4)}>
                     Étape précédente
                   </button>
-                  <button className="ghost-button compact-button" type="button" onClick={() => goToStep(5)}>
+                  <button className="ghost-button compact-button" type="button" onClick={() => goToStep(6)}>
                     Étape suivante
                   </button>
                 </div>
@@ -1082,27 +1215,27 @@ export function PurchaseReturnDetailPage() {
             </section>
           )}
 
-          {activeStep === 5 && (
-            <section className="card purchase-return-step-section" id="purchase-return-panel-5" aria-labelledby="purchase-return-step-5">
+          {activeStep === 6 && (
+            <section className="card purchase-return-step-section" id="purchase-return-panel-6" aria-labelledby="purchase-return-step-6">
               <div className="purchase-return-step-header">
                 <div>
-                  <h2>5. Validation</h2>
-                  <p className="muted">Dernier contrôle avant validation finale du retour fournisseur.</p>
+                  <h2>6. Validation</h2>
+                  <p className="muted">Résumé global avant de déclencher les mouvements stock et les mouvements financiers explicitement enregistrés.</p>
                 </div>
                 <div className="table-actions">
-                  <button className="ghost-button compact-button" type="button" onClick={() => goToStep(4)}>
+                  <button className="ghost-button compact-button" type="button" onClick={() => goToStep(5)}>
                     Étape précédente
                   </button>
                 </div>
               </div>
 
               <div className="detail-grid purchase-return-summary-grid">
-                <div><span>Lignes retour</span><strong>{returnLines.length}</strong></div>
-                <div><span>Lignes échange</span><strong>{exchangeLines.length}</strong></div>
+                <div><span>Produits retournés</span><strong>{returnLines.length}</strong></div>
+                <div><span>Produits reçus</span><strong>{exchangeLines.length}</strong></div>
+                <div><span>Différence calculée</span><strong>{formatMoney(current.financialDifferenceUsd, 'USD')}</strong></div>
                 <div><span>Régularisations</span><strong>{settlementLines.length}</strong></div>
-                <div><span>Valeur retour</span><strong>{formatMoney(current.returnedValueUsd, 'USD')}</strong></div>
-                <div><span>Valeur échange</span><strong>{formatMoney(current.replacementValueUsd, 'USD')}</strong></div>
-                <div><span>Différence</span><strong>{formatMoney(current.financialDifferenceUsd, 'USD')}</strong></div>
+                <div><span>Stock sortant</span><strong>-{returnedStockImpact}</strong></div>
+                <div><span>Stock entrant</span><strong>+{replacementStockImpact}</strong></div>
               </div>
 
               <div className="purchase-return-checklist">
@@ -1111,12 +1244,12 @@ export function PurchaseReturnDetailPage() {
                   <span>{stepCompletion.productsReturned ? 'Complète' : 'À compléter'}</span>
                 </div>
                 <div className={`purchase-return-checkitem${stepCompletion.productsExchanged ? ' is-done' : ''}`}>
-                  <strong>Produits échangés</strong>
-                  <span>{stepCompletion.productsExchanged ? 'Complète' : 'Optionnel'}</span>
+                  <strong>Produits reçus</strong>
+                  <span>{stepCompletion.productsExchanged ? 'Complète' : 'Optionnelle'}</span>
                 </div>
-                <div className={`purchase-return-checkitem${stepCompletion.settled ? ' is-done' : ''}`}>
-                  <strong>Régularisation</strong>
-                  <span>{stepCompletion.settled ? 'Complète' : 'Optionnel'}</span>
+                <div className={`purchase-return-checkitem${stepCompletion.settlements ? ' is-done' : ''}`}>
+                  <strong>Régularisations</strong>
+                  <span>{settlementLines.length ? financialImpactSummary : 'Aucun mouvement financier'}</span>
                 </div>
                 <div className={`purchase-return-checkitem${stepCompletion.validated ? ' is-done' : ''}`}>
                   <strong>Validation</strong>
@@ -1124,17 +1257,17 @@ export function PurchaseReturnDetailPage() {
                 </div>
               </div>
 
-              {!(current.items ?? []).length || !(current.replacementItems ?? []).length ? (
-                <div className="form-summary">
-                  <span>
-                    Éléments à compléter :
-                    {' '}
-                    {!(current.items ?? []).length ? 'Ajouter au moins un produit retourné.' : ''}
-                    {!(current.items ?? []).length && !(current.replacementItems ?? []).length ? ' ' : ''}
-                    {!(current.replacementItems ?? []).length ? 'Renseigner les produits reçus en échange si nécessaire.' : ''}
-                  </span>
-                </div>
-              ) : null}
+              <div className="form-summary purchase-return-validation-callout">
+                <strong>La validation créera uniquement :</strong>
+                <span>• les mouvements stock liés aux produits retournés et reçus</span>
+                <span>• les mouvements financiers correspondant aux régularisations enregistrées</span>
+                <span>Aucun remboursement ou paiement ne sera créé automatiquement à partir de la seule différence calculée.</span>
+              </div>
+
+              <div className="detail-grid purchase-return-financial-grid">
+                <div><span>Impact stock</span><strong>-{returnedStockImpact} / +{replacementStockImpact}</strong></div>
+                <div><span>Impact financier</span><strong>{financialImpactSummary}</strong></div>
+              </div>
 
               <CommentsPanel entityType="PURCHASE_RETURN" entityId={current.purchaseReturnId} title="Commentaires et traces" />
 
@@ -1148,7 +1281,12 @@ export function PurchaseReturnDetailPage() {
                   </button>
                 ) : null}
                 {canEdit ? (
-                  <button className="button compact-button" type="button" onClick={() => validateReturn.mutate()} disabled={validateReturn.isPending || !returnLines.length}>
+                  <button
+                    className="button compact-button"
+                    type="button"
+                    onClick={() => validateReturn.mutate()}
+                    disabled={validateReturn.isPending || !canProceedToValidation}
+                  >
                     {validateReturn.isPending ? 'Validation...' : 'Valider le retour'}
                   </button>
                 ) : null}
