@@ -39,15 +39,21 @@ export class InventoriesController {
   @RequirePermission('inventories.validate')
   validate(@CurrentUser() user: AuthUser, @Param('id') id: string) { return this.service.validate(user, id); }
 
+  @Post(':id/fill-empty-with-zero')
+  @RequirePermission('inventories.fill_empty_zero')
+  fillEmptyWithZero(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.service.fillEmptyWithZero(user, id);
+  }
+
   @Get(':id/items')
   @RequirePermission('inventories.read')
   findItems(@CurrentUser() user: AuthUser, @Param('id') id: string) { return this.service.findItems(user, id); }
 
   @Post(':id/items')
-  @RequirePermission('inventories.start')
+  @RequirePermission('inventories.count')
   addItem(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: AddInventoryItemDto) { return this.service.addItem(user, id, dto); }
 
   @Patch(':id/items/:itemId')
-  @RequirePermission('inventories.start')
+  @RequirePermission('inventories.count')
   updateItem(@CurrentUser() user: AuthUser, @Param('id') id: string, @Param('itemId') itemId: string, @Body() dto: UpdateInventoryItemDto) { return this.service.updateItem(user, id, itemId, dto); }
 }

@@ -15,6 +15,7 @@ export class InventoriesService {
   start(user: AuthUser, id: string) { return this.repository.start(user, id); }
   close(user: AuthUser, id: string) { return this.repository.close(user, id); }
   validate(user: AuthUser, id: string) { return this.repository.validate(user, id); }
+  fillEmptyWithZero(user: AuthUser, id: string) { return this.repository.fillEmptyWithZero(user, id); }
   findItems(user: AuthUser, id: string) { return this.repository.findItems(user, id); }
   addItem(user: AuthUser, id: string, dto: AddInventoryItemDto) { return this.repository.addItem(user, id, dto); }
   updateItem(user: AuthUser, id: string, itemId: string, dto: UpdateInventoryItemDto) { return this.repository.updateItem(user, id, itemId, dto); }

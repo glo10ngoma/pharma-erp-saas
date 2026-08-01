@@ -35,6 +35,8 @@ const LABELS: Record<string, string> = {
   INVENTORY_VALIDATED_LOCKED: 'Cet inventaire valide ne peut plus etre modifie.',
   INVENTORY_EMPTY: 'Impossible de valider un inventaire vide.',
   INVENTORY_ITEM_NOT_COUNTED: 'Toutes les lignes doivent etre comptees.',
+  INVENTORY_ITEMS_NOT_FULLY_COUNTED: 'Toutes les lignes doivent etre saisies avant cloture.',
+  INVENTORY_ITEM_NOT_FOUND: 'La ligne inventaire est introuvable.',
   STOCK_NOT_FOUND: 'Stock introuvable pour ce lot.',
   PURCHASE_RETURN_NOT_DRAFT: 'Ce retour fournisseur n est plus modifiable.',
   PURCHASE_RETURN_PURCHASE_NOT_VALIDATED: 'L achat d origine doit etre valide avant de creer un retour.',

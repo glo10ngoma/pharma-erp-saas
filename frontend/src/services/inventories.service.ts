@@ -9,10 +9,13 @@ export type InventoryItem = {
   lotId: string;
   lotNumber: string | null;
   expiryDate: string | null;
+  stockUnitLabel?: string | null;
   systemQuantity: number;
   physicalQuantity: number | null;
   differenceQuantity: number | null;
   reason: string | null;
+  countedBy?: string | null;
+  countedAt?: string | null;
 };
 
 export type Inventory = {
@@ -29,6 +32,13 @@ export type Inventory = {
   items?: InventoryItem[];
 };
 
+export type FillEmptyWithZeroResult = {
+  inventory: Inventory;
+  updatedCount: number;
+  totalCount: number;
+  alreadyCountedCount: number;
+};
+
 export const inventoriesService = {
   getAll: () => apiClient.get<Inventory[]>('/inventories'),
   getById: (id: string) => apiClient.get<Inventory>(`/inventories/${id}`),
@@ -39,4 +49,5 @@ export const inventoriesService = {
   getItems: (id: string) => apiClient.get<InventoryItem[]>(`/inventories/${id}/items`),
   addItem: (id: string, payload: Record<string, unknown>) => apiClient.post<InventoryItem[]>(`/inventories/${id}/items`, payload),
   updateItem: (id: string, itemId: string, payload: Record<string, unknown>) => apiClient.patch<InventoryItem[]>(`/inventories/${id}/items/${itemId}`, payload),
+  fillEmptyWithZero: (id: string) => apiClient.post<FillEmptyWithZeroResult>(`/inventories/${id}/fill-empty-with-zero`),
 };

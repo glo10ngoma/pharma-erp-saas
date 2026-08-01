@@ -240,6 +240,9 @@ VALUES
   ('chat.read', 'Consulter messagerie interne', 'Collaboration', 'Voir les discussions internes', TRUE),
   ('chat.send', 'Envoyer message interne', 'Collaboration', 'Envoyer un message interne', TRUE),
   ('chat.manage', 'Gerer messagerie interne', 'Collaboration', 'Creer et organiser les discussions internes', TRUE),
+  ('inventories.count', 'Saisir comptage inventaire', 'Inventories', 'Saisir et autosauvegarder le stock physique', TRUE),
+  ('inventories.print', 'Imprimer inventaire', 'Inventories', 'Imprimer la feuille de comptage inventaire', TRUE),
+  ('inventories.fill_empty_zero', 'Completer inventaire a zero', 'Inventories', 'Remplir a zero les lignes non saisies d un inventaire', TRUE),
   ('sessions.multiple', 'Ouvrir plusieurs sessions', 'Cash', 'Autoriser plusieurs sessions ouvertes pour un meme utilisateur', TRUE),
   ('workstations.manage', 'Gerer postes de travail', 'Cash', 'Creer et modifier les postes de travail POS et back office', TRUE)
 ON CONFLICT (permission_code) DO UPDATE
