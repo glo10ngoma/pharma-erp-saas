@@ -251,13 +251,6 @@ export function PurchaseReturnDetailPage() {
     removeSettlement.isError ? apiErrorMessage(removeSettlement.error) : '',
   ].find(Boolean);
 
-  useEffect(() => {
-    if (!current || current.status !== 'DRAFT') return;
-    if (!stepCompletion.productsReturned && activeStep > 1) {
-      setActiveStep(1);
-    }
-  }, [activeStep, current, stepCompletion.productsReturned]);
-
   function submitItem(event: FormEvent) {
     event.preventDefault();
     addItem.mutate();
