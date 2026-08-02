@@ -264,9 +264,27 @@ export class LotsRepository {
       }
 
       const stock = await this.lockStockContext(client, user, lotId, dto.siteId);
+      const diagnostic = await client.query<{ current_date: string; current_timestamp: string }>(
+        'SELECT CURRENT_DATE::text AS current_date, CURRENT_TIMESTAMP::text AS current_timestamp',
+      );
       const priority = this.resolvePriority(stock.expiry_date, stock.is_blocked);
       const quantityAvailable = Number(stock.quantity_available ?? 0);
       const quantity = Number(dto.quantity);
+
+      console.info('[LotsRepository][removeExpiredStock][diagnostic]', {
+        tenantId: user.tenantId,
+        siteId: dto.siteId,
+        lotIdReceived: lotId,
+        lotNumberReread: stock.lot_number,
+        expiryDateRaw: stock.expiry_date,
+        currentDatePg: diagnostic.rows[0]?.current_date ?? null,
+        currentTimestampPg: diagnostic.rows[0]?.current_timestamp ?? null,
+        comparisonDateUsed: String(stock.expiry_date).split('T')[0],
+        ruleExecuted: 'resolvePriority(expiryDate, isBlocked) -> daysRemaining <= 0 => EXPIRED',
+        comparisonResult: priority === 'EXPIRED',
+        priorityCalculated: priority,
+        sqlBeforeLotNotExpired: this.stockContextSql(),
+      });
 
       if (priority !== 'EXPIRED') {
         throw new BadRequestException('LOT_NOT_EXPIRED');
@@ -353,7 +371,19 @@ export class LotsRepository {
     }
 
     const result = await client.query<StockContextRow>(
-      `
+      this.stockContextSql(),
+      [user.tenantId, lotId, siteId, user.siteId ?? null],
+    );
+
+    if (!result.rows[0]) {
+      throw new NotFoundException('LOT_STOCK_NOT_FOUND');
+    }
+
+    return result.rows[0];
+  }
+
+  private stockContextSql() {
+    return `
       SELECT
         st.stock_id,
         st.tenant_id,
@@ -380,15 +410,7 @@ export class LotsRepository {
         AND st.site_id = $3
         AND ($4::uuid IS NULL OR st.site_id = $4::uuid)
       FOR UPDATE OF st, l
-      `,
-      [user.tenantId, lotId, siteId, user.siteId ?? null],
-    );
-
-    if (!result.rows[0]) {
-      throw new NotFoundException('LOT_STOCK_NOT_FOUND');
-    }
-
-    return result.rows[0];
+      `;
   }
 
   private async findFefoActionById(
