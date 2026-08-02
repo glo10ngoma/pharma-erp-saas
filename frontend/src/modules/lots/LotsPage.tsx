@@ -211,7 +211,7 @@ function toLotView(lot: Lot, stocks: Stock[]): LotView {
 function lotStatus(lot: Lot) {
   const days = daysUntil(lot.expiryDate);
   if (lot.isBlocked) return { label: 'Bloque', className: 'badge-danger' };
-  if (days !== null && days < 0) return { label: 'Expire', className: 'badge-danger' };
+  if (days !== null && days <= 0) return { label: 'Expire', className: 'badge-danger' };
   if (days !== null && days <= 90) return { label: 'Proche expiration', className: 'badge-warning' };
   return { label: 'Disponible', className: 'badge-success' };
 }
@@ -228,18 +228,18 @@ function matchesStatus(lot: LotView, filter: StatusFilter) {
   if (filter === 'ALL') return true;
   if (filter === 'AVAILABLE') return lot.statusLabel === 'Disponible';
   if (filter === 'BLOCKED') return lot.isBlocked;
-  if (filter === 'EXPIRED') return (lot.daysToExpiry ?? 0) < 0;
-  if (filter === 'NEAR_EXPIRY') return !lot.isBlocked && (lot.daysToExpiry ?? 9999) >= 0 && (lot.daysToExpiry ?? 9999) <= 90;
+  if (filter === 'EXPIRED') return (lot.daysToExpiry ?? 0) <= 0;
+  if (filter === 'NEAR_EXPIRY') return !lot.isBlocked && (lot.daysToExpiry ?? 9999) > 0 && (lot.daysToExpiry ?? 9999) <= 90;
   return true;
 }
 
 function matchesExpiry(lot: LotView, filter: ExpiryFilter) {
   const days = lot.daysToExpiry;
   if (filter === 'ALL') return true;
-  if (filter === 'EXPIRED') return days !== null && days < 0;
-  if (filter === 'LT30') return days !== null && days >= 0 && days < 30;
-  if (filter === 'LT90') return days !== null && days >= 0 && days < 90;
-  if (filter === 'VALID') return days === null || days >= 0;
+  if (filter === 'EXPIRED') return days !== null && days <= 0;
+  if (filter === 'LT30') return days !== null && days > 0 && days < 30;
+  if (filter === 'LT90') return days !== null && days > 0 && days < 90;
+  if (filter === 'VALID') return days === null || days > 0;
   return true;
 }
 

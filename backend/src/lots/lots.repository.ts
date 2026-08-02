@@ -439,7 +439,7 @@ export class LotsRepository {
 
   private resolvePriority(expiryDate: string, isBlocked: boolean): FefoPriority {
     const daysRemaining = this.daysUntil(expiryDate);
-    if (daysRemaining < 0) return 'EXPIRED';
+    if (daysRemaining <= 0) return 'EXPIRED';
     if (isBlocked) return 'BLOCKED';
     if (daysRemaining <= 30) return 'RED';
     if (daysRemaining <= 90) return 'ORANGE';

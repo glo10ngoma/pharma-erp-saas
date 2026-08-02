@@ -131,9 +131,9 @@ export function buildFefoKpis(rows: FefoRiskRow[]): FefoKpis {
   return rows.reduce(
     (kpis, row) => {
       if (row.daysRemaining >= 0 && row.daysRemaining <= 30) kpis.priorityToday += 1;
-      if (row.daysRemaining >= 0 && row.daysRemaining <= 30) kpis.expiring30 += 1;
-      if (row.daysRemaining >= 0 && row.daysRemaining <= 90) kpis.expiring90 += 1;
-      if (row.daysRemaining < 0) kpis.expired += 1;
+      if (row.daysRemaining > 0 && row.daysRemaining <= 30) kpis.expiring30 += 1;
+      if (row.daysRemaining > 30 && row.daysRemaining <= 90) kpis.expiring90 += 1;
+      if (row.daysRemaining <= 0) kpis.expired += 1;
       if (row.daysRemaining <= 90 || row.isBlocked) kpis.riskValue += row.stockValue;
       return kpis;
     },
@@ -277,7 +277,7 @@ export function daysUntil(expiryDate: string, today = new Date()) {
 }
 
 function priorityForLot(daysRemaining: number, isBlocked: boolean): FefoPriority {
-  if (daysRemaining < 0) return 'EXPIRED';
+  if (daysRemaining <= 0) return 'EXPIRED';
   if (isBlocked) return 'BLOCKED';
   if (daysRemaining <= 30) return 'RED';
   if (daysRemaining <= 90) return 'ORANGE';
@@ -285,7 +285,7 @@ function priorityForLot(daysRemaining: number, isBlocked: boolean): FefoPriority
 }
 
 function recommendedAction(daysRemaining: number, stockValue: number, isBlocked: boolean) {
-  if (daysRemaining < 0) return 'Retirer du stock';
+  if (daysRemaining <= 0) return 'Retirer du stock';
   if (isBlocked) return 'Consulter le motif';
   if (daysRemaining <= 7) return 'Mise en avant immediate';
   if (daysRemaining <= 30) return stockValue > 100 ? 'Promotion recommandee' : 'Mettre en tete de rayon';

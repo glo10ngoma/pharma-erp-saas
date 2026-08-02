@@ -482,7 +482,9 @@ export class SalesRepository {
         );
         const row = stock.rows[0];
         if (!row || Number(row.quantity_available) < Number(item.quantity)) throw new Error('STOCK_INSUFFICIENT');
-        if (new Date(row.expiry_date) <= new Date()) throw new Error('LOT_EXPIRED');
+        const expiryDate = String(row.expiry_date).split('T')[0];
+        const today = new Date().toISOString().slice(0, 10);
+        if (expiryDate <= today) throw new Error('LOT_EXPIRED');
         if (row.is_blocked) throw new Error('LOT_BLOCKED');
         await client.query(`UPDATE stocks SET quantity_available=quantity_available-$4, updated_at=CURRENT_TIMESTAMP WHERE tenant_id=$1 AND site_id=$2 AND lot_id=$3`, [user.tenantId, sale.site_id, item.lot_id, item.quantity]);
         await client.query(

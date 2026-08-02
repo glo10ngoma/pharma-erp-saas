@@ -174,7 +174,7 @@ export class ReportsRepository {
               l.lot_number AS "lotNumber", l.expiry_date AS "expiryDate",
               SUM(st.quantity_available)::numeric AS "quantityAvailable",
               CASE
-                WHEN l.expiry_date < CURRENT_DATE THEN 'EXPIRED'
+                WHEN l.expiry_date <= CURRENT_DATE THEN 'EXPIRED'
                 WHEN l.expiry_date <= CURRENT_DATE + INTERVAL '30 days' THEN 'EXPIRING_30'
                 WHEN l.expiry_date <= CURRENT_DATE + INTERVAL '90 days' THEN 'EXPIRING_90'
                 ELSE 'OK'
@@ -279,8 +279,8 @@ export class ReportsRepository {
   private async expirySummary(user: AuthUser, scope: Scope) {
     const result = await this.db.query(
       `SELECT
-          COUNT(DISTINCT CASE WHEN l.expiry_date < CURRENT_DATE THEN l.lot_id END)::int AS "expiredLotsCount",
-          COUNT(DISTINCT CASE WHEN l.expiry_date >= CURRENT_DATE AND l.expiry_date <= CURRENT_DATE + INTERVAL '30 days' THEN l.lot_id END)::int AS "expiring30DaysCount",
+          COUNT(DISTINCT CASE WHEN l.expiry_date <= CURRENT_DATE THEN l.lot_id END)::int AS "expiredLotsCount",
+          COUNT(DISTINCT CASE WHEN l.expiry_date > CURRENT_DATE AND l.expiry_date <= CURRENT_DATE + INTERVAL '30 days' THEN l.lot_id END)::int AS "expiring30DaysCount",
           COUNT(DISTINCT CASE WHEN l.expiry_date > CURRENT_DATE + INTERVAL '30 days' AND l.expiry_date <= CURRENT_DATE + INTERVAL '90 days' THEN l.lot_id END)::int AS "expiring90DaysCount"
        FROM lots l
        JOIN articles a ON a.article_id=l.article_id

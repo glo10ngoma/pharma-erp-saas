@@ -88,9 +88,9 @@ export class StocksRepository {
       const p30 = params.length;
       params.push(threshold90.toISOString().slice(0, 10));
       const p90 = params.length;
-      if (query.expiryStatus === 'EXPIRED') filters.push(`next_expiry_date IS NOT NULL AND next_expiry_date < CURRENT_DATE`);
-      if (query.expiryStatus === 'UNDER_30') filters.push(`next_expiry_date IS NOT NULL AND next_expiry_date >= CURRENT_DATE AND next_expiry_date <= $${p30}::date`);
-      if (query.expiryStatus === 'UNDER_90') filters.push(`next_expiry_date IS NOT NULL AND next_expiry_date >= CURRENT_DATE AND next_expiry_date <= $${p90}::date`);
+      if (query.expiryStatus === 'EXPIRED') filters.push(`next_expiry_date IS NOT NULL AND next_expiry_date <= CURRENT_DATE`);
+      if (query.expiryStatus === 'UNDER_30') filters.push(`next_expiry_date IS NOT NULL AND next_expiry_date > CURRENT_DATE AND next_expiry_date <= $${p30}::date`);
+      if (query.expiryStatus === 'UNDER_90') filters.push(`next_expiry_date IS NOT NULL AND next_expiry_date > CURRENT_DATE AND next_expiry_date <= $${p90}::date`);
       if (query.expiryStatus === 'VALID') filters.push(`next_expiry_date IS NULL OR next_expiry_date > $${p90}::date`);
     }
 

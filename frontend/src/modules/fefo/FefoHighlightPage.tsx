@@ -133,7 +133,7 @@ export function FefoHighlightPage() {
                     <td>{row.siteName}</td>
                     <td className="quantity-cell">{row.quantityAvailable}</td>
                     <td>{formatDate(row.expiryDate)}</td>
-                    <td className="quantity-cell">{row.daysRemaining < 0 ? `${Math.abs(row.daysRemaining)} j depasse` : row.daysRemaining}</td>
+                    <td className="quantity-cell">{row.daysRemaining <= 0 ? (row.daysRemaining === 0 ? "Expire aujourd'hui" : `${Math.abs(row.daysRemaining)} j depasse`) : row.daysRemaining}</td>
                     <td className="numeric-text">{formatMoney(row.stockValue, row.currencyCode, row.currencySymbol)}</td>
                     <td>{row.action}</td>
                   </tr>
@@ -152,9 +152,9 @@ function filterRows(rows: FefoRiskRow[], search: string, expiryFilter: ExpiryFil
   return rows.filter((row) => {
     if (siteId && row.siteId !== siteId) return false;
     if (categoryId && row.categoryId !== categoryId) return false;
-    if (expiryFilter === 'D30' && !(row.daysRemaining >= 0 && row.daysRemaining <= 30)) return false;
-    if (expiryFilter === 'D90' && !(row.daysRemaining >= 0 && row.daysRemaining <= 90)) return false;
-    if (expiryFilter === 'EXPIRED' && row.daysRemaining >= 0) return false;
+    if (expiryFilter === 'D30' && !(row.daysRemaining > 0 && row.daysRemaining <= 30)) return false;
+    if (expiryFilter === 'D90' && !(row.daysRemaining > 30 && row.daysRemaining <= 90)) return false;
+    if (expiryFilter === 'EXPIRED' && row.daysRemaining > 0) return false;
     if (!needle) return true;
     return [row.articleName, row.articleCode, row.dci, row.lotNumber, row.siteName].some((value) => value.toLowerCase().includes(needle));
   });

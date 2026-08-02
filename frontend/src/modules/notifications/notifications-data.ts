@@ -100,8 +100,19 @@ function buildNotifications({ stocks, lots, inventories, receivables, sessions, 
 
   for (const lot of lots) {
     const days = daysUntil(lot.expiryDate);
-    if (days < 0) rows.push(notification('lot-expired', lot.lotId, 'CRITICAL', 'FEFO', 'Produit expire', `${lot.commercialName || lot.articleCode} - lot ${lot.lotNumber} expire depuis le ${formatDate(lot.expiryDate)}.`, '-', '/reports/fefo-report', 'Ouvrir FEFO'));
-    else if (days === 0) rows.push(notification('lot-today', lot.lotId, 'CRITICAL', 'FEFO', 'Expire aujourd hui', `${lot.commercialName || lot.articleCode} - lot ${lot.lotNumber} expire aujourd hui.`, '-', '/reports/fefo-report', 'Ouvrir FEFO'));
+    if (days <= 0) rows.push(notification(
+      'lot-expired',
+      lot.lotId,
+      'CRITICAL',
+      'FEFO',
+      'Produit expire',
+      days === 0
+        ? `${lot.commercialName || lot.articleCode} - lot ${lot.lotNumber} expire aujourd'hui.`
+        : `${lot.commercialName || lot.articleCode} - lot ${lot.lotNumber} expire depuis le ${formatDate(lot.expiryDate)}.`,
+      '-',
+      '/reports/fefo-report',
+      'Ouvrir FEFO',
+    ));
     else if (days <= 30) rows.push(notification('lot-30', lot.lotId, 'WARNING', 'FEFO', 'Expire sous 30 jours', `${lot.commercialName || lot.articleCode} - lot ${lot.lotNumber} expire dans ${days} jour(s).`, '-', '/reports/fefo-report', 'Ouvrir FEFO'));
     else if (days <= 90) rows.push(notification('lot-90', lot.lotId, 'INFO', 'FEFO', 'Expire sous 90 jours', `${lot.commercialName || lot.articleCode} - lot ${lot.lotNumber} expire dans ${days} jour(s).`, '-', '/reports/fefo-report', 'Ouvrir FEFO'));
   }
@@ -164,7 +175,7 @@ function notification(prefix: string, id: string, priority: NotificationPriority
 }
 
 function daysUntil(date: string) {
-  const expiry = new Date(date);
+  const expiry = new Date(`${String(date).split('T')[0]}T00:00:00`);
   if (Number.isNaN(expiry.getTime())) return 9999;
   const today = new Date();
   today.setHours(0, 0, 0, 0);

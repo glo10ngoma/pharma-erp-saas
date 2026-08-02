@@ -117,7 +117,7 @@ function issueForLine(line: PurchaseDraftLine): LineIssue {
   if (Number(line.purchaseUnitPrice) <= 0) return { level: 'danger', message: 'PA <= 0.', blocksSave: true };
   if (Number(line.sellingUnitPrice || 0) < 0) return { level: 'danger', message: 'PV invalide.', blocksSave: true };
   const days = daysUntil(line.expiryDate);
-  if (days !== null && days < 0) return { level: 'danger', message: 'Expiration passee.', blocksSave: true };
+  if (days !== null && days <= 0) return { level: 'danger', message: 'Expiration passee.', blocksSave: true };
   if (days !== null && days < 30) return { level: 'danger', message: 'Expiration < 30 jours.', blocksSave: false };
   if (days !== null && days < 90) return { level: 'warning', message: 'Expiration < 90 jours.', blocksSave: false };
   return { level: 'valid', message: 'Ligne valide.', blocksSave: false };

@@ -192,7 +192,7 @@ const configs: Record<ReportKind, ReportConfig> = {
           .reduce((total, stock) => total + Number(stock.quantityAvailable || 0), 0);
         const days = daysUntil(lot.expiryDate);
         return {
-          priority: lot.isBlocked ? 'Bloque' : days < 0 ? 'Expire' : days <= 30 ? 'Rouge' : days <= 90 ? 'Orange' : 'Vert',
+          priority: lot.isBlocked ? 'Bloque' : days <= 0 ? 'Expire' : days <= 30 ? 'Rouge' : days <= 90 ? 'Orange' : 'Vert',
           article: `${lot.articleCode || ''} ${lot.commercialName || ''}`.trim(),
           supplier: lot.supplierName || '-',
           lot: lot.lotNumber,
@@ -217,7 +217,7 @@ const configs: Record<ReportKind, ReportConfig> = {
     ]),
     kpis: (rows) => [
       { label: 'Lots suivis', value: String(rows.length) },
-      { label: '<= 30 jours', value: String(rows.filter((row) => Number(row.days) >= 0 && Number(row.days) <= 30).length), tone: 'danger' },
+      { label: '<= 30 jours', value: String(rows.filter((row) => Number(row.days) > 0 && Number(row.days) <= 30).length), tone: 'danger' },
       { label: '<= 90 jours', value: String(rows.filter((row) => Number(row.days) > 30 && Number(row.days) <= 90).length), tone: 'warning' },
       { label: 'Valeur a risque', value: money(sum(rows.filter((row) => Number(row.days) <= 90), 'value')) },
     ],
@@ -501,7 +501,7 @@ function stockStatus(quantity: number, min: number) {
 }
 
 function daysUntil(date: string) {
-  const expiry = new Date(date);
+  const expiry = new Date(`${String(date).split('T')[0]}T00:00:00`);
   if (Number.isNaN(expiry.getTime())) return 9999;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -511,7 +511,7 @@ function daysUntil(date: string) {
 
 function fefoAction(days: number, blocked: boolean) {
   if (blocked) return 'Controle lot bloque';
-  if (days < 0) return 'Retirer du rayon';
+  if (days <= 0) return 'Retirer du rayon';
   if (days <= 7) return 'Rotation immediate';
   if (days <= 30) return 'Mettre en tete de rayon';
   if (days <= 90) return 'Promotion recommandee';
