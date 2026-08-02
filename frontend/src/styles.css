@@ -3902,6 +3902,12 @@ details.nav-group .nav-link {
   color: #166534;
 }
 
+.fefo-priority-blocked {
+  background: #e2e8f0;
+  border: 1px solid #94a3b8;
+  color: #334155;
+}
+
 .fefo-table-wrap {
   max-height: calc(100vh - 360px);
   min-height: 260px;
@@ -3941,6 +3947,77 @@ details.nav-group .nav-link {
   font-size: .78rem;
   font-weight: 800;
   margin-left: 6px;
+}
+
+.fefo-rotation-filters {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.fefo-feedback-card {
+  display: grid;
+  gap: 4px;
+}
+
+.fefo-feedback-success {
+  border-color: rgba(21, 128, 61, .28);
+}
+
+.fefo-feedback-error {
+  border-color: rgba(180, 35, 24, .28);
+}
+
+.fefo-row-actions {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.fefo-action-button {
+  margin-top: 0;
+  min-width: 170px;
+  width: auto;
+}
+
+.fefo-action-hint {
+  color: var(--muted);
+  font-size: .82rem;
+  font-weight: 700;
+}
+
+.fefo-action-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.fefo-action-meta small,
+.fefo-lot-reason {
+  color: var(--muted);
+  display: block;
+  line-height: 1.35;
+}
+
+.fefo-action-modal {
+  display: grid;
+  gap: 14px;
+}
+
+.fefo-confirm-text {
+  margin: 0;
+}
+
+.fefo-modal-form {
+  display: grid;
+  gap: 12px;
+}
+
+.fefo-modal-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.fefo-modal-textarea {
+  min-height: 92px;
+  resize: vertical;
 }
 
 .export-actions .ghost-button {
@@ -4440,12 +4517,30 @@ details.nav-group .nav-link {
   color: #dcfce7;
 }
 
+[data-theme='dark'] .fefo-priority-blocked {
+  background: rgba(51, 65, 85, .55);
+  border-color: rgba(148, 163, 184, .35);
+  color: #e2e8f0;
+}
+
 [data-theme='dark'] .fefo-table tbody tr {
   background: var(--surface);
 }
 
 [data-theme='dark'] .fefo-table tbody tr:hover td {
   background: #162033;
+}
+
+[data-theme='dark'] .fefo-action-button {
+  background: #172033;
+  border-color: #4b647b;
+  color: #e5edf5;
+}
+
+[data-theme='dark'] .fefo-action-button:hover {
+  background: #1f3148;
+  border-color: #6aaed6;
+  color: #ffffff;
 }
 
 [data-theme='dark'] .export-actions .ghost-button {
@@ -4535,6 +4630,10 @@ details.nav-group .nav-link {
   }
 
   .fefo-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .fefo-rotation-filters {
     grid-template-columns: 1fr;
   }
 

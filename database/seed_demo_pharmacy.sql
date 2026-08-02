@@ -243,6 +243,9 @@ VALUES
   ('inventories.count', 'Saisir comptage inventaire', 'Inventories', 'Saisir et autosauvegarder le stock physique', TRUE),
   ('inventories.print', 'Imprimer inventaire', 'Inventories', 'Imprimer la feuille de comptage inventaire', TRUE),
   ('inventories.fill_empty_zero', 'Completer inventaire a zero', 'Inventories', 'Remplir a zero les lignes non saisies d un inventaire', TRUE),
+  ('fefo.read', 'Consulter tableau FEFO', 'FEFO', 'Voir les priorites FEFO et la rotation des rayons', TRUE),
+  ('fefo.actions.execute', 'Executer action FEFO', 'FEFO', 'Confirmer les actions FEFO non stockees', TRUE),
+  ('lots.expired_stock.remove', 'Retirer lot expire du stock', 'Lots', 'Sortir du stock les quantites expirees', TRUE),
   ('sessions.multiple', 'Ouvrir plusieurs sessions', 'Cash', 'Autoriser plusieurs sessions ouvertes pour un meme utilisateur', TRUE),
   ('workstations.manage', 'Gerer postes de travail', 'Cash', 'Creer et modifier les postes de travail POS et back office', TRUE)
 ON CONFLICT (permission_code) DO UPDATE

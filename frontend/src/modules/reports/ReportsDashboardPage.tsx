@@ -76,8 +76,12 @@ export function ReportsDashboardPage() {
   const fefo = useMemo(() => {
     const riskRows = buildFefoRiskRows(lots.data ?? [], stocks.data ?? [], articles.data ?? [])
       .filter((row) => !filters.siteId || row.siteId === filters.siteId);
-    const rotation = buildRotationKpis(buildRotationRows(riskRows));
-    return { rows: riskRows, kpis: buildFefoKpis(riskRows), health: rotation.health };
+    const completedActionKeys = new Set<string>();
+    const rotation = buildRotationKpis(riskRows, completedActionKeys);
+    const totalLots = riskRows.length;
+    const healthyLots = rotation.green + rotation.actionsCompleted;
+    const health = totalLots === 0 ? 100 : Math.max(0, Math.round((healthyLots / totalLots) * 100));
+    return { rows: riskRows, kpis: buildFefoKpis(riskRows), health };
   }, [articles.data, filters.siteId, lots.data, stocks.data]);
 
   const salesByDay = useMemo(() => buildSalesByDay(sales.data ?? [], filters.from, filters.to), [filters.from, filters.to, sales.data]);

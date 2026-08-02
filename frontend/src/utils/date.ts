@@ -24,3 +24,14 @@ export function fileDateStamp(date = new Date()) {
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}${month}${day}`;
 }
+
+export function formatDateTime(date: string | Date | null | undefined) {
+  if (!date) return '-';
+  const parsed = date instanceof Date ? date : new Date(String(date));
+  if (Number.isNaN(parsed.getTime())) return String(date);
+  const day = String(parsed.getDate()).padStart(2, '0');
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const hours = String(parsed.getHours()).padStart(2, '0');
+  const minutes = String(parsed.getMinutes()).padStart(2, '0');
+  return `${day}/${month}/${parsed.getFullYear()} ${hours}:${minutes}`;
+}

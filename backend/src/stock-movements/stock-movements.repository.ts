@@ -115,6 +115,7 @@ export class StockMovementsRepository {
             WHEN sm.reference_type = 'INVENTORY' THEN 'Inventaire'
             WHEN sm.reference_type = 'TRANSFER' THEN 'Transfert'
             WHEN sm.reference_type = 'PURCHASE_RETURN' THEN 'Retour fournisseur'
+            WHEN sm.reference_type = 'LOT_EXPIRY_ACTION' THEN 'Rotation des rayons'
             ELSE NULL
           END AS reference_label,
           sm.notes,
