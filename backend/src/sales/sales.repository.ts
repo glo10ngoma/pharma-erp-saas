@@ -657,7 +657,8 @@ export class SalesRepository {
       const total = Number(sale.total_amount);
       const patientPayable = sale.sale_type === 'INSURANCE' ? Number(sale.customer_payable_amount ?? 0) : total;
       const insuranceCovered = Number(sale.insurance_covered_amount ?? 0);
-      const isAdvanceSale = (sale.sale_mode ?? 'IMMEDIATE') === 'ADVANCE';
+      const resolvedSaleMode = dto.saleMode ?? sale.sale_mode ?? 'IMMEDIATE';
+      const isAdvanceSale = resolvedSaleMode === 'ADVANCE';
       if (total <= 0) throw new Error('SALE_HAS_NO_ITEMS');
       if (sale.sale_type === 'INSURANCE' && (!sale.customer_id || !sale.organization_id || !sale.membership_id || insuranceCovered <= 0)) throw new Error('MEMBERSHIP_NOT_ACTIVE');
       const settlement = this.buildSettlementSnapshot(sale, dto, patientPayable);
@@ -822,7 +823,7 @@ export class SalesRepository {
           activeCashSession?.workstation_id ?? null,
           activeCashSession?.workstation_name ?? null,
           activeCashSession?.device_uuid ?? null,
-          sale.sale_mode,
+          resolvedSaleMode,
           isAdvanceSale ? 'NOT_FULFILLED' : 'FULFILLED',
           isAdvanceSale ? null : new Date(),
           isAdvanceSale ? this.buildPickupToken(sale.sale_number) : null,

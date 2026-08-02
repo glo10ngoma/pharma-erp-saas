@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import { IsEnum, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 
 export class ValidateSaleDto {
   @ApiProperty()
@@ -50,6 +50,11 @@ export class ValidateSaleDto {
   @IsOptional()
   @IsString()
   settlementDifferenceNote?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsEnum(['IMMEDIATE', 'ADVANCE'])
+  saleMode?: 'IMMEDIATE' | 'ADVANCE';
 
   @ApiPropertyOptional()
   @IsOptional()

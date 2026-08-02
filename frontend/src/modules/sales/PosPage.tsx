@@ -359,6 +359,7 @@ export function PosPage() {
       amountReturnedCdf: returnedFcAmount,
       settlementDifferenceReason: settlementReason.trim() || undefined,
       settlementDifferenceNote: settlementNote.trim() || undefined,
+      saleMode: form.saleMode,
       cashSessionId: activeCashSession?.cashSessionId,
     }),
     onSuccess: async (response) => {
@@ -429,12 +430,15 @@ export function PosPage() {
   useEffect(() => {
     if (!saleIdParam || !resumeSale.data) return;
     const resumed = resumeSale.data;
+    const storedSaleMode = localStorage.getItem(`posSaleMode:${resumed.saleId}`);
     setSale(resumed);
     setForm((current) => ({
       ...current,
       siteId: resumed.siteId ?? current.siteId,
       saleType: (resumed.saleType as PosForm['saleType']) ?? 'CASH',
-      saleMode: (resumed.saleMode as PosForm['saleMode']) ?? 'IMMEDIATE',
+      saleMode: storedSaleMode === 'ADVANCE' || storedSaleMode === 'IMMEDIATE'
+        ? (storedSaleMode as PosForm['saleMode'])
+        : ((resumed.saleMode as PosForm['saleMode']) ?? 'IMMEDIATE'),
       customerId: resumed.customerId ?? '',
       membershipId: resumed.membershipId ?? '',
       exchangeRate: String(resumed.exchangeRate ?? currentExchangeRate),
@@ -504,6 +508,11 @@ export function PosPage() {
     }
     setItemQuantityDrafts((current) => syncQuantityDrafts(items, current));
   }, [items]);
+
+  useEffect(() => {
+    if (!sale?.saleId) return;
+    localStorage.setItem(`posSaleMode:${sale.saleId}`, form.saleMode);
+  }, [form.saleMode, sale?.saleId]);
 
   useEffect(() => {
     if (!canOpenCash || activeCashSession || userOpenCashSession || currentCashSession.isLoading || currentCashSession.isError || resumeSale.isLoading || workstations.isLoading || workstations.isError || cashOpenModalOpen || cashOpenAutoPrompted) return;
@@ -645,13 +654,6 @@ export function PosPage() {
   }
   function setSaleMode(nextSaleMode: PosForm['saleMode']) {
     setForm((current) => ({ ...current, saleMode: nextSaleMode }));
-    if (sale?.saleId && sale.status === 'DRAFT') {
-      updateDraft.mutate({
-        customerId: form.customerId || null,
-        saleType: form.saleType,
-        saleMode: nextSaleMode,
-      });
-    }
   }
   function handleArticleKeys(event: KeyboardEvent<HTMLElement>) {
     if (event.key === 'Enter') {
@@ -1247,7 +1249,7 @@ export function PosPage() {
         <p>Facture {sale?.saleNumber ?? '-'}</p>
         <p>Date: {sale?.saleDate ? formatDate(sale.saleDate) : '-'}</p>
         <p>Client: {(customers.data ?? []).find((customer) => customer.customerId === form.customerId)?.customerName ?? 'Comptoir'}</p>
-        {sale?.saleMode === 'ADVANCE' && (
+        {(form.saleMode === 'ADVANCE' || sale?.saleMode === 'ADVANCE') && (
           <>
             <p>Jeton de retrait: {sale.pickupToken ?? '-'}</p>
             <p>Numero retrait: {sale.pickupNumber ?? sale.saleNumber ?? '-'}</p>
