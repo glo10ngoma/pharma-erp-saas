@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { AuthUser } from '../common/types/auth-user';
 import { DatabaseService } from '../database/database.service';
 import { ConfirmFefoActionDto } from './dto/confirm-fefo-action.dto';
@@ -57,7 +57,8 @@ type StockContextRow = {
   article_name: string | null;
   lot_id: string;
   lot_number: string;
-  expiry_date: string;
+  expiry_date: string | Date;
+  is_expired: boolean;
   quantity_available: string;
   quantity_reserved: string;
   purchase_price: string | null;
@@ -264,29 +265,10 @@ export class LotsRepository {
       }
 
       const stock = await this.lockStockContext(client, user, lotId, dto.siteId);
-      const diagnostic = await client.query<{ current_date: string; current_timestamp: string }>(
-        'SELECT CURRENT_DATE::text AS current_date, CURRENT_TIMESTAMP::text AS current_timestamp',
-      );
-      const priority = this.resolvePriority(stock.expiry_date, stock.is_blocked);
       const quantityAvailable = Number(stock.quantity_available ?? 0);
       const quantity = Number(dto.quantity);
 
-      console.info('[LotsRepository][removeExpiredStock][diagnostic]', {
-        tenantId: user.tenantId,
-        siteId: dto.siteId,
-        lotIdReceived: lotId,
-        lotNumberReread: stock.lot_number,
-        expiryDateRaw: stock.expiry_date,
-        currentDatePg: diagnostic.rows[0]?.current_date ?? null,
-        currentTimestampPg: diagnostic.rows[0]?.current_timestamp ?? null,
-        comparisonDateUsed: String(stock.expiry_date).split('T')[0],
-        ruleExecuted: 'resolvePriority(expiryDate, isBlocked) -> daysRemaining <= 0 => EXPIRED',
-        comparisonResult: priority === 'EXPIRED',
-        priorityCalculated: priority,
-        sqlBeforeLotNotExpired: this.stockContextSql(),
-      });
-
-      if (priority !== 'EXPIRED') {
+      if (!stock.is_expired) {
         throw new BadRequestException('LOT_NOT_EXPIRED');
       }
       if (!Number.isFinite(quantity) || quantity <= 0) {
@@ -394,7 +376,8 @@ export class LotsRepository {
         a.commercial_name AS article_name,
         st.lot_id,
         l.lot_number,
-        l.expiry_date,
+        l.expiry_date AS expiry_date,
+        l.expiry_date <= CURRENT_DATE AS is_expired,
         st.quantity_available,
         st.quantity_reserved,
         l.purchase_price,
@@ -459,8 +442,11 @@ export class LotsRepository {
     return this.toFefoAction(result.rows[0]);
   }
 
-  private resolvePriority(expiryDate: string, isBlocked: boolean): FefoPriority {
+  private resolvePriority(expiryDate: string | Date, isBlocked: boolean): FefoPriority {
     const daysRemaining = this.daysUntil(expiryDate);
+    if (!Number.isFinite(daysRemaining)) {
+      throw new InternalServerErrorException('LOT_EXPIRY_DATE_INVALID');
+    }
     if (daysRemaining <= 0) return 'EXPIRED';
     if (isBlocked) return 'BLOCKED';
     if (daysRemaining <= 30) return 'RED';
@@ -468,11 +454,45 @@ export class LotsRepository {
     return 'GREEN';
   }
 
-  private daysUntil(expiryDate: string) {
-    const target = new Date(`${String(expiryDate).split('T')[0]}T00:00:00`);
-    const today = new Date();
-    const current = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    return Math.floor((target.getTime() - current.getTime()) / (24 * 60 * 60 * 1000));
+  private daysUntil(expiryDate: string | Date) {
+    const target = this.toCivilDateParts(expiryDate);
+    if (target === null) return Number.NaN;
+
+    const now = new Date();
+    const current = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    const targetUtc = Date.UTC(target.year, target.month - 1, target.day);
+    return Math.floor((targetUtc - current) / 86_400_000);
+  }
+
+  private toCivilDateParts(expiryDate: string | Date): { year: number; month: number; day: number } | null {
+    if (expiryDate instanceof Date) {
+      if (Number.isNaN(expiryDate.getTime())) {
+        throw new InternalServerErrorException('LOT_EXPIRY_DATE_INVALID');
+      }
+
+      return {
+        year: expiryDate.getFullYear(),
+        month: expiryDate.getMonth() + 1,
+        day: expiryDate.getDate(),
+      };
+    }
+
+    const value = String(expiryDate ?? '').trim();
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+    if (!match) return null;
+
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const date = new Date(year, month - 1, day);
+    if (
+      date.getFullYear() !== year
+      || date.getMonth() !== month - 1
+      || date.getDate() !== day
+    ) {
+      return null;
+    }
+    return { year, month, day };
   }
 
   private isSameBusinessDay(date: Date) {

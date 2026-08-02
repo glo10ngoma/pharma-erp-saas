@@ -57,6 +57,8 @@ const LABELS: Record<string, string> = {
   TRANSFER_EMPTY: 'Impossible de valider un transfert vide.',
   TRANSFER_SAME_SITE: 'Le site source doit etre different du site destination.',
   INVALID_TRANSFER_QUANTITY: 'Quantite de transfert invalide.',
+  LOT_NOT_EXPIRED: 'Ce lot n est pas encore expire.',
+  LOT_EXPIRY_DATE_INVALID: 'La date d expiration du lot est invalide. L operation ne peut pas etre effectuee.',
 };
 
 export function apiErrorMessage(error: unknown) {

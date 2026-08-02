@@ -12,7 +12,7 @@ import { ValidateSaleDto } from './dto/validate-sale.dto';
 const SETTLEMENT_TOLERANCE_USD = 0.02;
 
 type SaleRow = { sale_id: string; tenant_id: string; sale_number: string; sale_date: Date; customer_id: string | null; customer_name: string | null; organization_id?: string | null; organization_name?: string | null; membership_id?: string | null; plan_name?: string | null; coverage_percent?: string | null; site_id: string; site_name: string | null; currency_id: string; currency_code: string | null; currency_symbol: string | null; exchange_rate: string; subtotal: string; discount_amount?: string; insurance_covered_amount?: string; customer_payable_amount?: string; credit_amount?: string; total_amount: string; amount_paid_usd?: string; amount_paid_cdf?: string; amount_returned_usd?: string; amount_returned_cdf?: string; net_received_usd?: string; net_received_cdf?: string; settlement_difference_usd?: string; settlement_difference_type?: string | null; settlement_difference_reason?: string | null; settlement_difference_note?: string | null; sale_type: string; status: string; created_by: string | null; created_at: Date; validated_at: Date | null };
-type ItemRow = { sale_item_id: string; tenant_id: string; sale_id: string; article_id: string; article_code: string | null; commercial_name: string | null; lot_id: string; lot_number: string | null; expiry_date: string | null; quantity: string; unit_price: string; line_total: string };
+type ItemRow = { sale_item_id: string; tenant_id: string; sale_id: string; article_id: string; article_code: string | null; commercial_name: string | null; lot_id: string; lot_number: string | null; expiry_date: string | Date | null; quantity: string; unit_price: string; line_total: string };
 type SettlementSnapshot = {
   amountPaidUsd: number;
   amountPaidCdf: number;
@@ -472,8 +472,8 @@ export class SalesRepository {
       if (!items.rows.length) throw new Error('SALE_HAS_NO_ITEMS');
 
       for (const item of items.rows) {
-        const stock = await client.query<{ stock_id: string; quantity_available: string; expiry_date: string; is_blocked: boolean }>(
-          `SELECT st.stock_id, st.quantity_available, l.expiry_date, l.is_blocked
+        const stock = await client.query<{ stock_id: string; quantity_available: string; expiry_date: string | Date; is_expired: boolean; is_blocked: boolean }>(
+          `SELECT st.stock_id, st.quantity_available, l.expiry_date, (l.expiry_date <= CURRENT_DATE) AS is_expired, l.is_blocked
            FROM stocks st
            JOIN lots l ON l.lot_id=st.lot_id AND l.tenant_id=st.tenant_id
            WHERE st.tenant_id=$1 AND st.site_id=$2 AND st.lot_id=$3
@@ -482,9 +482,9 @@ export class SalesRepository {
         );
         const row = stock.rows[0];
         if (!row || Number(row.quantity_available) < Number(item.quantity)) throw new Error('STOCK_INSUFFICIENT');
-        const expiryDate = String(row.expiry_date).split('T')[0];
-        const today = new Date().toISOString().slice(0, 10);
-        if (expiryDate <= today) throw new Error('LOT_EXPIRED');
+        const expiryDate = this.toCivilDateString(row.expiry_date);
+        if (!expiryDate) throw new Error('LOT_EXPIRY_DATE_INVALID');
+        if (row.is_expired || expiryDate <= this.todayCivilDate()) throw new Error('LOT_EXPIRED');
         if (row.is_blocked) throw new Error('LOT_BLOCKED');
         await client.query(`UPDATE stocks SET quantity_available=quantity_available-$4, updated_at=CURRENT_TIMESTAMP WHERE tenant_id=$1 AND site_id=$2 AND lot_id=$3`, [user.tenantId, sale.site_id, item.lot_id, item.quantity]);
         await client.query(
@@ -857,4 +857,23 @@ export class SalesRepository {
 
   private toSale(row: SaleRow) { return { saleId: row.sale_id, tenantId: row.tenant_id, saleNumber: row.sale_number, saleDate: row.sale_date, customerId: row.customer_id, customerName: row.customer_name, organizationId: row.organization_id ?? null, organizationName: row.organization_name ?? null, membershipId: row.membership_id ?? null, planName: row.plan_name ?? null, coveragePercent: row.coverage_percent === null || row.coverage_percent === undefined ? null : Number(row.coverage_percent), siteId: row.site_id, siteName: row.site_name, currencyId: row.currency_id, currencyCode: row.currency_code, currencySymbol: row.currency_symbol, exchangeRate: Number(row.exchange_rate), subtotal: Number(row.subtotal), discountAmount: Number(row.discount_amount ?? 0), insuranceCoveredAmount: Number(row.insurance_covered_amount ?? 0), customerPayableAmount: Number(row.customer_payable_amount ?? row.total_amount), creditAmount: Number(row.credit_amount ?? 0), totalAmount: Number(row.total_amount), amountPaidUsd: Number(row.amount_paid_usd ?? 0), amountPaidCdf: Number(row.amount_paid_cdf ?? 0), amountReturnedUsd: Number(row.amount_returned_usd ?? 0), amountReturnedCdf: Number(row.amount_returned_cdf ?? 0), netReceivedUsd: Number(row.net_received_usd ?? 0), netReceivedCdf: Number(row.net_received_cdf ?? 0), settlementDifferenceUsd: Number(row.settlement_difference_usd ?? 0), settlementDifferenceType: row.settlement_difference_type ?? 'NONE', settlementDifferenceReason: row.settlement_difference_reason ?? null, settlementDifferenceNote: row.settlement_difference_note ?? null, saleType: row.sale_type, status: row.status, createdBy: row.created_by, createdAt: row.created_at, validatedAt: row.validated_at }; }
   private toItem(row: ItemRow) { return { saleItemId: row.sale_item_id, saleId: row.sale_id, articleId: row.article_id, articleCode: row.article_code, commercialName: row.commercial_name, lotId: row.lot_id, lotNumber: row.lot_number, expiryDate: row.expiry_date, quantity: Number(row.quantity), unitPrice: Number(row.unit_price), lineTotal: Number(row.line_total) }; }
+
+  private toCivilDateString(value: string | Date) {
+    if (value instanceof Date) {
+      if (Number.isNaN(value.getTime())) return null;
+      const year = value.getFullYear();
+      const month = String(value.getMonth() + 1).padStart(2, '0');
+      const day = String(value.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value ?? '').trim());
+    if (!match) return null;
+    return `${match[1]}-${match[2]}-${match[3]}`;
+  }
+
+  private todayCivilDate() {
+    const now = new Date();
+    return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
+  }
 }

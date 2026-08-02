@@ -94,28 +94,6 @@ export function FefoRotationPage() {
     onError: (error) => setFeedback({ type: 'error', message: apiErrorMessage(error) }),
   });
 
-  function handleConfirmExpiredStock() {
-    if (!selectedExpiredRow) return;
-
-    const payload = {
-      lotId: selectedExpiredRow.lotId,
-      siteId: selectedExpiredRow.siteId,
-      quantity: expiredQuantityValue,
-      note: expiredNote.trim() || undefined,
-      requestKey: expiredRequestKey || buildRequestKey(),
-    };
-
-    console.info('[FefoRotationPage][removeExpiredStock][click]', {
-      rowLotId: selectedExpiredRow.lotId,
-      rowLotNumber: selectedExpiredRow.lotNumber,
-      rowExpiryDate: selectedExpiredRow.expiryDate,
-      url: `/lots/${selectedExpiredRow.lotId}/remove-expired-stock`,
-      payload,
-    });
-
-    removeExpiredStock.mutate(payload);
-  }
-
   useEffect(() => {
     if (selectedExpiredRow) {
       setExpiredQuantity(String(selectedExpiredRow.quantityAvailable));
@@ -306,7 +284,13 @@ export function FefoRotationPage() {
                 className="button compact-button"
                 type="button"
                 disabled={removeExpiredStock.isPending || Boolean(expiredQuantityError)}
-                onClick={handleConfirmExpiredStock}
+                onClick={() => removeExpiredStock.mutate({
+                  lotId: selectedExpiredRow.lotId,
+                  siteId: selectedExpiredRow.siteId,
+                  quantity: expiredQuantityValue,
+                  note: expiredNote.trim() || undefined,
+                  requestKey: expiredRequestKey || buildRequestKey(),
+                })}
               >
                 Confirmer la sortie
               </button>
