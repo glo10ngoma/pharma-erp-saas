@@ -17,8 +17,8 @@ export class CashService {
     return this.repository.openSession(user, dto, ipAddress);
   }
 
-  currentSession(user: AuthUser, siteId?: string, deviceUuid?: string) {
-    return this.repository.currentSession(user, siteId, deviceUuid);
+  currentSession(user: AuthUser, siteId?: string, deviceUuid?: string, workstationId?: string) {
+    return this.repository.currentSession(user, siteId, deviceUuid, workstationId);
   }
 
   closeSession(user: AuthUser, id: string, dto: CloseCashSessionDto, ipAddress?: string) {

@@ -31,8 +31,13 @@ export class CashController {
   @Get('sessions/current')
   @RequirePermission('cash_registers.read')
   @ApiOperation({ summary: 'Session caisse ouverte courante' })
-  currentSession(@CurrentUser() user: AuthUser, @Query('siteId') siteId?: string, @Query('deviceUuid') deviceUuid?: string) {
-    return this.service.currentSession(user, siteId, deviceUuid);
+  currentSession(
+    @CurrentUser() user: AuthUser,
+    @Query('siteId') siteId?: string,
+    @Query('deviceUuid') deviceUuid?: string,
+    @Query('workstationId') workstationId?: string,
+  ) {
+    return this.service.currentSession(user, siteId, deviceUuid, workstationId);
   }
 
   @Post('sessions/:id/close')

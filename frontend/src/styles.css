@@ -2918,6 +2918,11 @@ details.nav-group .nav-link {
   color: var(--primary-dark);
 }
 
+.pos-open-cash-button {
+  justify-self: end;
+  min-width: 184px;
+}
+
 .pos-customer-display-button {
   border-color: rgba(15, 118, 110, .45);
 }
@@ -3276,6 +3281,69 @@ details.nav-group .nav-link {
   width: min(520px, 100%);
 }
 
+.pos-open-cash-panel {
+  width: min(760px, calc(100vw - 32px));
+}
+
+.cash-open-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.cash-open-grid > div,
+.cash-open-grid > label {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.cash-open-grid span {
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.cash-open-grid strong {
+  overflow-wrap: anywhere;
+}
+
+.cash-open-note {
+  grid-column: 1 / -1;
+}
+
+.cash-open-summary {
+  align-items: start;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  margin-top: 2px;
+  padding: 10px 12px;
+}
+
+.cash-open-summary span {
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.cash-open-summary strong {
+  color: var(--primary-dark);
+  font-size: 1.02rem;
+}
+
+.cash-open-summary small {
+  color: var(--muted);
+}
+
 .pos-cash-mode-active .sidebar {
   display: none;
 }
@@ -3608,6 +3676,18 @@ details.nav-group .nav-link {
   color: #f8fafc;
 }
 
+[data-theme='dark'] .pos-open-cash-button {
+  background: #111827;
+  border-color: #334155;
+  color: #e5e7eb;
+}
+
+[data-theme='dark'] .pos-open-cash-button:hover:not(:disabled) {
+  background: #172033;
+  border-color: #14b8a6;
+  color: #f8fafc;
+}
+
 [data-theme='dark'] .pos-customer-display-button {
   border-color: rgba(45, 212, 191, .45);
 }
@@ -3657,6 +3737,17 @@ details.nav-group .nav-link {
 
 [data-theme='dark'] .pos-summary-panel {
   background: #111827;
+}
+
+[data-theme='dark'] .cash-open-grid > div,
+[data-theme='dark'] .cash-open-grid > label,
+[data-theme='dark'] .cash-open-summary {
+  background: #111827;
+  border-color: #334155;
+}
+
+[data-theme='dark'] .cash-open-summary strong {
+  color: #5eead4;
 }
 
 @media print {

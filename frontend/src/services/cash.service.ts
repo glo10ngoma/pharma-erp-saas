@@ -46,9 +46,9 @@ export type CashMovement = {
 
 export const cashService = {
   getSessions: () => apiClient.get<CashSession[]>('/cash/sessions'),
-  getCurrentSession: (siteId?: string, deviceUuid?: string) =>
+  getCurrentSession: (siteId?: string, deviceUuid?: string, workstationId?: string) =>
     apiClient.get<CashSession | null>('/cash/sessions/current', {
-      params: siteId || deviceUuid ? { siteId, deviceUuid } : undefined,
+      params: siteId || deviceUuid || workstationId ? { siteId, deviceUuid, workstationId } : undefined,
     }),
   openSession: (payload: Record<string, unknown>) => apiClient.post<CashSession>('/cash/sessions/open', payload),
   closeSession: (sessionId: string, payload: Record<string, unknown>) =>

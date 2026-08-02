@@ -92,7 +92,7 @@ export class CashRepository {
     return result.rows.map(this.toSession);
   }
 
-  async currentSession(user: AuthUser, siteId?: string, deviceUuid?: string) {
+  async currentSession(user: AuthUser, siteId?: string, deviceUuid?: string, workstationId?: string) {
     if (siteId) await this.assertSiteAllowed(user, siteId);
     const result = await this.db.query<CashSessionRow>(
       `
@@ -118,10 +118,11 @@ export class CashRepository {
         AND ($3::uuid IS NULL OR cs.site_id = $3::uuid)
         AND ($4::uuid IS NULL OR cs.site_id = $4::uuid)
         AND ($5::text IS NULL OR cs.device_uuid = $5::text)
+        AND ($6::uuid IS NULL OR cs.workstation_id = $6::uuid)
       ORDER BY cs.opened_at DESC
       LIMIT 1
       `,
-      [user.tenantId, user.userId, siteId ?? null, user.siteId ?? null, deviceUuid ?? null],
+      [user.tenantId, user.userId, siteId ?? null, user.siteId ?? null, deviceUuid ?? null, workstationId ?? null],
     );
     return result.rows[0] ? this.toSession(result.rows[0]) : null;
   }

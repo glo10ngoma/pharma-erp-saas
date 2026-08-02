@@ -16,6 +16,8 @@ import { stocksService } from '../../services/stocks.service';
 import { formatDate } from '../../utils/date';
 import { fetchAllPages } from '../../utils/fetchAllPages';
 import { formatMoney } from '../../utils/money';
+import { workstationsService } from '../../services/workstations.service';
+import { formatDateTime } from '../../utils/date';
 
 type PosForm = {
   siteId: string;
@@ -53,16 +55,27 @@ export function PosPage() {
   const [customerDisplayMessage, setCustomerDisplayMessage] = useState('');
   const [itemQuantityDrafts, setItemQuantityDrafts] = useState<Record<string, string>>({});
   const [cashMode, setCashMode] = useState(() => localStorage.getItem('posCashMode') === 'true');
+  const [cashOpenModalOpen, setCashOpenModalOpen] = useState(false);
+  const [cashOpenAutoPrompted, setCashOpenAutoPrompted] = useState(false);
+  const [cashOpenWorkstationId, setCashOpenWorkstationId] = useState('');
+  const [cashOpenOpeningUsd, setCashOpenOpeningUsd] = useState('0');
+  const [cashOpenOpeningCdf, setCashOpenOpeningCdf] = useState('0');
+  const [cashOpenNote, setCashOpenNote] = useState('');
+  const [cashOpenError, setCashOpenError] = useState('');
   const scanInputRef = useRef<HTMLInputElement | null>(null);
   const quantityInputRef = useRef<HTMLInputElement | null>(null);
   const paymentInputRef = useRef<HTMLInputElement | null>(null);
   const customerInputRef = useRef<HTMLInputElement | null>(null);
+  const cashOpenUsdInputRef = useRef<HTMLInputElement | null>(null);
   const saleTypeSelectRef = useRef<HTMLSelectElement | null>(null);
   const membershipSelectRef = useRef<HTMLSelectElement | null>(null);
   const audioRef = useRef<AudioContext | null>(null);
   const deviceUuid = useMemo(() => getOrCreateDeviceUuid(), []);
+  const permissions = currentUser?.permissions ?? [];
+  const canOpenCash = permissions.includes('cash_sessions.open');
 
   const sites = useQuery({ queryKey: ['sites'], queryFn: async () => (await sitesService.getAll()).data });
+  const workstations = useQuery({ queryKey: ['workstations', 'pos'], queryFn: async () => (await workstationsService.getAll()).data });
   const saleIdParam = searchParams.get('saleId') ?? '';
   const articles = useQuery({
     queryKey: ['articles', 'pos'],
@@ -80,10 +93,19 @@ export function PosPage() {
     queryFn: async () => (await referenceService.productUnits.getAll()).data,
     staleTime: 5 * 60 * 1000,
   });
+  const siteWorkstations = useMemo(
+    () => (workstations.data ?? []).filter((item) => item.isActive && (!form.siteId || item.siteId === form.siteId)),
+    [form.siteId, workstations.data],
+  );
+  const currentWorkstation = useMemo(
+    () => siteWorkstations.find((item) => item.deviceUuid === deviceUuid) ?? siteWorkstations[0] ?? null,
+    [deviceUuid, siteWorkstations],
+  );
+  const sessionWorkstationId = cashOpenWorkstationId || currentWorkstation?.workstationId || '';
   const memberships = useQuery({ queryKey: ['customer-memberships', form.customerId], queryFn: async () => (await insuranceService.memberships.getByCustomer(form.customerId)).data, enabled: Boolean(form.customerId) });
   const currentCashSession = useQuery({
-    queryKey: ['cash-current', form.siteId, deviceUuid],
-    queryFn: async () => (await cashService.getCurrentSession(form.siteId, deviceUuid)).data,
+    queryKey: ['cash-current', form.siteId, deviceUuid, sessionWorkstationId],
+    queryFn: async () => (await cashService.getCurrentSession(form.siteId, deviceUuid, sessionWorkstationId || undefined)).data,
     enabled: Boolean(form.siteId),
   });
   const exchangeRateQuery = useQuery({ queryKey: ['settings', 'exchange-rate'], queryFn: async () => (await settingsService.getExchangeRate()).data });
@@ -326,6 +348,50 @@ export function PosPage() {
     onError: () => playBeep('error'),
   });
   const cancel = useMutation({ mutationFn: () => salesService.cancel(sale.saleId), onSuccess: () => prepareNextSale() });
+  const openCashSession = useMutation({
+    mutationFn: async () => {
+      if (!form.siteId) throw new Error('SITE_NOT_SELECTED');
+      const openingUsd = Number(cashOpenOpeningUsd || 0);
+      const openingCdf = Number(cashOpenOpeningCdf || 0);
+      if ([openingUsd, openingCdf].some((amount) => !Number.isFinite(amount) || amount < 0)) {
+        throw new Error('INVALID_OPENING_BALANCE');
+      }
+      const openingBalance = roundMoney(openingUsd + (openingCdf / currentExchangeRate));
+      return (await cashService.openSession({
+        siteId: form.siteId,
+        openingBalance,
+        workstationId: cashOpenWorkstationId || currentWorkstation?.workstationId || undefined,
+        deviceUuid,
+        notes: cashOpenNote.trim() || undefined,
+      })).data;
+    },
+    onSuccess: async () => {
+      closeCashAssistant();
+      setClientError('');
+      await qc.invalidateQueries({ queryKey: ['cash-current'] });
+      await qc.invalidateQueries({ queryKey: ['cash-sessions'] });
+      await qc.invalidateQueries({ queryKey: ['cash-movements'] });
+    },
+    onError: (error) => {
+      const responseCode = (error as { response?: { data?: { message?: string; error?: string } } }).response?.data?.message
+        ?? (error as { response?: { data?: { message?: string; error?: string } } }).response?.data?.error
+        ?? (error as { message?: string }).message
+        ?? '';
+      if (responseCode === 'INVALID_OPENING_BALANCE') {
+        setCashOpenError('Les montants initiaux doivent etre superieurs ou egaux a 0.');
+        return;
+      }
+      if (responseCode === 'CASH_SESSION_ALREADY_OPEN') {
+        setCashOpenError('Une session caisse est deja ouverte pour ce vendeur sur un autre poste.');
+        return;
+      }
+      if (responseCode === 'WORKSTATION_SESSION_ALREADY_OPEN') {
+        setCashOpenError('Une session caisse est deja ouverte pour ce poste.');
+        return;
+      }
+      setCashOpenError(apiErrorMessage(error));
+    },
+  });
 
   useEffect(() => {
     if (!currentUser?.siteId) return;
@@ -375,6 +441,12 @@ export function PosPage() {
   }, [createDraft, exchangeRateQuery.isLoading, form.customerId, form.saleType, form.siteId, resumeSale.isLoading, sale, saleIdParam]);
 
   useEffect(() => {
+    if (!cashOpenModalOpen && currentWorkstation?.workstationId) {
+      setCashOpenWorkstationId((current) => current || currentWorkstation.workstationId);
+    }
+  }, [cashOpenModalOpen, currentWorkstation?.workstationId]);
+
+  useEffect(() => {
     if (quantityArticle) setTimeout(() => quantityInputRef.current?.focus(), 0);
   }, [quantityArticle]);
 
@@ -403,6 +475,29 @@ export function PosPage() {
     }
     setItemQuantityDrafts((current) => syncQuantityDrafts(items, current));
   }, [items]);
+
+  useEffect(() => {
+    if (!canOpenCash || currentCashSession.data || currentCashSession.isLoading || currentCashSession.isError || resumeSale.isLoading || workstations.isLoading || workstations.isError || cashOpenModalOpen || cashOpenAutoPrompted) return;
+    if (!form.siteId) return;
+    const timeout = window.setTimeout(() => {
+      setCashOpenModalOpen(true);
+      setCashOpenError('');
+      setCashOpenAutoPrompted(true);
+    }, 450);
+    return () => window.clearTimeout(timeout);
+  }, [canOpenCash, cashOpenAutoPrompted, cashOpenModalOpen, currentCashSession.data, currentCashSession.isError, currentCashSession.isLoading, form.siteId, resumeSale.isLoading, workstations.isError, workstations.isLoading]);
+
+  useEffect(() => {
+    if (currentCashSession.data && cashOpenModalOpen) {
+      setCashOpenModalOpen(false);
+      setCashOpenError('');
+    }
+  }, [cashOpenModalOpen, currentCashSession.data]);
+
+  useEffect(() => {
+    if (!cashOpenModalOpen) return;
+    setTimeout(() => cashOpenUsdInputRef.current?.focus(), 0);
+  }, [cashOpenModalOpen]);
 
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent) => {
@@ -442,6 +537,22 @@ export function PosPage() {
   }
   function focusPayment() {
     paymentInputRef.current?.focus();
+  }
+  function openCashAssistant(message?: string) {
+    if (!canOpenCash) return;
+    setCashOpenWorkstationId(currentWorkstation?.workstationId ?? siteWorkstations[0]?.workstationId ?? '');
+    setCashOpenOpeningUsd('0');
+    setCashOpenOpeningCdf('0');
+    setCashOpenNote('');
+    setCashOpenError(message ?? '');
+    setCashOpenAutoPrompted(true);
+    setCashOpenModalOpen(true);
+    setTimeout(() => cashOpenUsdInputRef.current?.focus(), 0);
+  }
+  function closeCashAssistant() {
+    setCashOpenModalOpen(false);
+    setCashOpenError('');
+    setCashOpenAutoPrompted(true);
   }
   function openCustomerDisplay() {
     setCustomerDisplayMessage('');
@@ -599,6 +710,17 @@ export function PosPage() {
     const netTotalEquivalentUsdSnapshot = roundMoney(netReceivedUsdSnapshot + netReceivedEquivalentUsdSnapshot);
     const settlementDifferenceUsdSnapshot = roundMoney(netTotalEquivalentUsdSnapshot - patientPayableSnapshot);
     const hasPayment = Boolean(paidUsd || paidFc);
+    const cashPaymentRequired = form.saleType === 'CASH' || hasPayment || exactPayment || paidUsdSnapshot > 0 || paidFcSnapshot > 0 || returnedUsdSnapshot > 0 || returnedFcSnapshot > 0;
+    if (!currentCashSession.data && cashPaymentRequired) {
+      if (!canOpenCash) {
+        setClientError('Vous n avez pas la permission d ouvrir une caisse.');
+        playBeep('error');
+        return;
+      }
+      openCashAssistant('Caisse non ouverte. Ouvrez la caisse maintenant.');
+      playBeep('error');
+      return;
+    }
     if (!hasPayment && !exactPayment) {
       setClientError('Saisissez le montant recu ou utilisez Paiement exact.');
       playBeep('error');
@@ -722,10 +844,23 @@ export function PosPage() {
           </button>
           <span className={`badge ${currentCashSession.data ? 'badge-success' : 'badge-warning'}`}>{currentCashSession.data ? 'Caisse ouverte' : 'Caisse non ouverte'}</span>
           <small>{currentCashSession.data ? `${currentCashSession.data.registerName ?? 'Caisse'} - Ouverture ${formatMoney(currentCashSession.data.openingBalance, currencyCode, currencySymbol)}` : 'Ouvrez une session caisse pour lier automatiquement les paiements CASH.'}</small>
+          {!currentCashSession.data && (
+            <button
+              className="button compact-button pos-open-cash-button"
+              type="button"
+              onClick={() => openCashAssistant()}
+              disabled={!canOpenCash}
+              title={!canOpenCash ? 'Vous n avez pas la permission d ouvrir une caisse.' : undefined}
+            >
+              Ouvrir la caisse maintenant
+            </button>
+          )}
+          {!currentCashSession.data && !canOpenCash && <small className="muted">Vous n avez pas la permission d ouvrir une caisse.</small>}
         </div>
       </div>
       {showError && <p className="form-error">{error}</p>}
       {customerDisplayMessage && <p className="form-error">{customerDisplayMessage}</p>}
+      {cashOpenError && !cashOpenModalOpen && <p className="form-error">{cashOpenError}</p>}
       {exchangeRateQuery.isError && <p className="form-error">Taux USD/CDF non charge. Fallback demo utilise : 1 USD = {formatMoney(POS_USD_CDF_FALLBACK_RATE, 'CDF')}.</p>}
 
       <section className="pos-status-strip">
@@ -927,6 +1062,104 @@ export function PosPage() {
           <button className="button pos-checkout-button" type="button" disabled={!sale?.saleId || sale.status !== 'DRAFT' || items.length === 0 || validate.isPending || Boolean((paidUsd || paidFc || exactPayment) && !canValidate())} onClick={quickCheckout}>{validate.isPending ? 'ENCAISSEMENT...' : 'ENCAISSER'}</button>
         </div>
       </section>
+
+      {cashOpenModalOpen && (
+        <div className="modal-backdrop pos-open-cash-backdrop" role="dialog" aria-modal="true">
+          <form
+            className="modal-panel pos-open-cash-panel"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!canOpenCash) return;
+              openCashSession.mutate();
+            }}
+          >
+            <div className="modal-header">
+              <div>
+                <h2>Ouvrir la caisse</h2>
+                <p className="muted">Confirmez le poste et les fonds initiaux avant d encaisser.</p>
+              </div>
+              <button className="ghost-button compact-button" type="button" onClick={closeCashAssistant}>Annuler</button>
+            </div>
+            {cashOpenError && <p className="form-error">{cashOpenError}</p>}
+            <div className="cash-open-grid">
+              <div><span>Site</span><strong>{currentSite?.siteName ?? form.siteId ?? '-'}</strong></div>
+              <div><span>Caissier</span><strong>{currentUser?.fullName ?? '-'}</strong></div>
+              <label>
+                <span>Poste de travail</span>
+                <select
+                  className="input compact-input"
+                  value={cashOpenWorkstationId}
+                  onChange={(event) => {
+                    setCashOpenWorkstationId(event.target.value);
+                    setCashOpenError('');
+                  }}
+                >
+                  <option value="">{siteWorkstations.length ? 'Selectionnez un poste' : 'Poste non renseigne'}</option>
+                  {siteWorkstations.map((workstation) => (
+                    <option key={workstation.workstationId} value={workstation.workstationId}>
+                      {workstation.workstationName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div><span>Date et heure</span><strong>{formatDateTime(new Date())}</strong></div>
+              <label>
+                <span>Fonds initial USD</span>
+                <input
+                  ref={cashOpenUsdInputRef}
+                  className="input compact-input numeric-cell"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={cashOpenOpeningUsd}
+                  onChange={(event) => {
+                    setCashOpenOpeningUsd(event.target.value);
+                    setCashOpenError('');
+                  }}
+                />
+              </label>
+              <label>
+                <span>Fonds initial CDF</span>
+                <input
+                  className="input compact-input numeric-cell"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={cashOpenOpeningCdf}
+                  onChange={(event) => {
+                    setCashOpenOpeningCdf(event.target.value);
+                    setCashOpenError('');
+                  }}
+                />
+              </label>
+              <label className="cash-open-note">
+                <span>Note facultative</span>
+                <input
+                  className="input compact-input"
+                  type="text"
+                  placeholder="Observation optionnelle"
+                  value={cashOpenNote}
+                  onChange={(event) => {
+                    setCashOpenNote(event.target.value);
+                    setCashOpenError('');
+                  }}
+                />
+              </label>
+            </div>
+            <div className="cash-open-summary">
+              <span>Montant enregistre</span>
+              <strong>{formatMoney(roundMoney(Number(cashOpenOpeningUsd || 0) + (Number(cashOpenOpeningCdf || 0) / currentExchangeRate)), 'USD')}</strong>
+              <small>Le montant CDF est converti au taux courant pour l ouverture.</small>
+            </div>
+            <div className="modal-actions">
+              <button className="ghost-button" type="button" onClick={closeCashAssistant}>Annuler</button>
+              <button className="button" type="submit" disabled={!canOpenCash || openCashSession.isPending}>
+                {openCashSession.isPending ? 'Ouverture...' : 'Ouvrir la caisse'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       <div className="print-invoice">
         <h1>PharmaERP</h1>
