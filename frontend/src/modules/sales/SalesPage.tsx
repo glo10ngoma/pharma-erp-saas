@@ -11,6 +11,7 @@ import { sitesService } from '../../services/sites.service';
 import { formatDate, fileDateStamp } from '../../utils/date';
 import { downloadCsv, downloadJson, downloadXlsx } from '../../utils/export';
 import { formatMoney } from '../../utils/money';
+import { SalePickupSection } from './SalePickupSection';
 
 type DatePreset = 'TODAY' | 'YESTERDAY' | 'WEEK' | 'MONTH' | 'PREVIOUS_MONTH' | 'CUSTOM';
 
@@ -21,6 +22,7 @@ type FiltersState = {
   siteId: string;
   status: string;
   saleType: string;
+  saleMode: string;
   paymentMode: string;
   dateFrom: string;
   dateTo: string;
@@ -50,12 +52,13 @@ export function SalesPage() {
     siteId: filters.siteId || undefined,
     status: filters.status || undefined,
     saleType: filters.saleType || undefined,
+    saleMode: filters.saleMode || undefined,
     paymentMode: filters.paymentMode || undefined,
     dateFrom: filters.dateFrom || undefined,
     dateTo: filters.dateTo || undefined,
     sortBy: filters.sortBy,
     sortOrder: filters.sortOrder,
-  }), [debouncedCustomer, debouncedSaleNumber, debouncedSeller, filters.dateFrom, filters.dateTo, filters.paymentMode, filters.saleType, filters.siteId, filters.sortBy, filters.sortOrder, filters.status]);
+  }), [debouncedCustomer, debouncedSaleNumber, debouncedSeller, filters.dateFrom, filters.dateTo, filters.paymentMode, filters.saleMode, filters.saleType, filters.siteId, filters.sortBy, filters.sortOrder, filters.status]);
 
   const sales = useQuery({
     queryKey: ['sales-list', effectiveFilters, page],
@@ -136,6 +139,10 @@ export function SalesPage() {
       <div className="stats-grid sales-kpis">
         <KpiCard label="CA net" value={formatMoney(summary.data?.revenueNet ?? 0, 'USD')} />
         <KpiCard label="Ventes validees" value={String(summary.data?.saleCount ?? 0)} />
+        <KpiCard label="Ventes immediates" value={String(summary.data?.immediateSaleCount ?? 0)} />
+        <KpiCard label="Avances en attente" value={String(summary.data?.advancePendingCount ?? 0)} />
+        <KpiCard label="Avances livrees" value={String(summary.data?.advanceFulfilledCount ?? 0)} />
+        <KpiCard label="CA avances" value={formatMoney((summary.data?.advancePendingRevenue ?? 0) + (summary.data?.advanceFulfilledRevenue ?? 0), 'USD')} />
         <KpiCard label="Panier moyen" value={formatMoney(summary.data?.averageBasket ?? 0, 'USD')} />
         <KpiCard label="Articles vendus" value={String(summary.data?.itemsSold ?? 0)} />
         <KpiCard label="Encaisse USD" value={formatMoney(summary.data?.receivedUsd ?? 0, 'USD')} />
@@ -165,6 +172,13 @@ export function SalesPage() {
             <option value="">Tous types</option>
             <option value="CASH">CASH</option>
             <option value="INSURANCE">INSURANCE</option>
+          </select>
+          <select className="input" value={filters.saleMode} onChange={(event) => updateFilter('saleMode', event.target.value)}>
+            <option value="">Tous modes</option>
+            <option value="IMMEDIATE">Ventes immediates</option>
+            <option value="ADVANCE">Paiements en avance</option>
+            <option value="REALIZED">Commandes livrees</option>
+            <option value="PENDING_PICKUP">Commandes en attente</option>
           </select>
           <select className="input" value={filters.paymentMode} onChange={(event) => updateFilter('paymentMode', event.target.value)}>
             <option value="">Tous paiements</option>
@@ -236,6 +250,8 @@ export function SalesPage() {
                   <th>Site</th>
                   <th>Caissier</th>
                   <th>Type</th>
+                  <th>Mode</th>
+                  <th>Livraison</th>
                   <th>Total facture</th>
                   <th>Net USD</th>
                   <th>Net FC</th>
@@ -252,6 +268,8 @@ export function SalesPage() {
                     <td className="sales-cell">{sale.siteName ?? '-'}</td>
                     <td className="sales-cell">{sale.createdByName ?? '-'}</td>
                     <td className="sales-cell"><span className={`badge ${badgeForType(sale.saleType)}`}>{sale.saleType}</span></td>
+                    <td className="sales-cell"><span className={`badge ${badgeForMode(sale.saleMode, sale.fulfillmentStatus)}`}>{sale.saleMode === 'ADVANCE' ? 'AVANCE' : 'IMMEDIATE'}</span></td>
+                    <td className="sales-cell"><span className={`badge ${badgeForFulfillment(sale.fulfillmentStatus)}`}>{badgeLabelForFulfillment(sale.fulfillmentStatus)}</span></td>
                     <td className="sales-cell numeric-text">{formatMoney(sale.totalAmount, sale.currencyCode ?? 'USD', sale.currencySymbol)}</td>
                     <td className="sales-cell numeric-text">{formatMoney(sale.netReceivedUsd ?? 0, 'USD')}</td>
                     <td className="sales-cell numeric-text">{formatMoney(sale.netReceivedCdf ?? 0, 'CDF', 'FC')}</td>
@@ -314,10 +332,14 @@ function SaleDetailModal({ sale, onOpenPos }: { sale: Sale; onOpenPos: () => voi
         <div><span>Assurance</span><strong>{sale.organizationName ?? '-'}</strong></div>
         <div><span>Statut</span><strong><span className={`badge ${badgeForStatus(sale.status)}`}>{sale.status}</span></strong></div>
         <div><span>Type</span><strong><span className={`badge ${badgeForType(sale.saleType)}`}>{sale.saleType}</span></strong></div>
+        <div><span>Mode</span><strong><span className={`badge ${badgeForMode(sale.saleMode, sale.fulfillmentStatus)}`}>{sale.saleMode === 'ADVANCE' ? 'AVANCE' : 'IMMEDIATE'}</span></strong></div>
+        <div><span>Livraison</span><strong><span className={`badge ${badgeForFulfillment(sale.fulfillmentStatus)}`}>{badgeLabelForFulfillment(sale.fulfillmentStatus)}</span></strong></div>
         <div><span>Devise</span><strong>{currencyCode}</strong></div>
         <div><span>Taux</span><strong>{sale.exchangeRate ?? 1}</strong></div>
         <div><span>Site</span><strong>{sale.siteName ?? '-'}</strong></div>
       </div>
+
+      <SalePickupSection sale={sale} />
 
       {sale.saleType === 'INSURANCE' && (
         <div className="stats-grid insurance-cards">
@@ -401,6 +423,7 @@ function defaultFilters(): FiltersState {
     siteId: '',
     status: '',
     saleType: '',
+    saleMode: '',
     paymentMode: '',
     dateFrom: range.dateFrom,
     dateTo: range.dateTo,
@@ -451,6 +474,29 @@ function badgeForType(type: string) {
   return type === 'INSURANCE' ? 'badge-info' : 'badge-success';
 }
 
+function badgeForMode(mode?: string | null, fulfillmentStatus?: string | null) {
+  if (mode === 'ADVANCE') {
+    if (fulfillmentStatus === 'FULFILLED') return 'badge-success';
+    if (fulfillmentStatus === 'PARTIALLY_FULFILLED') return 'badge-warning';
+    return 'badge-info';
+  }
+  return 'badge-success';
+}
+
+function badgeForFulfillment(status?: string | null) {
+  if (status === 'FULFILLED') return 'badge-success';
+  if (status === 'PARTIALLY_FULFILLED') return 'badge-warning';
+  if (status === 'NOT_FULFILLED') return 'badge-muted';
+  return 'badge-info';
+}
+
+function badgeLabelForFulfillment(status?: string | null) {
+  if (status === 'FULFILLED') return 'Livree';
+  if (status === 'PARTIALLY_FULFILLED') return 'Partielle';
+  if (status === 'NOT_FULFILLED') return 'En attente';
+  return status ?? '-';
+}
+
 function formatTime(date: string | Date) {
   const value = typeof date === 'string' ? new Date(date) : date;
   if (Number.isNaN(value.getTime())) return '--:--';
@@ -474,7 +520,7 @@ function unique(values: string[]) {
 
 function saleExportRows(sales: Sale[]) {
   return [
-    ['Numero', 'Date', 'Client', 'Site', 'Caissier', 'Type', 'Total', 'Net USD', 'Net FC', 'Paiements', 'Statut'],
+    ['Numero', 'Date', 'Client', 'Site', 'Caissier', 'Type', 'Mode', 'Livraison', 'Total', 'Net USD', 'Net FC', 'Paiements', 'Statut'],
     ...sales.map((sale) => [
       sale.saleNumber,
       `${formatDate(sale.saleDate)} ${formatTime(sale.saleDate)}`,
@@ -482,6 +528,8 @@ function saleExportRows(sales: Sale[]) {
       sale.siteName ?? '-',
       sale.createdByName ?? '-',
       sale.saleType,
+      sale.saleMode ?? '-',
+      sale.fulfillmentStatus ?? '-',
       formatMoney(sale.totalAmount, sale.currencyCode ?? 'USD', sale.currencySymbol),
       formatMoney(sale.netReceivedUsd ?? 0, 'USD'),
       formatMoney(sale.netReceivedCdf ?? 0, 'CDF', 'FC'),
@@ -500,6 +548,8 @@ function saleExportObject(sale: Sale) {
     site: sale.siteName ?? '-',
     caissier: sale.createdByName ?? '-',
     type: sale.saleType,
+    mode: sale.saleMode ?? '-',
+    livraison: sale.fulfillmentStatus ?? '-',
     total: formatMoney(sale.totalAmount, sale.currencyCode ?? 'USD', sale.currencySymbol),
     netUsd: formatMoney(sale.netReceivedUsd ?? 0, 'USD'),
     netFc: formatMoney(sale.netReceivedCdf ?? 0, 'CDF', 'FC'),

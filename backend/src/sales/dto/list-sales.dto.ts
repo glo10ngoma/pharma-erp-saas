@@ -28,6 +28,14 @@ export class ListSalesDto {
 
   @IsOptional()
   @IsString()
+  saleMode?: string;
+
+  @IsOptional()
+  @IsString()
+  fulfillmentStatus?: string;
+
+  @IsOptional()
+  @IsString()
   paymentMode?: string;
 
   @IsOptional()

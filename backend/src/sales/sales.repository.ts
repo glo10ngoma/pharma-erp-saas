@@ -4,6 +4,7 @@ import { AccountingRepository } from '../accounting/accounting.repository';
 import { DatabaseService } from '../database/database.service';
 import { AddSaleItemFefoDto } from './dto/add-sale-item-fefo.dto';
 import { ApplyInsuranceDto } from './dto/apply-insurance.dto';
+import { ConfirmPickupDto } from './dto/confirm-pickup.dto';
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { ListSalesDto } from './dto/list-sales.dto';
 import { UpdateSaleDraftDto } from './dto/update-sale-draft.dto';
@@ -11,8 +12,8 @@ import { ValidateSaleDto } from './dto/validate-sale.dto';
 
 const SETTLEMENT_TOLERANCE_USD = 0.02;
 
-type SaleRow = { sale_id: string; tenant_id: string; sale_number: string; sale_date: Date; customer_id: string | null; customer_name: string | null; organization_id?: string | null; organization_name?: string | null; membership_id?: string | null; plan_name?: string | null; coverage_percent?: string | null; site_id: string; site_name: string | null; currency_id: string; currency_code: string | null; currency_symbol: string | null; exchange_rate: string; subtotal: string; discount_amount?: string; insurance_covered_amount?: string; customer_payable_amount?: string; credit_amount?: string; total_amount: string; amount_paid_usd?: string; amount_paid_cdf?: string; amount_returned_usd?: string; amount_returned_cdf?: string; net_received_usd?: string; net_received_cdf?: string; settlement_difference_usd?: string; settlement_difference_type?: string | null; settlement_difference_reason?: string | null; settlement_difference_note?: string | null; sale_type: string; status: string; created_by: string | null; created_at: Date; validated_at: Date | null };
-type ItemRow = { sale_item_id: string; tenant_id: string; sale_id: string; article_id: string; article_code: string | null; commercial_name: string | null; lot_id: string; lot_number: string | null; expiry_date: string | Date | null; quantity: string; unit_price: string; line_total: string; coverage_percent?: string | null; covered_amount?: string | null; patient_amount?: string | null };
+type SaleRow = { sale_id: string; tenant_id: string; sale_number: string; sale_date: Date; customer_id: string | null; customer_name: string | null; organization_id?: string | null; organization_name?: string | null; membership_id?: string | null; plan_name?: string | null; coverage_percent?: string | null; site_id: string; site_name: string | null; currency_id: string; currency_code: string | null; currency_symbol: string | null; exchange_rate: string; subtotal: string; discount_amount?: string; insurance_covered_amount?: string; customer_payable_amount?: string; credit_amount?: string; total_amount: string; amount_paid_usd?: string; amount_paid_cdf?: string; amount_returned_usd?: string; amount_returned_cdf?: string; net_received_usd?: string; net_received_cdf?: string; settlement_difference_usd?: string; settlement_difference_type?: string | null; settlement_difference_reason?: string | null; settlement_difference_note?: string | null; sale_type: string; sale_mode: string; fulfillment_status: string; fulfilled_at: Date | null; pickup_token: string | null; pickup_number: string | null; pickup_site_id: string | null; expected_pickup_date: Date | null; last_fulfillment_at: Date | null; status: string; created_by: string | null; created_at: Date; validated_at: Date | null };
+type ItemRow = { sale_item_id: string; tenant_id: string; sale_id: string; article_id: string; article_code: string | null; commercial_name: string | null; lot_id: string | null; lot_number: string | null; expiry_date: string | Date | null; quantity: string; ordered_quantity?: string; fulfilled_quantity?: string; unit_price: string; line_total: string; sales_unit_snapshot?: string | null; packaging_snapshot?: string | null; coverage_percent?: string | null; covered_amount?: string | null; patient_amount?: string | null };
 type SettlementSnapshot = {
   amountPaidUsd: number;
   amountPaidCdf: number;
@@ -50,7 +51,9 @@ export class SalesRepository {
               s.amount_paid_usd, s.amount_paid_cdf, s.amount_returned_usd, s.amount_returned_cdf,
               s.net_received_usd, s.net_received_cdf, s.settlement_difference_usd,
               s.settlement_difference_type, s.settlement_difference_reason, s.settlement_difference_note,
-              s.sale_type, s.status, s.created_by, s.created_at, s.validated_at
+              s.sale_type, s.sale_mode, s.fulfillment_status, s.fulfilled_at, s.pickup_token, s.pickup_number,
+              s.pickup_site_id, s.expected_pickup_date, s.last_fulfillment_at,
+              s.status, s.created_by, s.created_at, s.validated_at
        FROM sales s
        JOIN sites st ON st.site_id=s.site_id AND st.tenant_id=s.tenant_id
        LEFT JOIN currencies cur ON cur.currency_id=s.currency_id
@@ -87,7 +90,9 @@ export class SalesRepository {
           s.amount_paid_usd, s.amount_paid_cdf, s.amount_returned_usd, s.amount_returned_cdf,
           s.net_received_usd, s.net_received_cdf, s.settlement_difference_usd,
           s.settlement_difference_type, s.settlement_difference_reason, s.settlement_difference_note,
-          s.sale_type, s.status, s.created_by, s.created_at, s.validated_at,
+          s.sale_type, s.sale_mode, s.fulfillment_status, s.fulfilled_at, s.pickup_token, s.pickup_number,
+          s.pickup_site_id, s.expected_pickup_date, s.last_fulfillment_at,
+          s.status, s.created_by, s.created_at, s.validated_at,
           u.full_name AS created_by_name
         FROM sales s
         JOIN sites st ON st.site_id=s.site_id AND st.tenant_id=s.tenant_id
@@ -136,6 +141,13 @@ export class SalesRepository {
     const summary = await this.db.query<{
       revenue_net: string;
       sale_count: string;
+      immediate_sale_count: string;
+      advance_sale_count: string;
+      advance_fulfilled_count: string;
+      advance_pending_count: string;
+      immediate_revenue: string;
+      advance_fulfilled_revenue: string;
+      advance_pending_revenue: string;
       average_basket: string;
       received_usd: string;
       received_cdf: string;
@@ -151,6 +163,8 @@ export class SalesRepository {
           s.sale_id,
           s.tenant_id,
           s.status,
+          s.sale_mode,
+          s.fulfillment_status,
           s.total_amount,
           s.net_received_usd,
           s.net_received_cdf,
@@ -175,6 +189,13 @@ export class SalesRepository {
       SELECT
         COALESCE(SUM(CASE WHEN status='VALIDATED' THEN total_amount ELSE 0 END), 0)::numeric AS revenue_net,
         COUNT(*) FILTER (WHERE status='VALIDATED')::int AS sale_count,
+        COUNT(*) FILTER (WHERE status='VALIDATED' AND sale_mode='IMMEDIATE')::int AS immediate_sale_count,
+        COUNT(*) FILTER (WHERE status='VALIDATED' AND sale_mode='ADVANCE')::int AS advance_sale_count,
+        COUNT(*) FILTER (WHERE status='VALIDATED' AND sale_mode='ADVANCE' AND fulfillment_status='FULFILLED')::int AS advance_fulfilled_count,
+        COUNT(*) FILTER (WHERE status='VALIDATED' AND sale_mode='ADVANCE' AND fulfillment_status<>'FULFILLED')::int AS advance_pending_count,
+        COALESCE(SUM(CASE WHEN status='VALIDATED' AND sale_mode='IMMEDIATE' THEN total_amount ELSE 0 END), 0)::numeric AS immediate_revenue,
+        COALESCE(SUM(CASE WHEN status='VALIDATED' AND sale_mode='ADVANCE' AND fulfillment_status='FULFILLED' THEN total_amount ELSE 0 END), 0)::numeric AS advance_fulfilled_revenue,
+        COALESCE(SUM(CASE WHEN status='VALIDATED' AND sale_mode='ADVANCE' AND fulfillment_status<>'FULFILLED' THEN total_amount ELSE 0 END), 0)::numeric AS advance_pending_revenue,
         CASE
           WHEN COUNT(*) FILTER (WHERE status='VALIDATED') = 0 THEN 0
           ELSE ROUND(
@@ -219,6 +240,13 @@ export class SalesRepository {
     return {
       revenueNet: Number(row?.revenue_net ?? 0),
       saleCount: Number(row?.sale_count ?? 0),
+      immediateSaleCount: Number(row?.immediate_sale_count ?? 0),
+      advanceSaleCount: Number(row?.advance_sale_count ?? 0),
+      advanceFulfilledCount: Number(row?.advance_fulfilled_count ?? 0),
+      advancePendingCount: Number(row?.advance_pending_count ?? 0),
+      immediateRevenue: Number(row?.immediate_revenue ?? 0),
+      advanceFulfilledRevenue: Number(row?.advance_fulfilled_revenue ?? 0),
+      advancePendingRevenue: Number(row?.advance_pending_revenue ?? 0),
       averageBasket: Number(row?.average_basket ?? 0),
       itemsSold: Number(itemsSummary.rows[0]?.items_sold ?? 0),
       receivedUsd: Number(row?.received_usd ?? 0),
@@ -242,7 +270,9 @@ export class SalesRepository {
               s.amount_paid_usd, s.amount_paid_cdf, s.amount_returned_usd, s.amount_returned_cdf,
               s.net_received_usd, s.net_received_cdf, s.settlement_difference_usd,
               s.settlement_difference_type, s.settlement_difference_reason, s.settlement_difference_note,
-              s.sale_type, s.status, s.created_by, s.created_at, s.validated_at
+              s.sale_type, s.sale_mode, s.fulfillment_status, s.fulfilled_at, s.pickup_token, s.pickup_number,
+              s.pickup_site_id, s.expected_pickup_date, s.last_fulfillment_at,
+              s.status, s.created_by, s.created_at, s.validated_at
        FROM sales s
        JOIN sites st ON st.site_id=s.site_id AND st.tenant_id=s.tenant_id
        LEFT JOIN currencies cur ON cur.currency_id=s.currency_id
@@ -263,11 +293,13 @@ export class SalesRepository {
     const currencyId = dto.currencyId ?? await this.defaultCurrencyId();
     await this.assertRelations(user, dto.siteId, currencyId, dto.customerId, dto.exchangeRate);
     const number = `SAL-${Date.now()}`;
+    const saleMode = dto.saleMode ?? 'IMMEDIATE';
+    const fulfillmentStatus = saleMode === 'ADVANCE' ? 'NOT_FULFILLED' : 'FULFILLED';
     const r = await this.db.query<SaleRow>(
-      `INSERT INTO sales (tenant_id, sale_number, site_id, customer_id, currency_id, exchange_rate, sale_type, created_by)
-       VALUES ($1,$2,$3,$4,$5,$8,$7,$6)
-       RETURNING sale_id, tenant_id, sale_number, sale_date, customer_id, NULL::text AS customer_name, organization_id, membership_id, site_id, NULL::text AS site_name, currency_id, NULL::text AS currency_code, NULL::text AS currency_symbol, exchange_rate, subtotal, insurance_covered_amount, customer_payable_amount, credit_amount, total_amount, amount_paid_usd, amount_paid_cdf, amount_returned_usd, amount_returned_cdf, net_received_usd, net_received_cdf, settlement_difference_usd, settlement_difference_type, settlement_difference_reason, settlement_difference_note, sale_type, status, created_by, created_at, validated_at`,
-      [user.tenantId, number, dto.siteId, dto.customerId ?? null, currencyId, user.userId, dto.saleType ?? 'CASH', dto.exchangeRate ?? 1],
+      `INSERT INTO sales (tenant_id, sale_number, site_id, customer_id, currency_id, exchange_rate, sale_type, sale_mode, fulfillment_status, created_by)
+       VALUES ($1,$2,$3,$4,$5,$8,$7,$9,$10,$6)
+       RETURNING sale_id, tenant_id, sale_number, sale_date, customer_id, NULL::text AS customer_name, organization_id, membership_id, site_id, NULL::text AS site_name, currency_id, NULL::text AS currency_code, NULL::text AS currency_symbol, exchange_rate, subtotal, insurance_covered_amount, customer_payable_amount, credit_amount, total_amount, amount_paid_usd, amount_paid_cdf, amount_returned_usd, amount_returned_cdf, net_received_usd, net_received_cdf, settlement_difference_usd, settlement_difference_type, settlement_difference_reason, settlement_difference_note, sale_type, sale_mode, fulfillment_status, fulfilled_at, pickup_token, pickup_number, pickup_site_id, expected_pickup_date, last_fulfillment_at, status, created_by, created_at, validated_at`,
+      [user.tenantId, number, dto.siteId, dto.customerId ?? null, currencyId, user.userId, dto.saleType ?? 'CASH', dto.exchangeRate ?? 1, saleMode, fulfillmentStatus],
     );
     return this.findOne(user, r.rows[0].sale_id);
   }
@@ -278,6 +310,7 @@ export class SalesRepository {
     if (sale.status !== 'DRAFT') throw new Error('SALE_NOT_DRAFT');
 
     const nextSaleType = dto.saleType ?? sale.saleType;
+    const nextSaleMode = dto.saleMode ?? sale.saleMode ?? 'IMMEDIATE';
     const nextCustomerId = dto.customerId === undefined ? sale.customerId : dto.customerId;
     if (nextSaleType === 'INSURANCE' && !nextCustomerId) throw new Error('CUSTOMER_REQUIRED_FOR_INSURANCE');
     if (nextCustomerId) await this.assertCustomer(user, nextCustomerId);
@@ -286,13 +319,15 @@ export class SalesRepository {
       `UPDATE sales
        SET customer_id=$3,
            sale_type=$4,
+           sale_mode=$5,
+           fulfillment_status=CASE WHEN $5='ADVANCE' THEN 'NOT_FULFILLED' ELSE fulfillment_status END,
            organization_id=NULL,
            membership_id=NULL,
            insurance_covered_amount=0,
            credit_amount=0,
            customer_payable_amount=total_amount
        WHERE tenant_id=$1 AND sale_id=$2`,
-      [user.tenantId, saleId, nextCustomerId ?? null, nextSaleType],
+      [user.tenantId, saleId, nextCustomerId ?? null, nextSaleType, nextSaleMode],
     );
     await this.db.query(
       `UPDATE sale_items
@@ -310,6 +345,55 @@ export class SalesRepository {
     if (!sale) return null;
     if (sale.status !== 'DRAFT') throw new Error('SALE_NOT_DRAFT');
     await this.assertArticle(user, dto.articleId);
+    if ((sale.saleMode ?? 'IMMEDIATE') === 'ADVANCE') {
+      const priceRows = await this.db.query<{ selling_price: string | null }>(
+        `SELECT COALESCE(MIN(l.selling_price), 0)::numeric AS selling_price
+         FROM lots l
+         WHERE l.tenant_id=$1 AND l.article_id=$2`,
+        [user.tenantId, dto.articleId],
+      );
+      const unitPrice = Number(priceRows.rows[0]?.selling_price ?? 0);
+      const existing = await this.db.query<{ sale_item_id: string; quantity: string; ordered_quantity: string; fulfilled_quantity: string }>(
+        `SELECT sale_item_id, quantity, ordered_quantity, fulfilled_quantity
+         FROM sale_items
+         WHERE tenant_id=$1 AND sale_id=$2 AND article_id=$3 AND lot_id IS NULL
+         ORDER BY sale_item_id`,
+        [user.tenantId, saleId, dto.articleId],
+      );
+      const existingQuantity = existing.rows.reduce((sum, item) => sum + Number(item.quantity ?? 0), 0);
+      const nextQuantity = this.roundMoney(existingQuantity + dto.quantity);
+      const lineTotal = this.roundMoney(nextQuantity * unitPrice);
+      const saleCoveragePercent = sale.saleType === 'INSURANCE' ? Number(sale.coveragePercent ?? 0) : 0;
+      const coveredAmount = sale.saleType === 'INSURANCE' ? this.roundMoney(lineTotal * saleCoveragePercent / 100) : 0;
+      const patientAmount = sale.saleType === 'INSURANCE' ? this.roundMoney(lineTotal - coveredAmount) : lineTotal;
+      if (existing.rows[0]) {
+        await this.db.query(
+          `UPDATE sale_items
+           SET quantity=$5,
+               ordered_quantity=$5,
+               fulfilled_quantity=COALESCE(fulfilled_quantity, 0),
+               unit_price=$6,
+               coverage_percent=$7,
+               covered_amount=$8,
+               patient_amount=$9,
+               line_total=$10
+           WHERE tenant_id=$1 AND sale_id=$2 AND sale_item_id=$3 AND article_id=$4 AND lot_id IS NULL`,
+          [user.tenantId, saleId, existing.rows[0].sale_item_id, dto.articleId, nextQuantity, unitPrice, saleCoveragePercent, coveredAmount, patientAmount, lineTotal],
+        );
+      } else {
+        await this.db.query(
+          `INSERT INTO sale_items (
+             tenant_id, sale_id, article_id, lot_id, quantity, ordered_quantity, fulfilled_quantity,
+             unit_price, sales_unit_snapshot, packaging_snapshot, coverage_percent, covered_amount,
+             patient_amount, line_total
+           )
+           VALUES ($1,$2,$3,NULL,$4,$5,0,$6,NULL,NULL,$7,$8,$9,$10)`,
+          [user.tenantId, saleId, dto.articleId, dto.quantity, dto.quantity, unitPrice, saleCoveragePercent, coveredAmount, patientAmount, lineTotal],
+        );
+      }
+      await this.recalculateTotal(user, saleId, sale.saleType);
+      return this.findOne(user, saleId);
+    }
     const saleCoveragePercent = sale.saleType === 'INSURANCE' ? Number(sale.coveragePercent ?? 0) : 0;
 
     const available = await this.db.query<{ lot_id: string; selling_price: string; expiry_date: string; quantity_available: string }>(
@@ -349,6 +433,8 @@ export class SalesRepository {
         await this.db.query(
           `UPDATE sale_items
            SET quantity=$5,
+               ordered_quantity=$5,
+               fulfilled_quantity=$5,
                unit_price=$6,
                coverage_percent=$7,
                covered_amount=$8,
@@ -366,9 +452,9 @@ export class SalesRepository {
         }
       } else {
         await this.db.query(
-          `INSERT INTO sale_items (tenant_id, sale_id, article_id, lot_id, quantity, unit_price, coverage_percent, covered_amount, patient_amount, line_total)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-          [user.tenantId, saleId, dto.articleId, lot.lot_id, take, price, saleCoveragePercent, coveredAmount, patientAmount, lineTotal],
+          `INSERT INTO sale_items (tenant_id, sale_id, article_id, lot_id, quantity, ordered_quantity, fulfilled_quantity, unit_price, coverage_percent, covered_amount, patient_amount, line_total)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+          [user.tenantId, saleId, dto.articleId, lot.lot_id, take, take, take, price, saleCoveragePercent, coveredAmount, patientAmount, lineTotal],
         );
       }
       remaining -= take;
@@ -438,6 +524,50 @@ export class SalesRepository {
     const sale = await this.findOne(user, saleId);
     if (!sale) return null;
     if (sale.status !== 'DRAFT') throw new Error('SALE_NOT_DRAFT');
+
+    if ((sale.saleMode ?? 'IMMEDIATE') === 'ADVANCE') {
+      const result = await this.db.query<{
+        sale_item_id: string;
+        article_id: string;
+        quantity: string;
+        ordered_quantity: string;
+        fulfilled_quantity: string;
+        unit_price: string;
+        coverage_percent: string | null;
+      }>(
+        `SELECT si.sale_item_id, si.article_id, si.quantity, si.ordered_quantity, si.fulfilled_quantity, si.unit_price, COALESCE(si.coverage_percent, 0) AS coverage_percent
+         FROM sale_items si
+         WHERE si.tenant_id=$1 AND si.sale_id=$2 AND si.sale_item_id=$3
+         LIMIT 1`,
+        [user.tenantId, saleId, itemId],
+      );
+      const current = result.rows[0];
+      if (!current) throw new Error('SALE_ITEM_NOT_FOUND');
+
+      const quantity = Number(dto.quantity);
+      if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('INVALID_SALE_ITEM_QUANTITY');
+
+      const unitPrice = Number(current.unit_price);
+      const lineTotal = this.roundMoney(quantity * unitPrice);
+      const coveragePercent = sale.saleType === 'INSURANCE' ? Number(current.coverage_percent ?? sale.coveragePercent ?? 0) : 0;
+      const coveredAmount = sale.saleType === 'INSURANCE' ? this.roundMoney(lineTotal * coveragePercent / 100) : 0;
+      const patientAmount = sale.saleType === 'INSURANCE' ? this.roundMoney(lineTotal - coveredAmount) : lineTotal;
+
+      await this.db.query(
+        `UPDATE sale_items
+         SET quantity=$4,
+             ordered_quantity=$4,
+             unit_price=$5,
+             coverage_percent=$6,
+             covered_amount=$7,
+             patient_amount=$8,
+             line_total=$9
+         WHERE tenant_id=$1 AND sale_id=$2 AND sale_item_id=$3`,
+        [user.tenantId, saleId, itemId, quantity, unitPrice, coveragePercent, coveredAmount, patientAmount, lineTotal],
+      );
+      await this.recalculateTotal(user, saleId, sale.saleType);
+      return this.findOne(user, saleId);
+    }
 
     const result = await this.db.query<{
       sale_item_id: string;
@@ -513,7 +643,9 @@ export class SalesRepository {
                 amount_paid_usd, amount_paid_cdf, amount_returned_usd, amount_returned_cdf,
                 net_received_usd, net_received_cdf, settlement_difference_usd,
                 settlement_difference_type, settlement_difference_reason, settlement_difference_note,
-                sale_type, status, created_by, created_at, validated_at
+                sale_type, sale_mode, fulfillment_status, fulfilled_at, pickup_token, pickup_number,
+                pickup_site_id, expected_pickup_date, last_fulfillment_at,
+                status, created_by, created_at, validated_at
          FROM sales WHERE tenant_id=$1 AND sale_id=$2
            AND ($3::uuid IS NULL OR site_id=$3::uuid)
          FOR UPDATE`,
@@ -525,6 +657,7 @@ export class SalesRepository {
       const total = Number(sale.total_amount);
       const patientPayable = sale.sale_type === 'INSURANCE' ? Number(sale.customer_payable_amount ?? 0) : total;
       const insuranceCovered = Number(sale.insurance_covered_amount ?? 0);
+      const isAdvanceSale = (sale.sale_mode ?? 'IMMEDIATE') === 'ADVANCE';
       if (total <= 0) throw new Error('SALE_HAS_NO_ITEMS');
       if (sale.sale_type === 'INSURANCE' && (!sale.customer_id || !sale.organization_id || !sale.membership_id || insuranceCovered <= 0)) throw new Error('MEMBERSHIP_NOT_ACTIVE');
       const settlement = this.buildSettlementSnapshot(sale, dto, patientPayable);
@@ -536,33 +669,36 @@ export class SalesRepository {
       const items = await client.query<ItemRow>(
         `SELECT si.sale_item_id, si.tenant_id, si.sale_id, si.article_id, NULL::text AS article_code,
                 NULL::text AS commercial_name, si.lot_id, NULL::text AS lot_number, NULL::date AS expiry_date,
-                si.quantity, si.unit_price, si.line_total
+                si.quantity, si.ordered_quantity, si.fulfilled_quantity, si.unit_price, si.line_total,
+                si.sales_unit_snapshot, si.packaging_snapshot
          FROM sale_items si WHERE si.tenant_id=$1 AND si.sale_id=$2`,
         [user.tenantId, saleId],
       );
       if (!items.rows.length) throw new Error('SALE_HAS_NO_ITEMS');
 
-      for (const item of items.rows) {
-        const stock = await client.query<{ stock_id: string; quantity_available: string; expiry_date: string | Date; is_expired: boolean; is_blocked: boolean }>(
-          `SELECT st.stock_id, st.quantity_available, l.expiry_date, (l.expiry_date <= CURRENT_DATE) AS is_expired, l.is_blocked
-           FROM stocks st
-           JOIN lots l ON l.lot_id=st.lot_id AND l.tenant_id=st.tenant_id
-           WHERE st.tenant_id=$1 AND st.site_id=$2 AND st.lot_id=$3
-           FOR UPDATE`,
-          [user.tenantId, sale.site_id, item.lot_id],
-        );
-        const row = stock.rows[0];
-        if (!row || Number(row.quantity_available) < Number(item.quantity)) throw new Error('STOCK_INSUFFICIENT');
-        const expiryDate = this.toCivilDateString(row.expiry_date);
-        if (!expiryDate) throw new Error('LOT_EXPIRY_DATE_INVALID');
-        if (row.is_expired || expiryDate <= this.todayCivilDate()) throw new Error('LOT_EXPIRED');
-        if (row.is_blocked) throw new Error('LOT_BLOCKED');
-        await client.query(`UPDATE stocks SET quantity_available=quantity_available-$4, updated_at=CURRENT_TIMESTAMP WHERE tenant_id=$1 AND site_id=$2 AND lot_id=$3`, [user.tenantId, sale.site_id, item.lot_id, item.quantity]);
-        await client.query(
-          `INSERT INTO stock_movements (tenant_id, site_id, article_id, lot_id, movement_type, quantity, reference_type, reference_id, notes, user_id)
-           VALUES ($1,$2,$3,$4,'SALE_OUT',$5,'SALE',$6,$7,$8)`,
-          [user.tenantId, sale.site_id, item.article_id, item.lot_id, item.quantity, sale.sale_id, `Validation vente ${sale.sale_number}`, user.userId],
-        );
+      if (!isAdvanceSale) {
+        for (const item of items.rows) {
+          const stock = await client.query<{ stock_id: string; quantity_available: string; expiry_date: string | Date; is_expired: boolean; is_blocked: boolean }>(
+            `SELECT st.stock_id, st.quantity_available, l.expiry_date, (l.expiry_date <= CURRENT_DATE) AS is_expired, l.is_blocked
+             FROM stocks st
+             JOIN lots l ON l.lot_id=st.lot_id AND l.tenant_id=st.tenant_id
+             WHERE st.tenant_id=$1 AND st.site_id=$2 AND st.lot_id=$3
+             FOR UPDATE`,
+            [user.tenantId, sale.site_id, item.lot_id],
+          );
+          const row = stock.rows[0];
+          if (!row || Number(row.quantity_available) < Number(item.quantity)) throw new Error('STOCK_INSUFFICIENT');
+          const expiryDate = this.toCivilDateString(row.expiry_date);
+          if (!expiryDate) throw new Error('LOT_EXPIRY_DATE_INVALID');
+          if (row.is_expired || expiryDate <= this.todayCivilDate()) throw new Error('LOT_EXPIRED');
+          if (row.is_blocked) throw new Error('LOT_BLOCKED');
+          await client.query(`UPDATE stocks SET quantity_available=quantity_available-$4, updated_at=CURRENT_TIMESTAMP WHERE tenant_id=$1 AND site_id=$2 AND lot_id=$3`, [user.tenantId, sale.site_id, item.lot_id, item.quantity]);
+          await client.query(
+            `INSERT INTO stock_movements (tenant_id, site_id, article_id, lot_id, movement_type, quantity, reference_type, reference_id, notes, user_id)
+             VALUES ($1,$2,$3,$4,'SALE_OUT',$5,'SALE',$6,$7,$8)`,
+            [user.tenantId, sale.site_id, item.article_id, item.lot_id, item.quantity, sale.sale_id, `Validation vente ${sale.sale_number}`, user.userId],
+          );
+        }
       }
 
       const method = dto.paymentMethodId
@@ -646,6 +782,14 @@ export class SalesRepository {
         `UPDATE sales
          SET status='VALIDATED',
              validated_at=CURRENT_TIMESTAMP,
+             sale_mode=$17,
+             fulfillment_status=$18,
+             fulfilled_at=$19,
+             pickup_token=$20,
+             pickup_number=$21,
+             pickup_site_id=$22,
+             expected_pickup_date=$23,
+             last_fulfillment_at=$24,
              amount_paid_usd=$3,
              amount_paid_cdf=$4,
              amount_returned_usd=$5,
@@ -678,12 +822,187 @@ export class SalesRepository {
           activeCashSession?.workstation_id ?? null,
           activeCashSession?.workstation_name ?? null,
           activeCashSession?.device_uuid ?? null,
+          sale.sale_mode,
+          isAdvanceSale ? 'NOT_FULFILLED' : 'FULFILLED',
+          isAdvanceSale ? null : new Date(),
+          isAdvanceSale ? this.buildPickupToken(sale.sale_number) : null,
+          isAdvanceSale ? this.buildPickupNumber(sale.sale_number) : null,
+          isAdvanceSale ? sale.site_id : null,
+          isAdvanceSale ? new Date().toISOString().slice(0, 10) : null,
+          isAdvanceSale ? null : new Date(),
         ],
       );
       await client.query(
         `INSERT INTO audit_logs (tenant_id, user_id, table_name, record_id, action_type, new_value)
          VALUES ($1,$2,'sales',$3,'VALIDATE',$4::jsonb)`,
         [user.tenantId, user.userId, saleId, JSON.stringify({ status: 'VALIDATED', saleNumber: sale.sale_number, settlement })],
+      );
+    });
+    return this.findOne(user, saleId);
+  }
+
+  async confirmPickup(user: AuthUser, saleId: string, dto: ConfirmPickupDto) {
+    await this.db.transaction(async (client) => {
+      const saleResult = await client.query<SaleRow>(
+        `SELECT sale_id, tenant_id, sale_number, sale_date, customer_id, NULL::text AS customer_name,
+                organization_id, membership_id, site_id, NULL::text AS site_name, currency_id, NULL::text AS currency_code, NULL::text AS currency_symbol, exchange_rate, subtotal,
+                insurance_covered_amount, customer_payable_amount, credit_amount, total_amount,
+                amount_paid_usd, amount_paid_cdf, amount_returned_usd, amount_returned_cdf,
+                net_received_usd, net_received_cdf, settlement_difference_usd,
+                settlement_difference_type, settlement_difference_reason, settlement_difference_note,
+                sale_type, sale_mode, fulfillment_status, fulfilled_at, pickup_token, pickup_number,
+                pickup_site_id, expected_pickup_date, last_fulfillment_at,
+                status, created_by, created_at, validated_at
+         FROM sales
+         WHERE tenant_id=$1 AND sale_id=$2
+         FOR UPDATE`,
+        [user.tenantId, saleId],
+      );
+      const sale = saleResult.rows[0];
+      if (!sale) throw new Error('SALE_NOT_FOUND');
+      if ((sale.sale_mode ?? 'IMMEDIATE') !== 'ADVANCE') throw new Error('SALE_NOT_ADVANCE');
+      if (sale.status !== 'VALIDATED') throw new Error('SALE_NOT_VALIDATED');
+      if (sale.fulfillment_status === 'FULFILLED') throw new Error('SALE_ALREADY_FULFILLED');
+      if (user.siteId && user.siteId !== sale.site_id) throw new Error('SITE_NOT_ALLOWED');
+
+      const saleItems = await client.query<ItemRow>(
+        `SELECT si.sale_item_id, si.tenant_id, si.sale_id, si.article_id, NULL::text AS article_code,
+                NULL::text AS commercial_name, si.lot_id, NULL::text AS lot_number, NULL::date AS expiry_date,
+                si.quantity, si.ordered_quantity, si.fulfilled_quantity, si.unit_price, si.line_total,
+                si.sales_unit_snapshot, si.packaging_snapshot
+         FROM sale_items si
+         WHERE si.tenant_id=$1 AND si.sale_id=$2
+         ORDER BY si.sale_item_id`,
+        [user.tenantId, saleId],
+      );
+      if (!saleItems.rows.length) throw new Error('SALE_HAS_NO_ITEMS');
+
+      const targetSiteId = sale.pickup_site_id ?? sale.site_id;
+      const fulfillmentNumber = this.buildFulfillmentNumber(sale.sale_number);
+      const requestKey = dto.requestKey?.trim() || null;
+      if (requestKey) {
+        const existingRequest = await client.query<{ fulfillment_id: string }>(
+          `SELECT fulfillment_id FROM sale_fulfillments WHERE tenant_id=$1 AND request_key=$2 LIMIT 1`,
+          [user.tenantId, requestKey],
+        );
+        if (existingRequest.rows[0]) return;
+      }
+
+      const fulfillment = await client.query<{ fulfillment_id: string; fulfilled_at: Date }>(
+        `INSERT INTO sale_fulfillments (
+           tenant_id, site_id, sale_id, fulfillment_number, status, fulfilled_by,
+           fulfilled_at, note, recipient_name, request_key
+         )
+         VALUES ($1,$2,$3,$4,'PENDING',$5,CURRENT_TIMESTAMP,$6,$7,$8)
+         RETURNING fulfillment_id, fulfilled_at`,
+        [user.tenantId, targetSiteId, saleId, fulfillmentNumber, user.userId, dto.note?.trim() || null, dto.recipientName?.trim() || null, requestKey],
+      );
+      const fulfillmentId = fulfillment.rows[0].fulfillment_id;
+
+      const requestedQuantities = new Map<string, number>();
+      if (dto.items?.length) {
+        for (const item of dto.items) {
+          const quantity = Number(item.quantity);
+          if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('SALE_PICKUP_QUANTITY_INVALID');
+          requestedQuantities.set(item.saleItemId, quantity);
+        }
+      }
+
+      const allocations: Array<{ saleItemId: string; articleId: string; lotId: string; quantity: number; lotNumber: string | null; expiryDate: string | Date | null; unitPrice: number }> = [];
+
+      for (const item of saleItems.rows) {
+        const fulfilled = Number(item.fulfilled_quantity ?? 0);
+        const ordered = Number(item.ordered_quantity ?? item.quantity ?? 0);
+        const remaining = this.roundMoney(ordered - fulfilled);
+        if (remaining <= 0) continue;
+        const requested = requestedQuantities.size ? Number(requestedQuantities.get(item.sale_item_id) ?? 0) : remaining;
+        if (requested <= 0) continue;
+        if (requested > remaining) throw new Error('SALE_PICKUP_QUANTITY_INVALID');
+        const lotAllocations = await this.allocateLotsForPickup(client, user.tenantId, targetSiteId, item.article_id, requested);
+        if (!lotAllocations.length) throw new Error('SALE_PICKUP_STOCK_INSUFFICIENT');
+        let delivered = 0;
+        for (const allocation of lotAllocations) {
+          delivered += allocation.quantity;
+          allocations.push({ saleItemId: item.sale_item_id, articleId: item.article_id, lotId: allocation.lotId, quantity: allocation.quantity, lotNumber: allocation.lotNumber, expiryDate: allocation.expiryDate, unitPrice: Number(item.unit_price ?? 0) });
+          await client.query(
+            `UPDATE stocks
+             SET quantity_available=quantity_available-$4,
+                 updated_at=CURRENT_TIMESTAMP
+             WHERE tenant_id=$1 AND site_id=$2 AND lot_id=$3`,
+            [user.tenantId, targetSiteId, allocation.lotId, allocation.quantity],
+          );
+          await client.query(
+            `INSERT INTO stock_movements (tenant_id, site_id, article_id, lot_id, movement_type, quantity, reference_type, reference_id, notes, user_id)
+             VALUES ($1,$2,$3,$4,'SALE_OUT',$5,'SALE_FULFILLMENT',$6,$7,$8)`,
+            [
+              user.tenantId,
+              targetSiteId,
+              item.article_id,
+              allocation.lotId,
+              allocation.quantity,
+              fulfillmentId,
+              `Livraison vente ${sale.sale_number} (${fulfillmentNumber})`,
+              user.userId,
+            ],
+          );
+          await client.query(
+            `INSERT INTO sale_fulfillment_items (
+               fulfillment_id, sale_item_id, article_id, lot_id, quantity, unit_snapshot
+             )
+             VALUES ($1,$2,$3,$4,$5,$6)`,
+            [
+              fulfillmentId,
+              item.sale_item_id,
+              item.article_id,
+              allocation.lotId,
+              allocation.quantity,
+              item.sales_unit_snapshot ?? item.packaging_snapshot ?? null,
+            ],
+          );
+        }
+        await client.query(
+          `UPDATE sale_items
+           SET fulfilled_quantity=COALESCE(fulfilled_quantity, 0) + $4
+           WHERE tenant_id=$1 AND sale_id=$2 AND sale_item_id=$3`,
+          [user.tenantId, saleId, item.sale_item_id, delivered],
+        );
+      }
+
+      const totals = await client.query<{ total_ordered: string; total_fulfilled: string }>(
+        `SELECT
+           COALESCE(SUM(ordered_quantity), 0)::numeric AS total_ordered,
+           COALESCE(SUM(fulfilled_quantity), 0)::numeric AS total_fulfilled
+         FROM sale_items
+         WHERE tenant_id=$1 AND sale_id=$2`,
+        [user.tenantId, saleId],
+      );
+      const totalOrdered = Number(totals.rows[0]?.total_ordered ?? 0);
+      const totalFulfilled = Number(totals.rows[0]?.total_fulfilled ?? 0);
+      const isFullyFulfilled = totalOrdered > 0 && totalFulfilled >= totalOrdered - 0.0001;
+
+      await client.query(
+        `UPDATE sales
+         SET fulfillment_status=$3,
+             fulfilled_at=CASE WHEN $3='FULFILLED' THEN COALESCE(fulfilled_at, CURRENT_TIMESTAMP) ELSE fulfilled_at END,
+             last_fulfillment_at=CURRENT_TIMESTAMP,
+             pickup_site_id=COALESCE(pickup_site_id, $4),
+             expected_pickup_date=COALESCE(expected_pickup_date, CURRENT_DATE)
+         WHERE tenant_id=$1 AND sale_id=$2`,
+        [user.tenantId, saleId, isFullyFulfilled ? 'FULFILLED' : 'PARTIALLY_FULFILLED', targetSiteId],
+      );
+
+      await client.query(
+        `UPDATE sale_fulfillments
+         SET status=$3,
+             updated_at=CURRENT_TIMESTAMP
+         WHERE tenant_id=$1 AND sale_id=$2 AND fulfillment_id=$4`,
+        [user.tenantId, saleId, isFullyFulfilled ? 'COMPLETED' : 'PARTIALLY_FULFILLED', fulfillmentId],
+      );
+
+      await client.query(
+        `INSERT INTO audit_logs (tenant_id, user_id, table_name, record_id, action_type, new_value)
+         VALUES ($1,$2,'sales',$3,'CONFIRM_PICKUP',$4::jsonb)`,
+        [user.tenantId, user.userId, saleId, JSON.stringify({ saleNumber: sale.sale_number, fulfillmentNumber, requestKey, allocations, fullyFulfilled: isFullyFulfilled })],
       );
     });
     return this.findOne(user, saleId);
@@ -716,6 +1035,54 @@ export class SalesRepository {
     const byCode = new Map(result.rows.map((row) => [row.currency_code, row.currency_id]));
     if (!byCode.get('USD') || !byCode.get('CDF')) throw new Error('CURRENCY_NOT_FOUND');
     return { USD: byCode.get('USD')!, CDF: byCode.get('CDF')! };
+  }
+
+  private buildPickupToken(saleNumber: string) {
+    return `PICK-${saleNumber}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  }
+
+  private buildPickupNumber(saleNumber: string) {
+    return `RET-${saleNumber}`;
+  }
+
+  private buildFulfillmentNumber(saleNumber: string) {
+    return `LIV-${saleNumber}-${Date.now().toString().slice(-6)}`;
+  }
+
+  private async allocateLotsForPickup(
+    client: { query: (sql: string, params?: unknown[]) => Promise<{ rows: Array<{ lot_id: string; lot_number: string; expiry_date: string | Date; quantity_available: string }> }> },
+    tenantId: string,
+    siteId: string,
+    articleId: string,
+    quantity: number,
+  ) {
+    const available = await client.query(
+      `SELECT l.lot_id, l.lot_number, l.expiry_date, st.quantity_available
+       FROM stocks st
+       JOIN lots l ON l.lot_id=st.lot_id AND l.tenant_id=st.tenant_id
+       WHERE st.tenant_id=$1
+         AND st.site_id=$2
+         AND l.article_id=$3
+         AND st.quantity_available > 0
+         AND l.expiry_date > CURRENT_DATE
+         AND l.is_blocked = false
+       ORDER BY l.expiry_date ASC, l.lot_number ASC
+       FOR UPDATE`,
+      [tenantId, siteId, articleId],
+    );
+
+    let remaining = quantity;
+    const allocations: Array<{ lotId: string; lotNumber: string; expiryDate: string | Date; quantity: number }> = [];
+    for (const lot of available.rows) {
+      if (remaining <= 0) break;
+      const availableQuantity = Number(lot.quantity_available ?? 0);
+      if (availableQuantity <= 0) continue;
+      const take = Math.min(remaining, availableQuantity);
+      allocations.push({ lotId: lot.lot_id, lotNumber: lot.lot_number, expiryDate: lot.expiry_date, quantity: take });
+      remaining -= take;
+    }
+    if (remaining > 0) return [];
+    return allocations;
   }
 
   private buildSettlementSnapshot(sale: SaleRow, dto: ValidateSaleDto, patientPayable: number): SettlementSnapshot {
@@ -781,10 +1148,11 @@ export class SalesRepository {
   private async findItems(user: AuthUser, saleId: string) {
     const r = await this.db.query<ItemRow>(
       `SELECT si.sale_item_id, si.tenant_id, si.sale_id, si.article_id, a.article_code, a.commercial_name,
-              si.lot_id, l.lot_number, l.expiry_date, si.quantity, si.unit_price, si.line_total
+              si.lot_id, l.lot_number, l.expiry_date, si.quantity, si.ordered_quantity, si.fulfilled_quantity,
+              si.unit_price, si.line_total, si.sales_unit_snapshot, si.packaging_snapshot
        FROM sale_items si
        JOIN articles a ON a.article_id=si.article_id AND a.tenant_id=si.tenant_id
-       JOIN lots l ON l.lot_id=si.lot_id AND l.tenant_id=si.tenant_id
+       LEFT JOIN lots l ON l.lot_id=si.lot_id AND l.tenant_id=si.tenant_id
        WHERE si.tenant_id=$1 AND si.sale_id=$2 ORDER BY si.sale_item_id`,
       [user.tenantId, saleId],
     );
@@ -873,6 +1241,22 @@ export class SalesRepository {
       filters.push(`s.sale_type = $${params.length}`);
     }
 
+    if (query.saleMode) {
+      if (query.saleMode === 'REALIZED') {
+        filters.push(`s.sale_mode = 'ADVANCE' AND s.fulfillment_status = 'FULFILLED'`);
+      } else if (query.saleMode === 'PENDING_PICKUP') {
+        filters.push(`s.sale_mode = 'ADVANCE' AND s.fulfillment_status <> 'FULFILLED'`);
+      } else {
+        params.push(query.saleMode);
+        filters.push(`s.sale_mode = $${params.length}`);
+      }
+    }
+
+    if (query.fulfillmentStatus) {
+      params.push(query.fulfillmentStatus);
+      filters.push(`s.fulfillment_status = $${params.length}`);
+    }
+
     if (query.dateFrom) {
       params.push(query.dateFrom);
       filters.push(`s.sale_date >= $${params.length}::date`);
@@ -928,8 +1312,8 @@ export class SalesRepository {
     return 'filtered_sales.sale_date';
   }
 
-  private toSale(row: SaleRow) { return { saleId: row.sale_id, tenantId: row.tenant_id, saleNumber: row.sale_number, saleDate: row.sale_date, customerId: row.customer_id, customerName: row.customer_name, organizationId: row.organization_id ?? null, organizationName: row.organization_name ?? null, membershipId: row.membership_id ?? null, planName: row.plan_name ?? null, coveragePercent: row.coverage_percent === null || row.coverage_percent === undefined ? null : Number(row.coverage_percent), siteId: row.site_id, siteName: row.site_name, currencyId: row.currency_id, currencyCode: row.currency_code, currencySymbol: row.currency_symbol, exchangeRate: Number(row.exchange_rate), subtotal: Number(row.subtotal), discountAmount: Number(row.discount_amount ?? 0), insuranceCoveredAmount: Number(row.insurance_covered_amount ?? 0), customerPayableAmount: Number(row.customer_payable_amount ?? row.total_amount), creditAmount: Number(row.credit_amount ?? 0), totalAmount: Number(row.total_amount), amountPaidUsd: Number(row.amount_paid_usd ?? 0), amountPaidCdf: Number(row.amount_paid_cdf ?? 0), amountReturnedUsd: Number(row.amount_returned_usd ?? 0), amountReturnedCdf: Number(row.amount_returned_cdf ?? 0), netReceivedUsd: Number(row.net_received_usd ?? 0), netReceivedCdf: Number(row.net_received_cdf ?? 0), settlementDifferenceUsd: Number(row.settlement_difference_usd ?? 0), settlementDifferenceType: row.settlement_difference_type ?? 'NONE', settlementDifferenceReason: row.settlement_difference_reason ?? null, settlementDifferenceNote: row.settlement_difference_note ?? null, saleType: row.sale_type, status: row.status, createdBy: row.created_by, createdAt: row.created_at, validatedAt: row.validated_at }; }
-  private toItem(row: ItemRow) { return { saleItemId: row.sale_item_id, saleId: row.sale_id, articleId: row.article_id, articleCode: row.article_code, commercialName: row.commercial_name, lotId: row.lot_id, lotNumber: row.lot_number, expiryDate: row.expiry_date, quantity: Number(row.quantity), unitPrice: Number(row.unit_price), lineTotal: Number(row.line_total) }; }
+  private toSale(row: SaleRow) { return { saleId: row.sale_id, tenantId: row.tenant_id, saleNumber: row.sale_number, saleDate: row.sale_date, customerId: row.customer_id, customerName: row.customer_name, organizationId: row.organization_id ?? null, organizationName: row.organization_name ?? null, membershipId: row.membership_id ?? null, planName: row.plan_name ?? null, coveragePercent: row.coverage_percent === null || row.coverage_percent === undefined ? null : Number(row.coverage_percent), siteId: row.site_id, siteName: row.site_name, currencyId: row.currency_id, currencyCode: row.currency_code, currencySymbol: row.currency_symbol, exchangeRate: Number(row.exchange_rate), subtotal: Number(row.subtotal), discountAmount: Number(row.discount_amount ?? 0), insuranceCoveredAmount: Number(row.insurance_covered_amount ?? 0), customerPayableAmount: Number(row.customer_payable_amount ?? row.total_amount), creditAmount: Number(row.credit_amount ?? 0), totalAmount: Number(row.total_amount), amountPaidUsd: Number(row.amount_paid_usd ?? 0), amountPaidCdf: Number(row.amount_paid_cdf ?? 0), amountReturnedUsd: Number(row.amount_returned_usd ?? 0), amountReturnedCdf: Number(row.amount_returned_cdf ?? 0), netReceivedUsd: Number(row.net_received_usd ?? 0), netReceivedCdf: Number(row.net_received_cdf ?? 0), settlementDifferenceUsd: Number(row.settlement_difference_usd ?? 0), settlementDifferenceType: row.settlement_difference_type ?? 'NONE', settlementDifferenceReason: row.settlement_difference_reason ?? null, settlementDifferenceNote: row.settlement_difference_note ?? null, saleType: row.sale_type, saleMode: row.sale_mode ?? 'IMMEDIATE', fulfillmentStatus: row.fulfillment_status ?? 'FULFILLED', fulfilledAt: row.fulfilled_at ?? null, pickupToken: row.pickup_token ?? null, pickupNumber: row.pickup_number ?? null, pickupSiteId: row.pickup_site_id ?? null, expectedPickupDate: row.expected_pickup_date ?? null, lastFulfillmentAt: row.last_fulfillment_at ?? null, status: row.status, createdBy: row.created_by, createdAt: row.created_at, validatedAt: row.validated_at }; }
+  private toItem(row: ItemRow) { return { saleItemId: row.sale_item_id, saleId: row.sale_id, articleId: row.article_id, articleCode: row.article_code, commercialName: row.commercial_name, lotId: row.lot_id ?? null, lotNumber: row.lot_number ?? null, expiryDate: row.expiry_date, quantity: Number(row.quantity), orderedQuantity: Number(row.ordered_quantity ?? row.quantity), fulfilledQuantity: Number(row.fulfilled_quantity ?? 0), unitPrice: Number(row.unit_price), lineTotal: Number(row.line_total), salesUnitSnapshot: row.sales_unit_snapshot ?? null, packagingSnapshot: row.packaging_snapshot ?? null }; }
 
   private toCivilDateString(value: string | Date) {
     if (value instanceof Date) {

@@ -8,4 +8,8 @@ export class UpdateSaleDraftDto {
   @IsOptional()
   @IsEnum(['CASH', 'INSURANCE'])
   saleType?: 'CASH' | 'INSURANCE';
+
+  @IsOptional()
+  @IsEnum(['IMMEDIATE', 'ADVANCE'])
+  saleMode?: 'IMMEDIATE' | 'ADVANCE';
 }

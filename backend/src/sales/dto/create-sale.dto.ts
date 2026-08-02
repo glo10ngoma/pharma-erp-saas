@@ -20,4 +20,8 @@ export class CreateSaleDto {
   @IsOptional()
   @IsEnum(['CASH', 'CUSTOMER_CREDIT', 'ORGANIZATION_CREDIT', 'INSURANCE'])
   saleType?: 'CASH' | 'INSURANCE';
+
+  @IsOptional()
+  @IsEnum(['IMMEDIATE', 'ADVANCE'])
+  saleMode?: 'IMMEDIATE' | 'ADVANCE';
 }

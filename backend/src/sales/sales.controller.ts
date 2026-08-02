@@ -5,6 +5,7 @@ import { RequirePermission } from '../common/decorators/require-permission.decor
 import { AuthUser } from '../common/types/auth-user';
 import { AddSaleItemFefoDto } from './dto/add-sale-item-fefo.dto';
 import { ApplyInsuranceDto } from './dto/apply-insurance.dto';
+import { ConfirmPickupDto } from './dto/confirm-pickup.dto';
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { ListSalesDto } from './dto/list-sales.dto';
 import { UpdateSaleItemDto } from './dto/update-sale-item.dto';
@@ -28,5 +29,6 @@ export class SalesController {
   @Post(':id/apply-insurance') @RequirePermission('sales.update_draft') applyInsurance(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: ApplyInsuranceDto) { return this.service.applyInsurance(user, id, dto); }
   @Delete(':id/items/:itemId') @RequirePermission('sales.update_draft') removeItem(@CurrentUser() user: AuthUser, @Param('id') id: string, @Param('itemId') itemId: string) { return this.service.removeItem(user, id, itemId); }
   @Post(':id/validate') @RequirePermission('sales.validate') validate(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: ValidateSaleDto) { return this.service.validate(user, id, dto); }
+  @Post(':id/confirm-pickup') @RequirePermission('sales.validate') confirmPickup(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: ConfirmPickupDto) { return this.service.confirmPickup(user, id, dto); }
   @Post(':id/cancel') @RequirePermission('sales.cancel_draft') cancel(@CurrentUser() user: AuthUser, @Param('id') id: string) { return this.service.cancel(user, id); }
 }

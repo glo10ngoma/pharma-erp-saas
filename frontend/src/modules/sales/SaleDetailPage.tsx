@@ -4,6 +4,7 @@ import { CommentsPanel } from '../../components/CommentsPanel';
 import { salesService } from '../../services/sales.service';
 import { formatDate } from '../../utils/date';
 import { formatMoney } from '../../utils/money';
+import { SalePickupSection } from './SalePickupSection';
 
 export function SaleDetailPage() {
   const { id = '' } = useParams();
@@ -24,9 +25,13 @@ export function SaleDetailPage() {
           <div><span>Date</span><strong>{formatDate(sale.saleDate)}</strong></div>
           <div><span>Client</span><strong>{sale.customerName || 'Comptoir'}</strong></div>
           <div><span>Type</span><strong>{sale.saleType}</strong></div>
+          <div><span>Mode</span><strong>{sale.saleMode === 'ADVANCE' ? 'Paiement en avance' : 'Immediat'}</strong></div>
+          <div><span>Livraison</span><strong><span className={`badge ${sale.fulfillmentStatus === 'FULFILLED' ? 'badge-success' : sale.fulfillmentStatus === 'PARTIALLY_FULFILLED' ? 'badge-warning' : sale.fulfillmentStatus === 'NOT_FULFILLED' ? 'badge-muted' : 'badge-info'}`}>{sale.fulfillmentStatus ?? '-'}</span></strong></div>
           <div><span>Total</span><strong>{formatMoney(sale.totalAmount, currencyCode, currencySymbol)}</strong></div>
           <div><span>Statut</span><strong><span className={`badge ${sale.status === 'VALIDATED' ? 'badge-success' : 'badge-warning'}`}>{sale.status}</span></strong></div>
         </div>
+
+        <SalePickupSection sale={sale} />
 
         <section className="card compact-card">
           <div className="detail-grid">
@@ -82,6 +87,13 @@ export function SaleDetailPage() {
           <p>Facture {sale.saleNumber}</p>
           <p>Date: {formatDate(sale.saleDate)}</p>
           <p>Client: {sale.customerName || 'Comptoir'}</p>
+          {sale.saleMode === 'ADVANCE' && (
+            <>
+              <p>Jeton de retrait: {sale.pickupToken ?? '-'}</p>
+              <p>Numero retrait: {sale.pickupNumber ?? sale.saleNumber}</p>
+              <p>Livraison: {sale.fulfillmentStatus ?? '-'}</p>
+            </>
+          )}
           <table><tbody>{items.map((item) => <tr key={item.saleItemId}><td>{item.commercialName}</td><td>{item.quantity}</td><td>{formatMoney(item.lineTotal, currencyCode, currencySymbol)}</td></tr>)}</tbody></table>
           <h2>Total: {formatMoney(sale.totalAmount, currencyCode, currencySymbol)}</h2>
           <p>Recu USD: {formatMoney(sale.amountPaidUsd ?? 0, 'USD', currencySymbol)}</p>

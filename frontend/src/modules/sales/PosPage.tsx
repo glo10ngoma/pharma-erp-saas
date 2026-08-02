@@ -22,12 +22,13 @@ import { formatDateTime } from '../../utils/date';
 type PosForm = {
   siteId: string;
   saleType: 'CASH' | 'INSURANCE';
+  saleMode: 'IMMEDIATE' | 'ADVANCE';
   customerId: string;
   exchangeRate: string;
   membershipId: string;
 };
 
-const initialForm = (): PosForm => ({ siteId: '', saleType: 'CASH', customerId: '', exchangeRate: '1', membershipId: '' });
+const initialForm = (): PosForm => ({ siteId: '', saleType: 'CASH', saleMode: 'IMMEDIATE', customerId: '', exchangeRate: '1', membershipId: '' });
 const POS_USD_CDF_FALLBACK_RATE = 2800;
 const SETTLEMENT_TOLERANCE_USD = 0.02;
 
@@ -172,6 +173,12 @@ export function PosPage() {
     }
     return Array.from(rows.values()).sort((a, b) => a.commercialName.localeCompare(b.commercialName));
   }, [articles.data, sellableLotById, sellableStocks, stockByArticle]);
+  const saleArticles = useMemo<Article[]>(() => {
+    if (form.saleMode === 'ADVANCE') {
+      return (articles.data ?? []).slice().sort((a, b) => a.commercialName.localeCompare(b.commercialName));
+    }
+    return posArticles;
+  }, [articles.data, form.saleMode, posArticles]);
   const resumeSale = useQuery({
     queryKey: ['sale-resume', saleIdParam],
     enabled: Boolean(saleIdParam),
@@ -179,12 +186,12 @@ export function PosPage() {
   });
   const articleSuggestions = useMemo(() => {
     const query = articleQuery.trim().toLowerCase();
-    if (!query) return posArticles.slice(0, 80);
-    return prioritizeExactBarcode(posArticles.filter((article) =>
+    if (!query) return saleArticles.slice(0, 80);
+    return prioritizeExactBarcode(saleArticles.filter((article) =>
       [article.articleCode, article.commercialName, article.dci, article.dosage, article.barcode]
         .some((value) => String(value ?? '').toLowerCase().includes(query)),
     ), articleQuery);
-  }, [articleQuery, posArticles]);
+  }, [articleQuery, saleArticles]);
   const customerSuggestions = useMemo(() => {
     const query = customerQuery.trim().toLowerCase();
     const rows = customers.data ?? [];
@@ -242,7 +249,7 @@ export function PosPage() {
   const quantityTotal = items.reduce((sum: number, item: any) => sum + Number(item.quantity ?? 0), 0);
 
   const createDraft = useMutation({
-    mutationFn: async () => (await salesService.create({ siteId: form.siteId, saleType: form.saleType, customerId: form.customerId || undefined, exchangeRate: currentExchangeRate })).data,
+    mutationFn: async () => (await salesService.create({ siteId: form.siteId, saleType: form.saleType, saleMode: form.saleMode, customerId: form.customerId || undefined, exchangeRate: currentExchangeRate })).data,
     onSuccess: (created) => {
       setSale(created);
       const nextParams = new URLSearchParams(searchParams);
@@ -427,6 +434,7 @@ export function PosPage() {
       ...current,
       siteId: resumed.siteId ?? current.siteId,
       saleType: (resumed.saleType as PosForm['saleType']) ?? 'CASH',
+      saleMode: (resumed.saleMode as PosForm['saleMode']) ?? 'IMMEDIATE',
       customerId: resumed.customerId ?? '',
       membershipId: resumed.membershipId ?? '',
       exchangeRate: String(resumed.exchangeRate ?? currentExchangeRate),
@@ -551,6 +559,7 @@ export function PosPage() {
     updateDraft.mutate({
       customerId: nextForm.customerId === '' ? null : nextForm.customerId,
       saleType: nextForm.saleType ?? form.saleType,
+      saleMode: form.saleMode,
     });
   }
   function focusArticleSearch() {
@@ -634,6 +643,16 @@ export function PosPage() {
   function toggleSaleType() {
     setSaleType(form.saleType === 'CASH' ? 'INSURANCE' : 'CASH');
   }
+  function setSaleMode(nextSaleMode: PosForm['saleMode']) {
+    setForm((current) => ({ ...current, saleMode: nextSaleMode }));
+    if (sale?.saleId && sale.status === 'DRAFT') {
+      updateDraft.mutate({
+        customerId: form.customerId || null,
+        saleType: form.saleType,
+        saleMode: nextSaleMode,
+      });
+    }
+  }
   function handleArticleKeys(event: KeyboardEvent<HTMLElement>) {
     if (event.key === 'Enter') {
       if (!articleQuery.trim() && items.length > 0) {
@@ -641,7 +660,7 @@ export function PosPage() {
         focusPayment();
         return;
       }
-      const parsed = parseScan(articleQuery, posArticles);
+      const parsed = parseScan(articleQuery, saleArticles);
       if (parsed) {
         event.preventDefault();
         addArticleQuick(parsed.article, parsed.quantity);
@@ -654,7 +673,7 @@ export function PosPage() {
     const requested = Number(quantity || 0);
     const available = Number(stockByArticle.get(quantityArticle.articleId) ?? quantityArticle.stockAvailable ?? 0);
     if (!Number.isFinite(requested) || requested <= 0) { setClientError('Quantite invalide.'); return; }
-    if (requested > available) { setClientError(`Stock insuffisant. Disponible : ${available}.`); return; }
+    if (form.saleMode !== 'ADVANCE' && requested > available) { setClientError(`Stock insuffisant. Disponible : ${available}.`); return; }
     setClientError('');
     addArticleQuick(quantityArticle, requested);
   }
@@ -688,7 +707,7 @@ export function PosPage() {
     setExactPayment(false);
     setSelectedLineId('');
     setClientError('');
-    setForm((current) => ({ ...current, saleType: 'CASH', customerId: '', membershipId: '', exchangeRate: '1' }));
+    setForm((current) => ({ ...current, saleType: 'CASH', saleMode: 'IMMEDIATE', customerId: '', membershipId: '', exchangeRate: '1' }));
     createDraft.reset();
     validate.reset();
     setTimeout(() => focusArticleSearch(), 0);
@@ -696,7 +715,7 @@ export function PosPage() {
   function addArticleQuick(article: Article, lineQuantity: number) {
     if (!sale?.saleId) { setClientError('Vente en preparation. Reessayez dans un instant.'); playBeep('error'); return; }
     const available = Number(stockByArticle.get(article.articleId) ?? article.stockAvailable ?? 0);
-    if (lineQuantity > available) {
+    if (form.saleMode !== 'ADVANCE' && lineQuantity > available) {
       setClientError(`Stock insuffisant. Disponible : ${available}.`);
       playBeep('error');
       setTimeout(() => focusArticleSearch(), 0);
@@ -715,7 +734,7 @@ export function PosPage() {
     patchDraft({ customerId: form.customerId, saleType: form.saleType });
   }
   function openQuantityForCurrentScan() {
-    const parsed = parseScan(articleQuery, posArticles);
+    const parsed = parseScan(articleQuery, saleArticles);
     const article = parsed?.article ?? articleSuggestions[0];
     if (!article) { playBeep('error'); return; }
     setQuantity(String(parsed?.quantity ?? 1));
@@ -929,6 +948,7 @@ export function PosPage() {
         <div><span>Site</span><strong>{currentSite?.siteName ?? 'Site utilisateur'}</strong></div>
         <div><span>Taux</span><strong>1 USD = {formatMoney(saleExchangeRate, 'CDF')}</strong></div>
         <div><span>Type</span><strong>{form.saleType}</strong></div>
+        <div><span>Mode</span><strong>{form.saleMode === 'ADVANCE' ? 'AVANCE' : 'IMMEDIATE'}</strong></div>
       </section>
 
       <form className="card compact-card pos-header-grid" onSubmit={startSale}>
@@ -965,6 +985,7 @@ export function PosPage() {
           {form.customerId && <button className="ghost-button compact-button pos-counter-customer-button" type="button" onClick={resetCounterCustomer}>Client comptoir</button>}
         </label>
         <label><span>Type</span><select ref={saleTypeSelectRef} className="input compact-input" value={form.saleType} disabled={sale?.status && sale.status !== 'DRAFT'} onChange={(event) => setSaleType(event.target.value as PosForm['saleType'])}><option value="CASH">CASH</option><option value="INSURANCE">ASSURANCE</option></select></label>
+        <label><span>Mode</span><select className="input compact-input" value={form.saleMode} disabled={sale?.status && sale.status !== 'DRAFT'} onChange={(event) => setSaleMode(event.target.value as PosForm['saleMode'])}><option value="IMMEDIATE">Immediat</option><option value="ADVANCE">Paiement en avance</option></select></label>
         <label><span>Assurance</span><select ref={membershipSelectRef} className="input compact-input" value={form.membershipId} disabled={form.saleType !== 'INSURANCE' || !sale || sale.status !== 'DRAFT'} onChange={(event) => update('membershipId', event.target.value)}><option value="">Membership / Plan</option>{(memberships.data ?? []).filter((membership) => membership.isActive).map((membership) => <option key={membership.membershipId} value={membership.membershipId}>{membership.organizationName} - {membership.planName} ({membership.coveragePercent}%)</option>)}</select></label>
         <label><span>Site</span><input className="input compact-input" value={currentSite?.siteName ?? form.siteId ?? 'Site utilisateur'} disabled /></label>
         <label><span>Devise</span><input className="input compact-input" value="USD / FC" disabled /></label>
@@ -1226,6 +1247,13 @@ export function PosPage() {
         <p>Facture {sale?.saleNumber ?? '-'}</p>
         <p>Date: {sale?.saleDate ? formatDate(sale.saleDate) : '-'}</p>
         <p>Client: {(customers.data ?? []).find((customer) => customer.customerId === form.customerId)?.customerName ?? 'Comptoir'}</p>
+        {sale?.saleMode === 'ADVANCE' && (
+          <>
+            <p>Jeton de retrait: {sale.pickupToken ?? '-'}</p>
+            <p>Numero retrait: {sale.pickupNumber ?? sale.saleNumber ?? '-'}</p>
+            <p>Livraison: {sale.fulfillmentStatus ?? '-'}</p>
+          </>
+        )}
         <p>Taux utilise: 1 USD = {formatMoney(saleExchangeRate, 'CDF')}</p>
         <table><tbody>{items.map((item: any) => <tr key={item.saleItemId}><td>{item.commercialName}</td><td>{item.quantity}</td><td>{formatMoney(Number(item.lineTotal ?? 0) * saleExchangeRate, 'CDF')}</td><td>{formatMoney(item.lineTotal, 'USD', currencySymbol)}</td></tr>)}</tbody></table>
         <h2>Total FC: {formatMoney(total * saleExchangeRate, 'CDF')}</h2>

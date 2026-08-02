@@ -1,8 +1,8 @@
 import { apiClient } from './apiClient';
 
-export type SaleItem = { saleItemId: string; articleId: string; commercialName: string | null; lotId: string; lotNumber: string | null; expiryDate: string | null; quantity: number; unitPrice: number; lineTotal: number };
+export type SaleItem = { saleItemId: string; articleId: string; articleCode?: string | null; commercialName: string | null; lotId: string | null; lotNumber: string | null; expiryDate: string | null; quantity: number; orderedQuantity?: number; fulfilledQuantity?: number; unitPrice: number; lineTotal: number; salesUnitSnapshot?: string | null; packagingSnapshot?: string | null };
 export type Payment = { paymentId: string; saleId: string; paymentDate: string; methodName: string; currencyCode?: string | null; currencySymbol?: string | null; amount: number; referencePayment: string | null; receivedBy?: string | null; receivedByName?: string | null };
-export type Sale = { saleId: string; saleNumber: string; saleDate: string; customerId: string | null; customerName: string | null; organizationId?: string | null; organizationName?: string | null; membershipId?: string | null; planName?: string | null; coveragePercent?: number | null; siteId: string; siteName: string | null; currencyId: string; currencyCode?: string | null; currencySymbol?: string | null; exchangeRate?: number; subtotal?: number; discountAmount?: number; totalAmount: number; insuranceCoveredAmount: number; customerPayableAmount: number; creditAmount: number; amountPaidUsd?: number; amountPaidCdf?: number; amountReturnedUsd?: number; amountReturnedCdf?: number; netReceivedUsd?: number; netReceivedCdf?: number; settlementDifferenceUsd?: number; settlementDifferenceType?: string; settlementDifferenceReason?: string | null; settlementDifferenceNote?: string | null; saleType: string; status: string; createdAt?: string; validatedAt?: string | null; createdBy?: string | null; createdByName?: string | null; paymentModes?: string | null; items?: SaleItem[]; payments?: Payment[] };
+export type Sale = { saleId: string; saleNumber: string; saleDate: string; customerId: string | null; customerName: string | null; organizationId?: string | null; organizationName?: string | null; membershipId?: string | null; planName?: string | null; coveragePercent?: number | null; siteId: string; siteName: string | null; currencyId: string; currencyCode?: string | null; currencySymbol?: string | null; exchangeRate?: number; subtotal?: number; discountAmount?: number; totalAmount: number; insuranceCoveredAmount: number; customerPayableAmount: number; creditAmount: number; amountPaidUsd?: number; amountPaidCdf?: number; amountReturnedUsd?: number; amountReturnedCdf?: number; netReceivedUsd?: number; netReceivedCdf?: number; settlementDifferenceUsd?: number; settlementDifferenceType?: string; settlementDifferenceReason?: string | null; settlementDifferenceNote?: string | null; saleType: string; saleMode?: string; fulfillmentStatus?: string; fulfilledAt?: string | null; pickupToken?: string | null; pickupNumber?: string | null; pickupSiteId?: string | null; expectedPickupDate?: string | null; lastFulfillmentAt?: string | null; status: string; createdAt?: string; validatedAt?: string | null; createdBy?: string | null; createdByName?: string | null; paymentModes?: string | null; items?: SaleItem[]; payments?: Payment[] };
 export type SalesListResponse = {
   items: Sale[];
   page: number;
@@ -13,6 +13,13 @@ export type SalesListResponse = {
 export type SalesSummary = {
   revenueNet: number;
   saleCount: number;
+  immediateSaleCount?: number;
+  advanceSaleCount?: number;
+  advanceFulfilledCount?: number;
+  advancePendingCount?: number;
+  immediateRevenue?: number;
+  advanceFulfilledRevenue?: number;
+  advancePendingRevenue?: number;
   averageBasket: number;
   itemsSold: number;
   receivedUsd: number;
@@ -36,5 +43,6 @@ export const salesService = {
   removeItem: (saleId: string, itemId: string) => apiClient.delete<Sale>(`/sales/${saleId}/items/${itemId}`),
   applyInsurance: (saleId: string, payload: Record<string, unknown>) => apiClient.post<Sale>(`/sales/${saleId}/apply-insurance`, payload),
   validate: (saleId: string, payload: Record<string, unknown>) => apiClient.post<Sale>(`/sales/${saleId}/validate`, payload),
+  confirmPickup: (saleId: string, payload: Record<string, unknown>) => apiClient.post<Sale>(`/sales/${saleId}/confirm-pickup`, payload),
   cancel: (saleId: string) => apiClient.post<Sale>(`/sales/${saleId}/cancel`),
 };
