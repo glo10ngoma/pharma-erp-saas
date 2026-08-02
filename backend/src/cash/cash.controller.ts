@@ -40,6 +40,13 @@ export class CashController {
     return this.service.currentSession(user, siteId, deviceUuid, workstationId);
   }
 
+  @Get('sessions/open-for-user')
+  @RequirePermission('cash_registers.read')
+  @ApiOperation({ summary: 'Session caisse ouverte pour le vendeur' })
+  openSessionForUser(@CurrentUser() user: AuthUser, @Query('siteId') siteId?: string) {
+    return this.service.openSessionForUser(user, siteId);
+  }
+
   @Post('sessions/:id/close')
   @RequirePermission('cash_sessions.close')
   @ApiOperation({ summary: 'Fermer une session caisse' })

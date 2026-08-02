@@ -62,6 +62,7 @@ export function PosPage() {
   const [cashOpenOpeningCdf, setCashOpenOpeningCdf] = useState('0');
   const [cashOpenNote, setCashOpenNote] = useState('');
   const [cashOpenError, setCashOpenError] = useState('');
+  const [acceptedOpenSessionId, setAcceptedOpenSessionId] = useState('');
   const scanInputRef = useRef<HTMLInputElement | null>(null);
   const quantityInputRef = useRef<HTMLInputElement | null>(null);
   const paymentInputRef = useRef<HTMLInputElement | null>(null);
@@ -72,7 +73,9 @@ export function PosPage() {
   const audioRef = useRef<AudioContext | null>(null);
   const deviceUuid = useMemo(() => getOrCreateDeviceUuid(), []);
   const permissions = currentUser?.permissions ?? [];
+  const canReadCash = permissions.includes('cash_registers.read');
   const canOpenCash = permissions.includes('cash_sessions.open');
+  const canCloseCash = permissions.includes('cash_sessions.close');
 
   const sites = useQuery({ queryKey: ['sites'], queryFn: async () => (await sitesService.getAll()).data });
   const workstations = useQuery({ queryKey: ['workstations', 'pos'], queryFn: async () => (await workstationsService.getAll()).data });
@@ -107,6 +110,11 @@ export function PosPage() {
     queryKey: ['cash-current', form.siteId, deviceUuid, sessionWorkstationId],
     queryFn: async () => (await cashService.getCurrentSession(form.siteId, deviceUuid, sessionWorkstationId || undefined)).data,
     enabled: Boolean(form.siteId),
+  });
+  const openCashSessionElsewhere = useQuery({
+    queryKey: ['cash-open-for-user', form.siteId],
+    queryFn: async () => (await cashService.getOpenSessionForUser(form.siteId)).data,
+    enabled: Boolean(form.siteId) && canReadCash,
   });
   const exchangeRateQuery = useQuery({ queryKey: ['settings', 'exchange-rate'], queryFn: async () => (await settingsService.getExchangeRate()).data });
 
@@ -186,6 +194,17 @@ export function PosPage() {
         .some((value) => String(value ?? '').toLowerCase().includes(query)),
     );
   }, [customerQuery, customers.data]);
+  const userOpenCashSession = useMemo(() => {
+    const session = openCashSessionElsewhere.data ?? null;
+    if (!session) return null;
+    if (currentCashSession.data?.cashSessionId === session.cashSessionId) return null;
+    return session;
+  }, [currentCashSession.data?.cashSessionId, openCashSessionElsewhere.data]);
+  const activeCashSession = useMemo(() => {
+    if (currentCashSession.data) return currentCashSession.data;
+    if (acceptedOpenSessionId && userOpenCashSession?.cashSessionId === acceptedOpenSessionId) return userOpenCashSession;
+    return null;
+  }, [acceptedOpenSessionId, currentCashSession.data, userOpenCashSession]);
 
   const items = sale?.items ?? [];
   const currencyCode = sale?.currencyCode ?? 'USD';
@@ -333,7 +352,7 @@ export function PosPage() {
       amountReturnedCdf: returnedFcAmount,
       settlementDifferenceReason: settlementReason.trim() || undefined,
       settlementDifferenceNote: settlementNote.trim() || undefined,
-      cashSessionId: currentCashSession.data?.cashSessionId,
+      cashSessionId: activeCashSession?.cashSessionId,
     }),
     onSuccess: async (response) => {
       setSale(response.data);
@@ -367,8 +386,10 @@ export function PosPage() {
     },
     onSuccess: async () => {
       closeCashAssistant();
+      setAcceptedOpenSessionId('');
       setClientError('');
       await qc.invalidateQueries({ queryKey: ['cash-current'] });
+      await qc.invalidateQueries({ queryKey: ['cash-open-for-user'] });
       await qc.invalidateQueries({ queryKey: ['cash-sessions'] });
       await qc.invalidateQueries({ queryKey: ['cash-movements'] });
     },
@@ -477,7 +498,7 @@ export function PosPage() {
   }, [items]);
 
   useEffect(() => {
-    if (!canOpenCash || currentCashSession.data || currentCashSession.isLoading || currentCashSession.isError || resumeSale.isLoading || workstations.isLoading || workstations.isError || cashOpenModalOpen || cashOpenAutoPrompted) return;
+    if (!canOpenCash || activeCashSession || userOpenCashSession || currentCashSession.isLoading || currentCashSession.isError || resumeSale.isLoading || workstations.isLoading || workstations.isError || cashOpenModalOpen || cashOpenAutoPrompted) return;
     if (!form.siteId) return;
     const timeout = window.setTimeout(() => {
       setCashOpenModalOpen(true);
@@ -485,14 +506,14 @@ export function PosPage() {
       setCashOpenAutoPrompted(true);
     }, 450);
     return () => window.clearTimeout(timeout);
-  }, [canOpenCash, cashOpenAutoPrompted, cashOpenModalOpen, currentCashSession.data, currentCashSession.isError, currentCashSession.isLoading, form.siteId, resumeSale.isLoading, workstations.isError, workstations.isLoading]);
+  }, [activeCashSession, canOpenCash, cashOpenAutoPrompted, cashOpenModalOpen, currentCashSession.isError, currentCashSession.isLoading, form.siteId, resumeSale.isLoading, userOpenCashSession, workstations.isError, workstations.isLoading]);
 
   useEffect(() => {
-    if (currentCashSession.data && cashOpenModalOpen) {
+    if ((activeCashSession || userOpenCashSession) && cashOpenModalOpen) {
       setCashOpenModalOpen(false);
       setCashOpenError('');
     }
-  }, [cashOpenModalOpen, currentCashSession.data]);
+  }, [activeCashSession, cashOpenModalOpen, userOpenCashSession]);
 
   useEffect(() => {
     if (!cashOpenModalOpen) return;
@@ -548,6 +569,13 @@ export function PosPage() {
     setCashOpenAutoPrompted(true);
     setCashOpenModalOpen(true);
     setTimeout(() => cashOpenUsdInputRef.current?.focus(), 0);
+  }
+  function acceptOpenSession(sessionId: string) {
+    setAcceptedOpenSessionId(sessionId);
+    setCashOpenError('');
+    setClientError('');
+    setCashOpenAutoPrompted(true);
+    setCashOpenModalOpen(false);
   }
   function closeCashAssistant() {
     setCashOpenModalOpen(false);
@@ -711,7 +739,7 @@ export function PosPage() {
     const settlementDifferenceUsdSnapshot = roundMoney(netTotalEquivalentUsdSnapshot - patientPayableSnapshot);
     const hasPayment = Boolean(paidUsd || paidFc);
     const cashPaymentRequired = form.saleType === 'CASH' || hasPayment || exactPayment || paidUsdSnapshot > 0 || paidFcSnapshot > 0 || returnedUsdSnapshot > 0 || returnedFcSnapshot > 0;
-    if (!currentCashSession.data && cashPaymentRequired) {
+    if (!activeCashSession && cashPaymentRequired) {
       if (!canOpenCash) {
         setClientError('Vous n avez pas la permission d ouvrir une caisse.');
         playBeep('error');
@@ -842,9 +870,9 @@ export function PosPage() {
           <button className="ghost-button compact-button pos-header-action pos-mode-button" type="button" onClick={() => setCashMode((value) => !value)}>
             {cashMode ? 'Quitter mode caisse' : 'Mode caisse'}
           </button>
-          <span className={`badge ${currentCashSession.data ? 'badge-success' : 'badge-warning'}`}>{currentCashSession.data ? 'Caisse ouverte' : 'Caisse non ouverte'}</span>
-          <small>{currentCashSession.data ? `${currentCashSession.data.registerName ?? 'Caisse'} - Ouverture ${formatMoney(currentCashSession.data.openingBalance, currencyCode, currencySymbol)}` : 'Ouvrez une session caisse pour lier automatiquement les paiements CASH.'}</small>
-          {!currentCashSession.data && (
+          <span className={`badge ${activeCashSession ? 'badge-success' : 'badge-warning'}`}>{activeCashSession ? 'Caisse ouverte' : userOpenCashSession ? 'Caisse ouverte ailleurs' : 'Caisse non ouverte'}</span>
+          <small>{activeCashSession ? `${activeCashSession.registerName ?? 'Caisse'} - Ouverture ${formatMoney(activeCashSession.openingBalance, currencyCode, currencySymbol)}` : userOpenCashSession ? `${userOpenCashSession.registerName ?? 'Caisse'} - Session en cours sur un autre poste` : 'Ouvrez une session caisse pour lier automatiquement les paiements CASH.'}</small>
+          {!activeCashSession && !userOpenCashSession && (
             <button
               className="button compact-button pos-open-cash-button"
               type="button"
@@ -855,7 +883,7 @@ export function PosPage() {
               Ouvrir la caisse maintenant
             </button>
           )}
-          {!currentCashSession.data && !canOpenCash && <small className="muted">Vous n avez pas la permission d ouvrir une caisse.</small>}
+          {!activeCashSession && !userOpenCashSession && !canOpenCash && <small className="muted">Vous n avez pas la permission d ouvrir une caisse.</small>}
         </div>
       </div>
       {showError && <p className="form-error">{error}</p>}
@@ -863,8 +891,40 @@ export function PosPage() {
       {cashOpenError && !cashOpenModalOpen && <p className="form-error">{cashOpenError}</p>}
       {exchangeRateQuery.isError && <p className="form-error">Taux USD/CDF non charge. Fallback demo utilise : 1 USD = {formatMoney(POS_USD_CDF_FALLBACK_RATE, 'CDF')}.</p>}
 
+      {!activeCashSession && userOpenCashSession && (
+        <section className="card compact-card pos-open-session-banner">
+          <div className="pos-open-session-banner-header">
+            <div>
+              <h2>Session ouverte sur un autre poste</h2>
+              <p className="muted">Reprenez cette session ou ouvrez-la dans le module Caisse pour la fermer proprement.</p>
+            </div>
+            <span className="badge badge-warning">Session detectee</span>
+          </div>
+          <div className="pos-open-session-grid">
+            <div><span>session_id</span><strong>{userOpenCashSession.cashSessionId}</strong></div>
+            <div><span>workstation_name</span><strong>{userOpenCashSession.workstationName ?? '-'}</strong></div>
+            <div><span>workstation_id</span><strong>{userOpenCashSession.workstationId ?? '-'}</strong></div>
+            <div><span>device_uuid</span><strong>{userOpenCashSession.deviceUuid ?? '-'}</strong></div>
+            <div><span>user_id</span><strong>{userOpenCashSession.userId ?? currentUser?.id ?? '-'}</strong></div>
+            <div><span>site_id</span><strong>{userOpenCashSession.siteId}</strong></div>
+          </div>
+          <div className="page-actions pos-open-session-actions">
+            <button className="button compact-button" type="button" onClick={() => acceptOpenSession(userOpenCashSession.cashSessionId)}>
+              Reprendre cette session
+            </button>
+            {canCloseCash ? (
+              <Link className="ghost-button compact-button" to={`/cash?siteId=${encodeURIComponent(form.siteId)}&sessionId=${encodeURIComponent(userOpenCashSession.cashSessionId)}`}>
+                Fermer cette session
+              </Link>
+            ) : (
+              <small className="muted">La fermeture de session nécessite la permission cash_sessions.close.</small>
+            )}
+          </div>
+        </section>
+      )}
+
       <section className="pos-status-strip">
-        <div><span>Caisse</span><strong>{currentCashSession.data ? 'OUVERTE' : 'FERMEE'}</strong><small>{currentCashSession.data?.registerName ?? 'Aucune session'}</small></div>
+        <div><span>Caisse</span><strong>{activeCashSession ? 'OUVERTE' : userOpenCashSession ? 'OUVERTE AILLEURS' : 'FERMEE'}</strong><small>{activeCashSession?.registerName ?? userOpenCashSession?.registerName ?? 'Aucune session'}</small></div>
         <div><span>Vendeur</span><strong>{currentUser?.fullName ?? '-'}</strong><small>{currentUser?.role ?? '-'}</small></div>
         <div><span>Site</span><strong>{currentSite?.siteName ?? 'Site utilisateur'}</strong></div>
         <div><span>Taux</span><strong>1 USD = {formatMoney(saleExchangeRate, 'CDF')}</strong></div>

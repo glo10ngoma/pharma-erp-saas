@@ -2923,6 +2923,59 @@ details.nav-group .nav-link {
   min-width: 184px;
 }
 
+.pos-open-session-banner {
+  border-color: rgba(245, 158, 11, .35);
+  display: grid;
+  gap: 10px;
+}
+
+.pos-open-session-banner-header {
+  align-items: start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.pos-open-session-banner-header h2 {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.pos-open-session-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.pos-open-session-grid div {
+  background: rgba(255, 255, 255, .72);
+  border: 1px solid rgba(148, 163, 184, .3);
+  border-radius: 8px;
+  display: grid;
+  gap: 2px;
+  min-height: 58px;
+  padding: 8px 10px;
+}
+
+.pos-open-session-grid span {
+  color: var(--muted);
+  font-size: .68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.pos-open-session-grid strong {
+  word-break: break-word;
+}
+
+.pos-open-session-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .pos-customer-display-button {
   border-color: rgba(15, 118, 110, .45);
 }
@@ -3659,6 +3712,7 @@ details.nav-group .nav-link {
 [data-theme='dark'] .pos-status-strip,
 [data-theme='dark'] .pos-cash-total,
 [data-theme='dark'] .pos-cash-change,
+[data-theme='dark'] .pos-open-session-grid div,
 [data-theme='dark'] .pos-page-cash-mode .pos-toolbar {
   background: #111827;
   border-color: #334155;

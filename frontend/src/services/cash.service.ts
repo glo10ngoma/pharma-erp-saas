@@ -2,6 +2,7 @@ import { apiClient } from './apiClient';
 
 export type CashSession = {
   cashSessionId: string;
+  userId?: string;
   siteId: string;
   siteName: string | null;
   userName: string | null;
@@ -49,6 +50,10 @@ export const cashService = {
   getCurrentSession: (siteId?: string, deviceUuid?: string, workstationId?: string) =>
     apiClient.get<CashSession | null>('/cash/sessions/current', {
       params: siteId || deviceUuid || workstationId ? { siteId, deviceUuid, workstationId } : undefined,
+    }),
+  getOpenSessionForUser: (siteId?: string) =>
+    apiClient.get<CashSession | null>('/cash/sessions/open-for-user', {
+      params: siteId ? { siteId } : undefined,
     }),
   openSession: (payload: Record<string, unknown>) => apiClient.post<CashSession>('/cash/sessions/open', payload),
   closeSession: (sessionId: string, payload: Record<string, unknown>) =>

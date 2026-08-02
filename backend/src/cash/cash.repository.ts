@@ -127,6 +127,38 @@ export class CashRepository {
     return result.rows[0] ? this.toSession(result.rows[0]) : null;
   }
 
+  async openSessionForUser(user: AuthUser, siteId?: string) {
+    if (siteId) await this.assertSiteAllowed(user, siteId);
+    const result = await this.db.query<CashSessionRow>(
+      `
+      SELECT cs.cash_session_id, cs.tenant_id, cs.site_id, s.site_name, cs.user_id,
+             u.full_name AS user_name, cs.cash_register_id, cr.register_name,
+             cur.currency_code AS register_currency_code,
+             cs.workstation_id, cs.workstation_name,
+             cs.opened_at, cs.closed_at, cs.opening_balance, cs.closing_balance,
+             cs.expected_closing_balance, cs.difference_amount,
+             cs.opened_ip_address, cs.closed_ip_address, cs.device_uuid,
+             cs.counted_closing_balance_usd, cs.counted_closing_balance_cdf,
+             cs.expected_closing_balance_usd, cs.expected_closing_balance_cdf,
+             cs.closing_difference_usd, cs.closing_difference_cdf,
+             cs.status, cs.notes
+      FROM cash_sessions cs
+      JOIN sites s ON s.site_id = cs.site_id AND s.tenant_id = cs.tenant_id
+      LEFT JOIN users u ON u.user_id = cs.user_id AND u.tenant_id = cs.tenant_id
+      LEFT JOIN cash_registers cr ON cr.cash_register_id = cs.cash_register_id AND cr.tenant_id = cs.tenant_id
+      LEFT JOIN currencies cur ON cur.currency_id = cr.currency_id
+      WHERE cs.tenant_id = $1
+        AND cs.user_id = $2
+        AND cs.status = 'OPEN'
+        AND ($3::uuid IS NULL OR cs.site_id = $3::uuid)
+      ORDER BY cs.opened_at DESC
+      LIMIT 1
+      `,
+      [user.tenantId, user.userId, siteId ?? null],
+    );
+    return result.rows[0] ? this.toSession(result.rows[0]) : null;
+  }
+
   async openSession(user: AuthUser, dto: OpenCashSessionDto, ipAddress?: string) {
     await this.assertSiteAllowed(user, dto.siteId);
     if (dto.cashRegisterId) await this.assertCashRegister(user, dto.siteId, dto.cashRegisterId);
