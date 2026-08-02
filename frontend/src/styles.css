@@ -3441,10 +3441,6 @@ details.nav-group .nav-link {
   border-radius: 8px;
 }
 
-.pos-page-cash-mode .pos-header-grid {
-  display: none;
-}
-
 .pos-page-cash-mode .pos-status-strip {
   grid-template-columns: repeat(5, minmax(150px, 1fr));
 }
