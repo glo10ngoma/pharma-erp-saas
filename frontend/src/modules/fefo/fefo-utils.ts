@@ -64,6 +64,13 @@ export type RotationKpis = {
   health: number;
 };
 
+export type FefoPriorityMeta = {
+  label: string;
+  className: string;
+  icon: string;
+  description: string;
+};
+
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 export function buildFefoRiskRows(lots: Lot[], stocks: Stock[], articles: Article[], today = new Date()): FefoRiskRow[] {
@@ -172,17 +179,53 @@ export function buildRotationKpis(rows: FefoRotationRow[]): RotationKpis {
 }
 
 export function priorityLabel(priority: FefoPriority) {
-  if (priority === 'EXPIRED') return 'Expire';
-  if (priority === 'RED') return 'Rouge';
-  if (priority === 'ORANGE') return 'Orange';
-  return 'Vert';
+  return priorityMeta(priority).label;
 }
 
 export function priorityClass(priority: FefoPriority) {
-  if (priority === 'EXPIRED') return 'badge badge-danger';
-  if (priority === 'RED') return 'badge badge-danger';
-  if (priority === 'ORANGE') return 'badge badge-warning';
-  return 'badge badge-success';
+  return priorityMeta(priority).className;
+}
+
+export function priorityMeta(priority: FefoPriority): FefoPriorityMeta {
+  if (priority === 'EXPIRED') {
+    return {
+      label: 'Expiré',
+      className: 'badge fefo-priority fefo-priority-expired',
+      icon: '✕',
+      description: "Date d'expiration dépassée.",
+    };
+  }
+  if (priority === 'RED') {
+    return {
+      label: 'Rouge',
+      className: 'badge fefo-priority fefo-priority-red',
+      icon: '!',
+      description: "Échéance très proche, lot non expiré.",
+    };
+  }
+  if (priority === 'ORANGE') {
+    return {
+      label: 'Orange',
+      className: 'badge fefo-priority fefo-priority-orange',
+      icon: '▲',
+      description: 'Surveillance FEFO renforcée.',
+    };
+  }
+  return {
+    label: 'Vert',
+    className: 'badge fefo-priority fefo-priority-green',
+    icon: '●',
+    description: 'Situation FEFO stable.',
+  };
+}
+
+export function fefoPriorityLegend(): FefoPriorityMeta[] {
+  return [
+    priorityMeta('EXPIRED'),
+    priorityMeta('RED'),
+    priorityMeta('ORANGE'),
+    priorityMeta('GREEN'),
+  ];
 }
 
 export function daysUntil(expiryDate: string, today = new Date()) {

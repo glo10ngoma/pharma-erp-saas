@@ -8,7 +8,7 @@ import { downloadCsv, downloadJson, downloadXlsx } from '../../utils/export';
 import { fileDateStamp, formatDate } from '../../utils/date';
 import { fetchAllPages } from '../../utils/fetchAllPages';
 import { formatMoney } from '../../utils/money';
-import { buildFefoRiskRows, buildRotationKpis, buildRotationRows, priorityClass, priorityLabel, type FefoRotationRow } from './fefo-utils';
+import { buildFefoRiskRows, buildRotationKpis, buildRotationRows, priorityMeta, type FefoRotationRow } from './fefo-utils';
 
 export function FefoRotationPage() {
   const [search, setSearch] = useState('');
@@ -20,8 +20,9 @@ export function FefoRotationPage() {
     queryFn: async () =>
       fetchAllPages(
         async ({ page, limit }) => (await articlesService.getAll({ page, limit })).data,
-        { getKey: (article) => article.articleId },
+        { limit: 100, maxPages: 100, getKey: (article) => article.articleId },
       ),
+    staleTime: 5 * 60 * 1000,
   });
   const error = [lots, stocks, articles].find((query) => query.isError)?.error;
   const rows = useMemo(() => {
@@ -43,7 +44,12 @@ export function FefoRotationPage() {
         <ExportActions rows={filteredRows} />
       </div>
 
-      {error && <p className="form-error">{apiErrorMessage(error)}</p>}
+      {error ? (
+        <div className="card fefo-error-card" role="alert">
+          <strong>Impossible de charger la rotation FEFO.</strong>
+          <small>{apiErrorMessage(error)}</small>
+        </div>
+      ) : null}
       {kpis.critical > 0 && <div className="fefo-alerts"><div className="fefo-alert danger">{kpis.critical} rotation(s) critiques a traiter.</div></div>}
 
       <div className="grid two fefo-kpis">
@@ -83,7 +89,7 @@ export function FefoRotationPage() {
                     <td>{row.lotNumber}</td>
                     <td>{formatDate(row.expiryDate)}</td>
                     <td className="quantity-cell">{row.quantityAvailable}</td>
-                    <td><span className={priorityClass(row.priority)}>{priorityLabel(row.priority)}</span></td>
+                    <td><PriorityBadge priority={row.priority} /></td>
                     <td>{row.action}{row.mispositioned && <span className="fefo-inline-alert"> lot recent dominant</span>}</td>
                   </tr>
                 ))}
@@ -120,7 +126,7 @@ function ExportActions({ rows }: { rows: FefoRotationRow[] }) {
       row.lotNumber,
       formatDate(row.expiryDate),
       row.quantityAvailable,
-      priorityLabel(row.priority),
+      priorityMeta(row.priority).label,
       row.action,
       formatMoney(row.stockValue, row.currencyCode, row.currencySymbol),
     ]);
@@ -135,5 +141,15 @@ function ExportActions({ rows }: { rows: FefoRotationRow[] }) {
       <button className="ghost-button" onClick={() => exportRows('csv')}>CSV</button>
       <button className="ghost-button" onClick={() => exportRows('json')}>JSON</button>
     </div>
+  );
+}
+
+function PriorityBadge({ priority }: { priority: FefoRotationRow['priority'] }) {
+  const meta = priorityMeta(priority);
+  return (
+    <span className={meta.className} title={meta.description}>
+      <span aria-hidden="true" className="fefo-priority-icon">{meta.icon}</span>
+      <span>{meta.label}</span>
+    </span>
   );
 }

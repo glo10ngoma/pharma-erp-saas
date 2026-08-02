@@ -9,7 +9,7 @@ import { downloadCsv, downloadJson, downloadXlsx } from '../../utils/export';
 import { formatDate, fileDateStamp } from '../../utils/date';
 import { fetchAllPages } from '../../utils/fetchAllPages';
 import { formatMoney } from '../../utils/money';
-import { buildFefoKpis, buildFefoRiskRows, priorityClass, priorityLabel, type FefoRiskRow } from './fefo-utils';
+import { buildFefoKpis, buildFefoRiskRows, fefoPriorityLegend, priorityMeta, type FefoRiskRow } from './fefo-utils';
 
 type ExpiryFilter = 'ALL' | 'D30' | 'D90' | 'EXPIRED';
 
@@ -25,11 +25,13 @@ export function FefoHighlightPage() {
     queryFn: async () =>
       fetchAllPages(
         async ({ page, limit }) => (await articlesService.getAll({ page, limit })).data,
-        { getKey: (article) => article.articleId },
+        { limit: 100, maxPages: 100, getKey: (article) => article.articleId },
       ),
+    staleTime: 5 * 60 * 1000,
   });
-  const categories = useQuery({ queryKey: ['categories'], queryFn: async () => (await referenceService.categories.getAll()).data });
+  const categories = useQuery({ queryKey: ['categories'], queryFn: async () => (await referenceService.categories.getAll()).data, staleTime: 5 * 60 * 1000 });
   const error = [lots, stocks, articles, categories].find((query) => query.isError)?.error;
+  const legend = fefoPriorityLegend();
 
   const rows = useMemo(
     () => buildFefoRiskRows(lots.data ?? [], stocks.data ?? [], articles.data ?? []),
@@ -52,13 +54,30 @@ export function FefoHighlightPage() {
         <ExportActions rows={filteredRows} prefix="fefo_mise_en_avant" />
       </div>
 
-      {error && <p className="form-error">{apiErrorMessage(error)}</p>}
+      {error ? (
+        <div className="card fefo-error-card" role="alert">
+          <strong>Impossible de charger les produits a mettre en avant.</strong>
+          <small>{apiErrorMessage(error)}</small>
+        </div>
+      ) : null}
       {(urgentCount > 0 || warningCount > 0) && (
         <div className="fefo-alerts">
           {urgentCount > 0 && <div className="fefo-alert danger">Alerte rouge : {urgentCount} lot(s) expirent sous 7 jours.</div>}
           {warningCount > 0 && <div className="fefo-alert warning">Notification orange : {warningCount} lot(s) expirent sous 30 jours.</div>}
         </div>
       )}
+
+      <div className="card fefo-legend" aria-label="Legende FEFO">
+        {legend.map((item) => (
+          <div className="fefo-legend-item" key={item.label} title={item.description}>
+            <span className={item.className}>
+              <span aria-hidden="true" className="fefo-priority-icon">{item.icon}</span>
+              <span>{item.label}</span>
+            </span>
+            <small>{item.description}</small>
+          </div>
+        ))}
+      </div>
 
       <div className="grid two fefo-kpis">
         <Kpi label="Produits prioritaires aujourd'hui" value={kpis.priorityToday} />
@@ -107,7 +126,7 @@ export function FefoHighlightPage() {
               <tbody>
                 {filteredRows.length === 0 ? <tr><td colSpan={10} className="empty-state">Aucun lot disponible pour ces criteres.</td></tr> : filteredRows.map((row) => (
                   <tr key={row.key}>
-                    <td><span className={priorityClass(row.priority)}>{priorityLabel(row.priority)}</span></td>
+                    <td><PriorityBadge priority={row.priority} /></td>
                     <td><strong>{row.articleName}</strong><br /><span className="muted-text">{row.articleCode}</span></td>
                     <td>{row.dci}</td>
                     <td>{row.lotNumber}</td>
@@ -150,7 +169,7 @@ function ExportActions({ rows, prefix }: { rows: FefoRiskRow[]; prefix: string }
     const stamp = fileDateStamp();
     const header = ['Priorite', 'Article', 'Code', 'DCI', 'Lot', 'Site', 'Stock disponible', 'Expiration', 'Jours restants', 'Valeur du stock', 'Action recommandee'];
     const data = rows.map((row) => [
-      priorityLabel(row.priority),
+      priorityMeta(row.priority).label,
       row.articleName,
       row.articleCode,
       row.dci,
@@ -173,5 +192,15 @@ function ExportActions({ rows, prefix }: { rows: FefoRiskRow[]; prefix: string }
       <button className="ghost-button" onClick={() => exportRows('csv')}>CSV</button>
       <button className="ghost-button" onClick={() => exportRows('json')}>JSON</button>
     </div>
+  );
+}
+
+function PriorityBadge({ priority }: { priority: FefoRiskRow['priority'] }) {
+  const meta = priorityMeta(priority);
+  return (
+    <span className={meta.className} title={meta.description}>
+      <span aria-hidden="true" className="fefo-priority-icon">{meta.icon}</span>
+      <span>{meta.label}</span>
+    </span>
   );
 }

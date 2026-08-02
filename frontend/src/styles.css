@@ -3816,6 +3816,20 @@ details.nav-group .nav-link {
   margin-bottom: 14px;
 }
 
+.fefo-error-card {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.fefo-error-card strong {
+  color: var(--danger);
+}
+
+.fefo-error-card small {
+  color: var(--muted);
+}
+
 .fefo-alert {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -3833,6 +3847,59 @@ details.nav-group .nav-link {
   background: #fef2f2;
   border-color: #ef4444;
   color: #991b1b;
+}
+
+.fefo-legend {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 14px;
+}
+
+.fefo-legend-item {
+  display: grid;
+  gap: 6px;
+}
+
+.fefo-legend-item small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.fefo-priority {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.fefo-priority-icon {
+  font-size: .85rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.fefo-priority-expired {
+  background: #581c42;
+  border: 1px solid #4a1235;
+  color: #fff7fb;
+}
+
+.fefo-priority-red {
+  background: #fee2e2;
+  border: 1px solid #ef4444;
+  color: #991b1b;
+}
+
+.fefo-priority-orange {
+  background: #ffedd5;
+  border: 1px solid #fb923c;
+  color: #9a3412;
+}
+
+.fefo-priority-green {
+  background: #dcfce7;
+  border: 1px solid #22c55e;
+  color: #166534;
 }
 
 .fefo-table-wrap {
@@ -4349,6 +4416,30 @@ details.nav-group .nav-link {
   color: #fca5a5;
 }
 
+[data-theme='dark'] .fefo-priority-expired {
+  background: rgba(88, 28, 66, .85);
+  border-color: rgba(216, 180, 254, .28);
+  color: #fdf4ff;
+}
+
+[data-theme='dark'] .fefo-priority-red {
+  background: rgba(127, 29, 29, .36);
+  border-color: rgba(248, 113, 113, .5);
+  color: #fecaca;
+}
+
+[data-theme='dark'] .fefo-priority-orange {
+  background: rgba(124, 45, 18, .36);
+  border-color: rgba(251, 146, 60, .48);
+  color: #fed7aa;
+}
+
+[data-theme='dark'] .fefo-priority-green {
+  background: rgba(20, 83, 45, .42);
+  border-color: rgba(74, 222, 128, .4);
+  color: #dcfce7;
+}
+
 [data-theme='dark'] .fefo-table tbody tr {
   background: var(--surface);
 }
@@ -4445,6 +4536,10 @@ details.nav-group .nav-link {
 
   .fefo-filters {
     grid-template-columns: 1fr;
+  }
+
+  .fefo-legend {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .finance-kpi-grid,
