@@ -291,19 +291,20 @@ export class LotsRepository {
       );
 
       await client.query(
-        `UPDATE stocks SET quantity_available = quantity_available - $2, updated_at = CURRENT_TIMESTAMP WHERE stock_id = $1`,
-        [stock.stock_id, quantity],
+        `UPDATE stocks SET quantity_available = quantity_available - $2, updated_at = CURRENT_TIMESTAMP WHERE stock_id = $1 AND tenant_id = $3`,
+        [stock.stock_id, quantity, user.tenantId],
       );
 
       const movement = await client.query<MovementInsertRow>(
         `
         INSERT INTO stock_movements (
-          site_id, article_id, lot_id, movement_type, quantity, reference_type, reference_id, notes, user_id
+          tenant_id, site_id, article_id, lot_id, movement_type, quantity, reference_type, reference_id, notes, user_id
         )
-        VALUES ($1,$2,$3,'EXPIRED_OUT',$4,'LOT_EXPIRY_ACTION',$5,$6,$7)
+        VALUES ($1,$2,$3,$4,'EXPIRED_OUT',$5,'LOT_EXPIRY_ACTION',$6,$7,$8)
         RETURNING movement_id, movement_date
         `,
         [
+          user.tenantId,
           dto.siteId,
           stock.article_id,
           lotId,
@@ -358,7 +359,7 @@ export class LotsRepository {
         st.tenant_id,
         st.site_id,
         s.site_name,
-        st.article_id,
+        l.article_id,
         a.article_code,
         a.commercial_name AS article_name,
         st.lot_id,
@@ -372,7 +373,7 @@ export class LotsRepository {
         l.block_reason
       FROM stocks st
       JOIN lots l ON l.lot_id = st.lot_id AND l.tenant_id = st.tenant_id
-      JOIN articles a ON a.article_id = st.article_id AND a.tenant_id = st.tenant_id
+      JOIN articles a ON a.article_id = l.article_id AND a.tenant_id = st.tenant_id
       JOIN sites s ON s.site_id = st.site_id AND s.tenant_id = st.tenant_id
       WHERE st.tenant_id = $1
         AND st.lot_id = $2

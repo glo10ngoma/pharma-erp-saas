@@ -38,6 +38,8 @@ export function FefoRotationPage() {
   const [expiredQuantity, setExpiredQuantity] = useState('0');
   const [expiredNote, setExpiredNote] = useState('');
   const [confirmNote, setConfirmNote] = useState('');
+  const [expiredRequestKey, setExpiredRequestKey] = useState('');
+  const [confirmRequestKey, setConfirmRequestKey] = useState('');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const canExecuteFefoActions = permissions.includes('fefo.actions.execute');
@@ -61,30 +63,32 @@ export function FefoRotationPage() {
   });
 
   const confirmAction = useMutation({
-    mutationFn: (payload: { lotId: string; siteId: string; actionType: 'HIGHLIGHT_CONFIRMED' | 'SHELF_ROTATION_CONFIRMED'; note?: string }) =>
-      lotsService.confirmFefoAction(payload.lotId, { siteId: payload.siteId, actionType: payload.actionType, note: payload.note, requestKey: buildRequestKey() }),
+    mutationFn: (payload: { lotId: string; siteId: string; actionType: 'HIGHLIGHT_CONFIRMED' | 'SHELF_ROTATION_CONFIRMED'; note?: string; requestKey: string }) =>
+      lotsService.confirmFefoAction(payload.lotId, { siteId: payload.siteId, actionType: payload.actionType, note: payload.note, requestKey: payload.requestKey }),
     onSuccess: () => {
       setFeedback({ type: 'success', message: 'Action FEFO enregistree avec succes.' });
       setSelectedConfirmRow(null);
       setConfirmNote('');
+      setConfirmRequestKey('');
       invalidateFefoQueries(qc);
     },
     onError: (error) => setFeedback({ type: 'error', message: apiErrorMessage(error) }),
   });
 
   const removeExpiredStock = useMutation({
-    mutationFn: (payload: { lotId: string; siteId: string; quantity: number; note?: string }) =>
+    mutationFn: (payload: { lotId: string; siteId: string; quantity: number; note?: string; requestKey: string }) =>
       lotsService.removeExpiredStock(payload.lotId, {
         siteId: payload.siteId,
         quantity: payload.quantity,
         reason: 'EXPIRED',
         note: payload.note,
-        requestKey: buildRequestKey(),
+        requestKey: payload.requestKey,
       }),
     onSuccess: () => {
       setFeedback({ type: 'success', message: 'Sortie de stock enregistree avec succes.' });
       setSelectedExpiredRow(null);
       setExpiredNote('');
+      setExpiredRequestKey('');
       invalidateFefoQueries(qc);
     },
     onError: (error) => setFeedback({ type: 'error', message: apiErrorMessage(error) }),
@@ -94,14 +98,29 @@ export function FefoRotationPage() {
     if (selectedExpiredRow) {
       setExpiredQuantity(String(selectedExpiredRow.quantityAvailable));
       setExpiredNote('');
+      setExpiredRequestKey(buildRequestKey());
+      removeExpiredStock.reset();
     }
   }, [selectedExpiredRow]);
 
   useEffect(() => {
     if (selectedConfirmRow) {
       setConfirmNote('');
+      setConfirmRequestKey(buildRequestKey());
+      confirmAction.reset();
     }
   }, [selectedConfirmRow]);
+
+  const expiredQuantityValue = Number(expiredQuantity);
+  const expiredQuantityError = !selectedExpiredRow
+    ? null
+    : !Number.isFinite(expiredQuantityValue) || expiredQuantity.trim() === ''
+      ? 'Saisissez une quantite valide.'
+      : expiredQuantityValue <= 0
+        ? 'La quantite a retirer doit etre superieure a zero.'
+        : expiredQuantityValue > selectedExpiredRow.quantityAvailable
+          ? 'Le stock disponible est insuffisant pour cette sortie.'
+          : null;
 
   const error = [lots, stocks, articles, fefoActions].find((query) => query.isError)?.error;
 
@@ -232,7 +251,7 @@ export function FefoRotationPage() {
         )}
       </div>
 
-      <Modal title="Retirer les produits expires du stock" open={Boolean(selectedExpiredRow)} onClose={() => setSelectedExpiredRow(null)}>
+      <Modal title="Retirer les produits expires du stock" open={Boolean(selectedExpiredRow)} onClose={() => { setSelectedExpiredRow(null); setExpiredRequestKey(''); removeExpiredStock.reset(); }}>
         {selectedExpiredRow ? (
           <div className="fefo-action-modal">
             <div className="detail-grid">
@@ -252,22 +271,25 @@ export function FefoRotationPage() {
                 <span>Quantite a retirer</span>
                 <input className="input" type="number" min="0.001" step="0.001" value={expiredQuantity} onChange={(event) => setExpiredQuantity(event.target.value)} />
               </label>
+              {expiredQuantityError ? <p className="form-error">{expiredQuantityError}</p> : null}
               <label>
                 <span>Observation</span>
                 <textarea className="input fefo-modal-textarea" value={expiredNote} onChange={(event) => setExpiredNote(event.target.value)} placeholder="Retire du rayon le 02/08/2026" />
               </label>
+              {removeExpiredStock.isError ? <p className="form-error">{apiErrorMessage(removeExpiredStock.error)}</p> : null}
             </div>
             <div className="modal-actions">
-              <button className="ghost-button compact-button" type="button" onClick={() => setSelectedExpiredRow(null)}>Annuler</button>
+              <button className="ghost-button compact-button" type="button" onClick={() => { setSelectedExpiredRow(null); setExpiredRequestKey(''); removeExpiredStock.reset(); }}>Annuler</button>
               <button
                 className="button compact-button"
                 type="button"
-                disabled={removeExpiredStock.isPending}
+                disabled={removeExpiredStock.isPending || Boolean(expiredQuantityError)}
                 onClick={() => removeExpiredStock.mutate({
                   lotId: selectedExpiredRow.lotId,
                   siteId: selectedExpiredRow.siteId,
-                  quantity: Number(expiredQuantity),
+                  quantity: expiredQuantityValue,
                   note: expiredNote.trim() || undefined,
+                  requestKey: expiredRequestKey || buildRequestKey(),
                 })}
               >
                 Confirmer la sortie
@@ -277,7 +299,7 @@ export function FefoRotationPage() {
         ) : null}
       </Modal>
 
-      <Modal title="Confirmer l action FEFO" open={Boolean(selectedConfirmRow)} onClose={() => setSelectedConfirmRow(null)}>
+      <Modal title="Confirmer l action FEFO" open={Boolean(selectedConfirmRow)} onClose={() => { setSelectedConfirmRow(null); setConfirmRequestKey(''); confirmAction.reset(); }}>
         {selectedConfirmRow ? (
           <div className="fefo-action-modal">
             <div className="detail-grid">
@@ -293,7 +315,7 @@ export function FefoRotationPage() {
               </label>
             </div>
             <div className="modal-actions">
-              <button className="ghost-button compact-button" type="button" onClick={() => setSelectedConfirmRow(null)}>Annuler</button>
+              <button className="ghost-button compact-button" type="button" onClick={() => { setSelectedConfirmRow(null); setConfirmRequestKey(''); confirmAction.reset(); }}>Annuler</button>
               <button
                 className="button compact-button"
                 type="button"
@@ -303,6 +325,7 @@ export function FefoRotationPage() {
                   siteId: selectedConfirmRow.siteId,
                   actionType: selectedConfirmRow.priority === 'RED' ? 'HIGHLIGHT_CONFIRMED' : 'SHELF_ROTATION_CONFIRMED',
                   note: confirmNote.trim() || undefined,
+                  requestKey: confirmRequestKey || buildRequestKey(),
                 })}
               >
                 Confirmer l action
