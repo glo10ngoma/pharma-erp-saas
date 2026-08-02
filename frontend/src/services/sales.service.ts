@@ -32,6 +32,7 @@ export const salesService = {
   create: (payload: Record<string, unknown>) => apiClient.post<Sale>('/sales', payload),
   updateDraft: (saleId: string, payload: Record<string, unknown>) => apiClient.patch<Sale>(`/sales/${saleId}`, payload),
   addItemFefo: (saleId: string, payload: Record<string, unknown>) => apiClient.post<Sale>(`/sales/${saleId}/items/fefo`, payload),
+  updateItem: (saleId: string, itemId: string, payload: Record<string, unknown>) => apiClient.patch<Sale>(`/sales/${saleId}/items/${itemId}`, payload),
   removeItem: (saleId: string, itemId: string) => apiClient.delete<Sale>(`/sales/${saleId}/items/${itemId}`),
   applyInsurance: (saleId: string, payload: Record<string, unknown>) => apiClient.post<Sale>(`/sales/${saleId}/apply-insurance`, payload),
   validate: (saleId: string, payload: Record<string, unknown>) => apiClient.post<Sale>(`/sales/${saleId}/validate`, payload),

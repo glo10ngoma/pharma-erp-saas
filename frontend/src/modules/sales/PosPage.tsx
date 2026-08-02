@@ -1,6 +1,6 @@
 import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
 import { FloatingSearchPopover } from '../../components/FloatingSearchPopover';
 import { Article, articlesService } from '../../services/articles.service';
@@ -32,6 +32,7 @@ const SETTLEMENT_TOLERANCE_USD = 0.02;
 export function PosPage() {
   const qc = useQueryClient();
   const { currentUser } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [form, setForm] = useState<PosForm>(initialForm);
   const [sale, setSale] = useState<any>(null);
   const [articleQuery, setArticleQuery] = useState('');
@@ -50,6 +51,7 @@ export function PosPage() {
   const [selectedLineId, setSelectedLineId] = useState('');
   const [clientError, setClientError] = useState('');
   const [customerDisplayMessage, setCustomerDisplayMessage] = useState('');
+  const [itemQuantityDrafts, setItemQuantityDrafts] = useState<Record<string, string>>({});
   const [cashMode, setCashMode] = useState(() => localStorage.getItem('posCashMode') === 'true');
   const scanInputRef = useRef<HTMLInputElement | null>(null);
   const quantityInputRef = useRef<HTMLInputElement | null>(null);
@@ -61,6 +63,7 @@ export function PosPage() {
   const deviceUuid = useMemo(() => getOrCreateDeviceUuid(), []);
 
   const sites = useQuery({ queryKey: ['sites'], queryFn: async () => (await sitesService.getAll()).data });
+  const saleIdParam = searchParams.get('saleId') ?? '';
   const articles = useQuery({
     queryKey: ['articles', 'pos'],
     queryFn: async () =>
@@ -72,6 +75,11 @@ export function PosPage() {
   const lots = useQuery({ queryKey: ['lots', 'pos'], queryFn: async () => (await lotsService.getAll()).data });
   const stocks = useQuery({ queryKey: ['stocks', 'pos'], queryFn: async () => (await stocksService.getAll()).data });
   const customers = useQuery({ queryKey: ['customers'], queryFn: async () => (await referenceService.customers.getAll()).data });
+  const productUnits = useQuery({
+    queryKey: ['product-units', 'pos'],
+    queryFn: async () => (await referenceService.productUnits.getAll()).data,
+    staleTime: 5 * 60 * 1000,
+  });
   const memberships = useQuery({ queryKey: ['customer-memberships', form.customerId], queryFn: async () => (await insuranceService.memberships.getByCustomer(form.customerId)).data, enabled: Boolean(form.customerId) });
   const currentCashSession = useQuery({
     queryKey: ['cash-current', form.siteId, deviceUuid],
@@ -81,6 +89,8 @@ export function PosPage() {
   const exchangeRateQuery = useQuery({ queryKey: ['settings', 'exchange-rate'], queryFn: async () => (await settingsService.getExchangeRate()).data });
 
   const currentSite = useMemo(() => (sites.data ?? []).find((site) => site.siteId === form.siteId), [form.siteId, sites.data]);
+  const articleById = useMemo(() => new Map((articles.data ?? []).map((article) => [article.articleId, article])), [articles.data]);
+  const unitLabelById = useMemo(() => new Map((productUnits.data ?? []).map((unit) => [unit.productUnitId, unit.unitLabel])), [productUnits.data]);
   const selectedCustomer = useMemo(() => (customers.data ?? []).find((customer) => customer.customerId === form.customerId), [customers.data, form.customerId]);
   const sellableLotById = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -105,7 +115,6 @@ export function PosPage() {
     return map;
   }, [sellableStocks]);
   const posArticles = useMemo<Article[]>(() => {
-    const articleById = new Map((articles.data ?? []).map((article) => [article.articleId, article]));
     const rows = new Map<string, Article>();
     for (const stock of sellableStocks) {
       const article = articleById.get(stock.articleId);
@@ -133,6 +142,11 @@ export function PosPage() {
     }
     return Array.from(rows.values()).sort((a, b) => a.commercialName.localeCompare(b.commercialName));
   }, [articles.data, sellableLotById, sellableStocks, stockByArticle]);
+  const resumeSale = useQuery({
+    queryKey: ['sale-resume', saleIdParam],
+    enabled: Boolean(saleIdParam),
+    queryFn: async () => (await salesService.getById(saleIdParam)).data,
+  });
   const articleSuggestions = useMemo(() => {
     const query = articleQuery.trim().toLowerCase();
     if (!query) return posArticles.slice(0, 80);
@@ -190,6 +204,9 @@ export function PosPage() {
     mutationFn: async () => (await salesService.create({ siteId: form.siteId, saleType: form.saleType, customerId: form.customerId || undefined, exchangeRate: currentExchangeRate })).data,
     onSuccess: (created) => {
       setSale(created);
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.set('saleId', created.saleId);
+      setSearchParams(nextParams, { replace: true });
       setPaidUsd('');
       setPaidFc('');
       setReturnedUsd('0');
@@ -205,6 +222,7 @@ export function PosPage() {
       salesService.addItemFefo(sale.saleId, { articleId, quantity: lineQuantity }),
     onSuccess: (response) => {
       setSale(response.data);
+      setItemQuantityDrafts(syncQuantityDrafts(response.data?.items ?? []));
       setPaidUsd('');
       setPaidFc('');
       setReturnedUsd('0');
@@ -224,10 +242,23 @@ export function PosPage() {
       setTimeout(() => focusArticleSearch(), 0);
     },
   });
+  const updateItemQuantity = useMutation({
+    mutationFn: ({ itemId, quantity }: { itemId: string; quantity: number }) =>
+      salesService.updateItem(sale.saleId, itemId, { quantity }),
+    onSuccess: (response, variables) => {
+      setSale(response.data);
+      setItemQuantityDrafts((current) => ({ ...current, [variables.itemId]: String(variables.quantity) }));
+      setClientError('');
+    },
+    onError: () => {
+      playBeep('error');
+    },
+  });
   const removeItem = useMutation({
     mutationFn: (itemId: string) => salesService.removeItem(sale.saleId, itemId),
     onSuccess: (response) => {
       setSale(response.data);
+      setItemQuantityDrafts(syncQuantityDrafts(response.data?.items ?? []));
       setPaidUsd('');
       setPaidFc('');
       setReturnedUsd('0');
@@ -241,6 +272,7 @@ export function PosPage() {
     mutationFn: () => salesService.applyInsurance(sale.saleId, { membershipId: form.membershipId }),
     onSuccess: (response) => {
       setSale(response.data);
+      setItemQuantityDrafts(syncQuantityDrafts(response.data?.items ?? []));
       setPaidUsd('');
       setPaidFc('');
       setReturnedUsd('0');
@@ -254,6 +286,7 @@ export function PosPage() {
     mutationFn: (payload: Record<string, unknown>) => salesService.updateDraft(sale.saleId, payload),
     onSuccess: (response) => {
       setSale(response.data);
+      setItemQuantityDrafts(syncQuantityDrafts(response.data?.items ?? []));
       setPaidUsd('');
       setPaidFc('');
       setReturnedUsd('0');
@@ -300,15 +333,46 @@ export function PosPage() {
   }, [currentUser?.siteId]);
 
   useEffect(() => {
+    if (!saleIdParam || !resumeSale.data) return;
+    const resumed = resumeSale.data;
+    setSale(resumed);
+    setForm((current) => ({
+      ...current,
+      siteId: resumed.siteId ?? current.siteId,
+      saleType: (resumed.saleType as PosForm['saleType']) ?? 'CASH',
+      customerId: resumed.customerId ?? '',
+      membershipId: resumed.membershipId ?? '',
+      exchangeRate: String(resumed.exchangeRate ?? currentExchangeRate),
+    }));
+    setItemQuantityDrafts(syncQuantityDrafts(resumed.items ?? []));
+    setPaidUsd(Number(resumed.amountPaidUsd ?? 0) > 0 ? String(resumed.amountPaidUsd ?? 0) : '');
+    setPaidFc(Number(resumed.amountPaidCdf ?? 0) > 0 ? String(resumed.amountPaidCdf ?? 0) : '');
+    setReturnedUsd(Number(resumed.amountReturnedUsd ?? 0) > 0 ? String(resumed.amountReturnedUsd ?? 0) : '0');
+    setReturnedFc(Number(resumed.amountReturnedCdf ?? 0) > 0 ? String(resumed.amountReturnedCdf ?? 0) : '0');
+    setSettlementReason(resumed.settlementDifferenceReason ?? '');
+    setSettlementNote(resumed.settlementDifferenceNote ?? '');
+    setExactPayment(false);
+    setClientError('');
+  }, [currentExchangeRate, resumeSale.data, saleIdParam]);
+
+  useEffect(() => {
+    if (!saleIdParam || !resumeSale.isError) return;
+    setClientError('Brouillon introuvable. Une nouvelle vente sera preparee.');
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('saleId');
+    setSearchParams(nextParams, { replace: true });
+  }, [resumeSale.isError, saleIdParam, searchParams, setSearchParams]);
+
+  useEffect(() => {
     setTimeout(() => focusArticleSearch(), 0);
   }, []);
 
   useEffect(() => {
-    if (!form.siteId || sale || createDraft.isPending || createDraft.isSuccess) return;
+    if (!form.siteId || sale || createDraft.isPending || createDraft.isSuccess || saleIdParam || resumeSale.isLoading) return;
     if (exchangeRateQuery.isLoading) return;
     if (form.saleType === 'INSURANCE' && !form.customerId) return;
     createDraft.mutate();
-  }, [exchangeRateQuery.isLoading, form.customerId, form.saleType, form.siteId, sale, createDraft.isPending, createDraft.isSuccess]);
+  }, [createDraft, exchangeRateQuery.isLoading, form.customerId, form.saleType, form.siteId, resumeSale.isLoading, sale, saleIdParam]);
 
   useEffect(() => {
     if (quantityArticle) setTimeout(() => quantityInputRef.current?.focus(), 0);
@@ -331,6 +395,14 @@ export function PosPage() {
       message: sale?.status === 'VALIDATED' ? 'Merci pour votre confiance.' : 'Merci pour votre patience.',
     }));
   }, [items, patientPayableFc, sale?.status, saleExchangeRate]);
+
+  useEffect(() => {
+    if (!items.length) {
+      setItemQuantityDrafts({});
+      return;
+    }
+    setItemQuantityDrafts((current) => syncQuantityDrafts(items, current));
+  }, [items]);
 
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent) => {
@@ -460,10 +532,14 @@ export function PosPage() {
     setTimeout(() => focusArticleSearch(), 0);
   }
   function prepareNextSale() {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('saleId');
+    setSearchParams(nextParams, { replace: true });
     setSale(null);
     setArticleQuery('');
     setQuantity('1');
     setQuantityArticle(null);
+    setItemQuantityDrafts({});
     setPaidUsd('');
     setPaidFc('');
     setReturnedUsd('0');
@@ -490,6 +566,15 @@ export function PosPage() {
     setClientError('');
     addItem.mutate({ articleId: article.articleId, lineQuantity });
   }
+  async function saveDraft() {
+    const syncedSale = await flushEditedQuantities();
+    if (!syncedSale) return;
+    if (!sale?.saleId || sale.status !== 'DRAFT') {
+      if (form.siteId && !createDraft.isPending) createDraft.mutate();
+      return;
+    }
+    patchDraft({ customerId: form.customerId, saleType: form.saleType });
+  }
   function openQuantityForCurrentScan() {
     const parsed = parseScan(articleQuery, posArticles);
     const article = parsed?.article ?? articleSuggestions[0];
@@ -498,34 +583,52 @@ export function PosPage() {
     setQuantityArticle(article);
     setArticlePopoverOpen(false);
   }
-  function quickCheckout() {
+  async function quickCheckout() {
+    const syncedSale = await flushEditedQuantities();
+    if (!syncedSale) return;
+    const saleSnapshot = syncedSale ?? sale;
+    const saleExchangeRateSnapshot = Number(saleSnapshot?.exchangeRate ?? saleExchangeRate);
+    const patientPayableSnapshot = Number(saleSnapshot?.saleType === 'INSURANCE' ? saleSnapshot.customerPayableAmount : (saleSnapshot?.totalAmount ?? 0));
+    const paidUsdSnapshot = Number(paidUsd || 0);
+    const paidFcSnapshot = Number(paidFc || 0);
+    const returnedUsdSnapshot = Number(returnedUsd || 0);
+    const returnedFcSnapshot = Number(returnedFc || 0);
+    const netReceivedUsdSnapshot = roundMoney(paidUsdSnapshot - returnedUsdSnapshot);
+    const netReceivedCdfSnapshot = roundMoney(paidFcSnapshot - returnedFcSnapshot);
+    const netReceivedEquivalentUsdSnapshot = roundMoney(netReceivedCdfSnapshot / saleExchangeRateSnapshot);
+    const netTotalEquivalentUsdSnapshot = roundMoney(netReceivedUsdSnapshot + netReceivedEquivalentUsdSnapshot);
+    const settlementDifferenceUsdSnapshot = roundMoney(netTotalEquivalentUsdSnapshot - patientPayableSnapshot);
     const hasPayment = Boolean(paidUsd || paidFc);
     if (!hasPayment && !exactPayment) {
       setClientError('Saisissez le montant recu ou utilisez Paiement exact.');
       playBeep('error');
-      if (items.length > 0) focusPayment();
+      if ((saleSnapshot?.items?.length ?? items.length) > 0) focusPayment();
       return;
     }
-    if (returnedUsdAmount > paidUsdAmount || returnedFcAmount > paidFcAmount) {
+    if (returnedUsdSnapshot > paidUsdSnapshot || returnedFcSnapshot > paidFcSnapshot) {
       setClientError('La monnaie rendue ne peut pas depasser le montant remis.');
       playBeep('error');
       focusPayment();
       return;
     }
-    if (!canValidate()) {
-      setClientError(
-        settlementDifferenceUsd < -SETTLEMENT_TOLERANCE_USD
-          ? 'Paiement insuffisant.'
-          : settlementDifferenceUsd > SETTLEMENT_TOLERANCE_USD && !settlementReason.trim()
-            ? 'Un motif est requis pour ce surplus.'
-            : 'Aucune vente a encaisser.',
-      );
+    if (!saleSnapshot?.saleId || saleSnapshot.status !== 'DRAFT' || (saleSnapshot?.items?.length ?? 0) === 0 || validate.isPending) {
+      setClientError('Aucune vente a encaisser.');
       playBeep('error');
-      if (items.length > 0) focusPayment();
+      return;
+    }
+    if (settlementDifferenceUsdSnapshot < -SETTLEMENT_TOLERANCE_USD) {
+      setClientError('Paiement insuffisant.');
+      playBeep('error');
+      if ((saleSnapshot?.items?.length ?? items.length) > 0) focusPayment();
+      return;
+    }
+    if (settlementDifferenceUsdSnapshot > SETTLEMENT_TOLERANCE_USD && !settlementReason.trim()) {
+      setClientError('Un motif est requis pour ce surplus.');
+      playBeep('error');
       return;
     }
     setClientError('');
-    validate.mutate(netTotalEquivalentUsd);
+    validate.mutate(netTotalEquivalentUsdSnapshot);
   }
   function applyExactPayment() {
     setPaidUsd('');
@@ -562,7 +665,43 @@ export function PosPage() {
     window.print();
   }
 
-  const mutationError = createDraft.error || addItem.error || removeItem.error || applyInsurance.error || updateDraft.error || validate.error || cancel.error;
+  function syncQuantityDrafts(nextItems: any[], current: Record<string, string> = {}) {
+    const nextDrafts = { ...current };
+    for (const item of nextItems) {
+      if (nextDrafts[item.saleItemId] === undefined) nextDrafts[item.saleItemId] = String(item.quantity ?? 0);
+    }
+    for (const key of Object.keys(nextDrafts)) {
+      if (!nextItems.some((item) => item.saleItemId === key)) delete nextDrafts[key];
+    }
+    return nextDrafts;
+  }
+
+  async function flushEditedQuantities() {
+    if (!sale?.saleId || sale.status !== 'DRAFT' || items.length === 0) return sale;
+    let latestSale = sale;
+    for (const item of items) {
+      const rawValue = itemQuantityDrafts[item.saleItemId];
+      if (rawValue === undefined) continue;
+      const normalized = Number(String(rawValue).replace(',', '.'));
+      if (!Number.isFinite(normalized) || normalized <= 0) {
+        setClientError('Quantite invalide.');
+        playBeep('error');
+        return null;
+      }
+      if (normalized !== Number(item.quantity ?? 0)) {
+        try {
+          const response = await updateItemQuantity.mutateAsync({ itemId: item.saleItemId, quantity: normalized });
+          setSale(response.data);
+          latestSale = response.data;
+        } catch {
+          return null;
+        }
+      }
+    }
+    return latestSale;
+  }
+
+  const mutationError = createDraft.error || addItem.error || updateItemQuantity.error || removeItem.error || applyInsurance.error || updateDraft.error || validate.error || cancel.error;
   const showError = Boolean(clientError || mutationError);
   const error = clientError || (mutationError ? apiErrorMessage(mutationError) : '');
 
@@ -672,18 +811,67 @@ export function PosPage() {
 
         <div className="table-wrap pos-grid-wrap">
           <table className="data-table pos-lines-table">
-            <thead><tr><th>Article</th><th>Lot FEFO</th><th>Exp</th><th>Qte</th><th>Prix</th><th>Total</th><th>Actions</th></tr></thead>
-            <tbody>{items.length === 0 ? <tr><td colSpan={7}><p className="empty-state">Aucun article. Utilisez F2, scannez ou recherchez un produit.</p></td></tr> : items.map((item: any) => (
+            <thead><tr><th>Article</th><th>Lot FEFO</th><th>Exp</th><th>Unite vente</th><th>Conditionnement</th><th>Qte</th><th>Prix</th><th>Total</th><th>Actions</th></tr></thead>
+            <tbody>{items.length === 0 ? <tr><td colSpan={9}><p className="empty-state">Aucun article. Utilisez F2, scannez ou recherchez un produit.</p></td></tr> : items.map((item: any) => {
+              const article = articleById.get(item.articleId);
+              const salesUnitLabel = unitLabelById.get(article?.salesUnitId ?? '') ?? article?.packaging ?? '-';
+              const packagingLabel = unitLabelById.get(article?.packagingUnitId ?? '') ?? article?.packaging ?? '-';
+              const quantityDraft = itemQuantityDrafts[item.saleItemId] ?? String(item.quantity ?? '');
+              return (
               <tr className={selectedLineId === item.saleItemId ? 'selected-row' : ''} key={item.saleItemId} onClick={() => setSelectedLineId(item.saleItemId)}>
-                <td><strong>{item.commercialName}</strong><small>{item.articleCode ?? ''}</small></td>
+                <td><strong>{item.commercialName ?? article?.commercialName ?? 'Article'}</strong><small>{item.articleCode ?? article?.articleCode ?? ''}</small></td>
                 <td>{item.lotNumber ?? '-'}</td>
                 <td>{item.expiryDate ? formatDate(item.expiryDate) : '-'}</td>
-                <td className="quantity-cell">{item.quantity}</td>
+                <td>{salesUnitLabel}</td>
+                <td>{packagingLabel}{article?.unitsPerPackage ? ` x${article.unitsPerPackage}` : ''}</td>
+                <td className="quantity-cell">
+                  <input
+                    className="input compact-input numeric-cell pos-line-quantity"
+                    type="number"
+                    min="0.001"
+                    step="0.001"
+                    disabled={sale?.status !== 'DRAFT' || updateItemQuantity.isPending}
+                    value={quantityDraft}
+                    onClick={(event) => event.stopPropagation()}
+                    onChange={(event) => {
+                      event.stopPropagation();
+                      setItemQuantityDrafts((current) => ({ ...current, [item.saleItemId]: event.target.value }));
+                    }}
+                    onBlur={() => {
+                      const normalized = Number(String(itemQuantityDrafts[item.saleItemId] ?? item.quantity).replace(',', '.'));
+                      if (!Number.isFinite(normalized) || normalized <= 0) {
+                        setClientError('Quantite invalide.');
+                        setItemQuantityDrafts((current) => ({ ...current, [item.saleItemId]: String(item.quantity ?? '') }));
+                        playBeep('error');
+                        return;
+                      }
+                      if (normalized !== Number(item.quantity ?? 0)) {
+                        updateItemQuantity.mutate({ itemId: item.saleItemId, quantity: normalized });
+                      }
+                    }}
+                    onKeyDown={(event) => {
+                      event.stopPropagation();
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        const normalized = Number(String(itemQuantityDrafts[item.saleItemId] ?? item.quantity).replace(',', '.'));
+                        if (!Number.isFinite(normalized) || normalized <= 0) {
+                          setClientError('Quantite invalide.');
+                          playBeep('error');
+                          return;
+                        }
+                        if (normalized !== Number(item.quantity ?? 0)) {
+                          updateItemQuantity.mutate({ itemId: item.saleItemId, quantity: normalized });
+                        }
+                      }
+                    }}
+                  />
+                </td>
                 <td className="numeric-text"><PriceDual amountUsd={Number(item.unitPrice ?? 0)} rate={saleExchangeRate} /></td>
                 <td className="numeric-text"><strong><PriceDual amountUsd={Number(item.lineTotal ?? 0)} rate={saleExchangeRate} /></strong></td>
-                <td><button aria-label="Supprimer ligne" className="ghost-button compact-button row-action-button icon-only danger" type="button" disabled={sale?.status !== 'DRAFT' || removeItem.isPending} onClick={(event) => { event.stopPropagation(); removeItem.mutate(item.saleItemId); }}><TrashIcon /></button></td>
+                <td><button aria-label="Supprimer ligne" className="ghost-button compact-button row-action-button icon-only danger" type="button" disabled={sale?.status !== 'DRAFT' || removeItem.isPending || updateItemQuantity.isPending} onClick={(event) => { event.stopPropagation(); removeItem.mutate(item.saleItemId); }}><TrashIcon /></button></td>
               </tr>
-            ))}</tbody>
+              );
+            })}</tbody>
           </table>
         </div>
       </section>
@@ -729,6 +917,7 @@ export function PosPage() {
           <button className="ghost-button compact-button pos-secondary-action pos-danger-action" type="button" disabled={!sale || sale.status !== 'DRAFT'} onClick={() => cancel.mutate()}>Annuler vente</button>
           <button className="ghost-button compact-button pos-secondary-action pos-print-action" type="button" disabled={!sale} onClick={printDraft}>Imprimer facture</button>
           <button className="ghost-button compact-button pos-secondary-action pos-exact-action" type="button" disabled={!sale || sale.status !== 'DRAFT' || items.length === 0} onClick={applyExactPayment}>Paiement exact</button>
+          <button className="ghost-button compact-button pos-secondary-action" type="button" disabled={!form.siteId || updateDraft.isPending || createDraft.isPending} onClick={saveDraft}>Enregistrer brouillon</button>
           <button className="ghost-button compact-button pos-secondary-action" type="button" onClick={prepareNextSale}>Nouvelle vente</button>
           <div className="pos-checkout-total">
             <span>Total a encaisser</span>

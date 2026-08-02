@@ -281,7 +281,7 @@ export function SalesPage() {
         {detail.isLoading || !detail.data ? (
           <p className="loading-state">Chargement du detail vente...</p>
         ) : (
-          <SaleDetailModal sale={detail.data} onOpenPos={() => navigate('/pos')} />
+          <SaleDetailModal sale={detail.data} onOpenPos={() => navigate(`/pos?saleId=${detail.data.saleId}`)} />
         )}
       </Modal>
     </>

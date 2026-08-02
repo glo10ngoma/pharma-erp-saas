@@ -7,6 +7,8 @@ const LABELS: Record<string, string> = {
   CASH_SESSION_ALREADY_OPEN: 'Une session caisse est deja ouverte pour ce site.',
   PAYMENT_INSUFFICIENT: 'Le paiement est insuffisant.',
   INVALID_SETTLEMENT_AMOUNT: 'Montant de reglement invalide.',
+  SALE_ITEM_NOT_FOUND: 'La ligne de vente est introuvable.',
+  INVALID_SALE_ITEM_QUANTITY: 'Quantite de ligne de vente invalide.',
   ATTACHMENT_FILE_REQUIRED: 'Veuillez selectionner un fichier.',
   ATTACHMENT_FILE_TOO_LARGE: 'Le fichier depasse la taille maximale autorisee.',
   ATTACHMENT_TYPE_NOT_ALLOWED: 'Ce type de fichier n est pas autorise.',

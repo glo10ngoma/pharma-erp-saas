@@ -2996,7 +2996,7 @@ details.nav-group .nav-link {
 }
 
 .pos-lines-table {
-  min-width: 1040px;
+  min-width: 1160px;
 }
 
 .pos-lines-table th,
@@ -3019,6 +3019,30 @@ details.nav-group .nav-link {
 .sales-table td {
   color: var(--text);
   font-size: .9rem;
+}
+
+.pos-lines-table th:nth-child(4),
+.pos-lines-table td:nth-child(4),
+.pos-lines-table th:nth-child(5),
+.pos-lines-table td:nth-child(5) {
+  text-align: center;
+}
+
+.pos-lines-table th:nth-child(6),
+.pos-lines-table td:nth-child(6) {
+  text-align: center;
+  width: 96px;
+}
+
+.pos-lines-table th:nth-child(7),
+.pos-lines-table td:nth-child(7),
+.pos-lines-table th:nth-child(8),
+.pos-lines-table td:nth-child(8) {
+  text-align: right;
+}
+
+.pos-line-quantity {
+  max-width: 90px;
 }
 
 .pos-lines-table small {

@@ -12,7 +12,7 @@ import { ValidateSaleDto } from './dto/validate-sale.dto';
 const SETTLEMENT_TOLERANCE_USD = 0.02;
 
 type SaleRow = { sale_id: string; tenant_id: string; sale_number: string; sale_date: Date; customer_id: string | null; customer_name: string | null; organization_id?: string | null; organization_name?: string | null; membership_id?: string | null; plan_name?: string | null; coverage_percent?: string | null; site_id: string; site_name: string | null; currency_id: string; currency_code: string | null; currency_symbol: string | null; exchange_rate: string; subtotal: string; discount_amount?: string; insurance_covered_amount?: string; customer_payable_amount?: string; credit_amount?: string; total_amount: string; amount_paid_usd?: string; amount_paid_cdf?: string; amount_returned_usd?: string; amount_returned_cdf?: string; net_received_usd?: string; net_received_cdf?: string; settlement_difference_usd?: string; settlement_difference_type?: string | null; settlement_difference_reason?: string | null; settlement_difference_note?: string | null; sale_type: string; status: string; created_by: string | null; created_at: Date; validated_at: Date | null };
-type ItemRow = { sale_item_id: string; tenant_id: string; sale_id: string; article_id: string; article_code: string | null; commercial_name: string | null; lot_id: string; lot_number: string | null; expiry_date: string | Date | null; quantity: string; unit_price: string; line_total: string };
+type ItemRow = { sale_item_id: string; tenant_id: string; sale_id: string; article_id: string; article_code: string | null; commercial_name: string | null; lot_id: string; lot_number: string | null; expiry_date: string | Date | null; quantity: string; unit_price: string; line_total: string; coverage_percent?: string | null; covered_amount?: string | null; patient_amount?: string | null };
 type SettlementSnapshot = {
   amountPaidUsd: number;
   amountPaidCdf: number;
@@ -310,6 +310,7 @@ export class SalesRepository {
     if (!sale) return null;
     if (sale.status !== 'DRAFT') throw new Error('SALE_NOT_DRAFT');
     await this.assertArticle(user, dto.articleId);
+    const saleCoveragePercent = sale.saleType === 'INSURANCE' ? Number(sale.coveragePercent ?? 0) : 0;
 
     const available = await this.db.query<{ lot_id: string; selling_price: string; expiry_date: string; quantity_available: string }>(
       `SELECT l.lot_id, l.selling_price, l.expiry_date, SUM(st.quantity_available)::numeric AS quantity_available
@@ -337,16 +338,24 @@ export class SalesRepository {
 
       const take = Math.min(remaining, stillAvailable);
       const price = Number(lot.selling_price);
+      const lineTotal = this.roundMoney(take * price);
+      const coveredAmount = sale.saleType === 'INSURANCE' ? this.roundMoney(lineTotal * saleCoveragePercent / 100) : 0;
+      const patientAmount = sale.saleType === 'INSURANCE' ? this.roundMoney(lineTotal - coveredAmount) : lineTotal;
       if (existing.rows[0]) {
         const nextQuantity = existingQuantity + take;
+        const nextLineTotal = this.roundMoney(nextQuantity * price);
+        const nextCoveredAmount = sale.saleType === 'INSURANCE' ? this.roundMoney(nextLineTotal * saleCoveragePercent / 100) : 0;
+        const nextPatientAmount = sale.saleType === 'INSURANCE' ? this.roundMoney(nextLineTotal - nextCoveredAmount) : nextLineTotal;
         await this.db.query(
           `UPDATE sale_items
            SET quantity=$5,
                unit_price=$6,
-               patient_amount=$7,
-               line_total=$7
+               coverage_percent=$7,
+               covered_amount=$8,
+               patient_amount=$9,
+               line_total=$10
            WHERE tenant_id=$1 AND sale_id=$2 AND sale_item_id=$3 AND lot_id=$4`,
-          [user.tenantId, saleId, existing.rows[0].sale_item_id, lot.lot_id, nextQuantity, price, nextQuantity * price],
+          [user.tenantId, saleId, existing.rows[0].sale_item_id, lot.lot_id, nextQuantity, price, saleCoveragePercent, nextCoveredAmount, nextPatientAmount, nextLineTotal],
         );
         if (existing.rows.length > 1) {
           await this.db.query(
@@ -357,15 +366,15 @@ export class SalesRepository {
         }
       } else {
         await this.db.query(
-          `INSERT INTO sale_items (tenant_id, sale_id, article_id, lot_id, quantity, unit_price, patient_amount, line_total)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$7)`,
-          [user.tenantId, saleId, dto.articleId, lot.lot_id, take, price, take * price],
+          `INSERT INTO sale_items (tenant_id, sale_id, article_id, lot_id, quantity, unit_price, coverage_percent, covered_amount, patient_amount, line_total)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+          [user.tenantId, saleId, dto.articleId, lot.lot_id, take, price, saleCoveragePercent, coveredAmount, patientAmount, lineTotal],
         );
       }
       remaining -= take;
     }
     if (remaining > 0) throw new Error('STOCK_INSUFFICIENT');
-    await this.recalculateTotal(user, saleId);
+    await this.recalculateTotal(user, saleId, sale.saleType);
     return this.findOne(user, saleId);
   }
 
@@ -421,7 +430,69 @@ export class SalesRepository {
     if (!sale) return null;
     if (sale.status !== 'DRAFT') throw new Error('SALE_NOT_DRAFT');
     await this.db.query(`DELETE FROM sale_items WHERE tenant_id=$1 AND sale_id=$2 AND sale_item_id=$3`, [user.tenantId, saleId, itemId]);
-    await this.recalculateTotal(user, saleId);
+    await this.recalculateTotal(user, saleId, sale.saleType);
+    return this.findOne(user, saleId);
+  }
+
+  async updateItem(user: AuthUser, saleId: string, itemId: string, dto: { quantity: number }) {
+    const sale = await this.findOne(user, saleId);
+    if (!sale) return null;
+    if (sale.status !== 'DRAFT') throw new Error('SALE_NOT_DRAFT');
+
+    const result = await this.db.query<{
+      sale_item_id: string;
+      article_id: string;
+      lot_id: string;
+      quantity: string;
+      unit_price: string;
+      coverage_percent: string | null;
+    }>(
+      `SELECT si.sale_item_id, si.article_id, si.lot_id, si.quantity, si.unit_price, COALESCE(si.coverage_percent, 0) AS coverage_percent
+       FROM sale_items si
+       WHERE si.tenant_id=$1 AND si.sale_id=$2 AND si.sale_item_id=$3
+       LIMIT 1`,
+      [user.tenantId, saleId, itemId],
+    );
+    const current = result.rows[0];
+    if (!current) throw new Error('SALE_ITEM_NOT_FOUND');
+
+    const quantity = Number(dto.quantity);
+    if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('INVALID_SALE_ITEM_QUANTITY');
+
+    const stock = await this.db.query<{ quantity_available: string; expiry_date: string | Date; is_expired: boolean; is_blocked: boolean }>(
+      `SELECT st.quantity_available, l.expiry_date, (l.expiry_date <= CURRENT_DATE) AS is_expired, l.is_blocked
+       FROM stocks st
+       JOIN lots l ON l.lot_id=st.lot_id AND l.tenant_id=st.tenant_id
+       WHERE st.tenant_id=$1 AND st.site_id=$2 AND st.lot_id=$3
+       LIMIT 1`,
+      [user.tenantId, sale.siteId, current.lot_id],
+    );
+    const row = stock.rows[0];
+    if (!row) throw new Error('STOCK_INSUFFICIENT');
+    const expiryDate = this.toCivilDateString(row.expiry_date);
+    if (!expiryDate) throw new Error('LOT_EXPIRY_DATE_INVALID');
+    if (row.is_expired || expiryDate <= this.todayCivilDate()) throw new Error('LOT_EXPIRED');
+    if (row.is_blocked) throw new Error('LOT_BLOCKED');
+    if (quantity > Number(row.quantity_available)) throw new Error('STOCK_INSUFFICIENT');
+
+    const unitPrice = Number(current.unit_price);
+    const lineTotal = this.roundMoney(quantity * unitPrice);
+    const coveragePercent = sale.saleType === 'INSURANCE' ? Number(current.coverage_percent ?? sale.coveragePercent ?? 0) : 0;
+    const coveredAmount = sale.saleType === 'INSURANCE' ? this.roundMoney(lineTotal * coveragePercent / 100) : 0;
+    const patientAmount = sale.saleType === 'INSURANCE' ? this.roundMoney(lineTotal - coveredAmount) : lineTotal;
+
+    await this.db.query(
+      `UPDATE sale_items
+       SET quantity=$4,
+           unit_price=$5,
+           coverage_percent=$6,
+           covered_amount=$7,
+           patient_amount=$8,
+           line_total=$9
+       WHERE tenant_id=$1 AND sale_id=$2 AND sale_item_id=$3`,
+      [user.tenantId, saleId, itemId, quantity, unitPrice, coveragePercent, coveredAmount, patientAmount, lineTotal],
+    );
+    await this.recalculateTotal(user, saleId, sale.saleType);
     return this.findOne(user, saleId);
   }
 
@@ -734,13 +805,15 @@ export class SalesRepository {
     return r.rows.map((row) => ({ paymentId: row.payment_id, saleId: row.sale_id, paymentDate: row.payment_date, paymentMethodId: row.payment_method_id, methodName: row.method_name, currencyId: row.currency_id, currencyCode: row.currency_code, currencySymbol: row.currency_symbol, amount: Number(row.amount), referencePayment: row.reference_payment, receivedBy: row.received_by, receivedByName: row.received_by_name }));
   }
 
-  private async recalculateTotal(user: AuthUser, saleId: string) {
+  private async recalculateTotal(user: AuthUser, saleId: string, saleType?: string) {
     await this.db.query(
       `UPDATE sales SET subtotal=COALESCE((SELECT SUM(line_total) FROM sale_items WHERE tenant_id=$1 AND sale_id=$2),0),
                         total_amount=COALESCE((SELECT SUM(line_total) FROM sale_items WHERE tenant_id=$1 AND sale_id=$2),0),
-                        customer_payable_amount=CASE WHEN sale_type='INSURANCE' THEN customer_payable_amount ELSE COALESCE((SELECT SUM(line_total) FROM sale_items WHERE tenant_id=$1 AND sale_id=$2),0) END
+                        insurance_covered_amount=CASE WHEN COALESCE($3, sale_type)='INSURANCE' THEN COALESCE((SELECT SUM(covered_amount) FROM sale_items WHERE tenant_id=$1 AND sale_id=$2),0) ELSE 0 END,
+                        customer_payable_amount=CASE WHEN COALESCE($3, sale_type)='INSURANCE' THEN COALESCE((SELECT SUM(patient_amount) FROM sale_items WHERE tenant_id=$1 AND sale_id=$2),0) ELSE COALESCE((SELECT SUM(line_total) FROM sale_items WHERE tenant_id=$1 AND sale_id=$2),0) END,
+                        credit_amount=CASE WHEN COALESCE($3, sale_type)='INSURANCE' THEN COALESCE((SELECT SUM(covered_amount) FROM sale_items WHERE tenant_id=$1 AND sale_id=$2),0) ELSE 0 END
        WHERE tenant_id=$1 AND sale_id=$2`,
-      [user.tenantId, saleId],
+      [user.tenantId, saleId, saleType ?? null],
     );
   }
 
