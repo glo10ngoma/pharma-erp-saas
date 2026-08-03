@@ -2943,17 +2943,22 @@ details.nav-group .nav-link {
 .pos-page {
   display: grid;
   gap: 8px;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 .pos-layout {
   align-items: start;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 360px);
+  max-width: 100%;
 }
 
 .pos-main-column,
 .pos-side-column {
+  box-sizing: border-box;
   min-width: 0;
 }
 
@@ -2967,20 +2972,35 @@ details.nav-group .nav-link {
 }
 
 .pos-toolbar {
-  margin-bottom: 4px;
+  align-items: flex-start;
+  display: grid;
+  gap: 8px 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, max-content);
+  justify-content: space-between;
+  margin-bottom: 0;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.pos-toolbar > div:first-child {
+  min-width: 0;
 }
 
 .pos-cash-status {
-  align-items: flex-end;
-  display: grid;
-  gap: 4px;
-  justify-items: end;
-  max-width: 360px;
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  justify-content: flex-end;
+  min-width: 0;
+  max-width: 100%;
   text-align: right;
 }
 
 .pos-cash-status small {
   color: var(--muted);
+  flex-basis: 100%;
+  line-height: 1.25;
 }
 
 .pos-header-action {
@@ -2988,7 +3008,7 @@ details.nav-group .nav-link {
   border: 1px solid #b7c7c3;
   color: var(--text);
   font-weight: 900;
-  min-width: 142px;
+  min-width: 0;
   width: auto;
 }
 
@@ -2999,8 +3019,9 @@ details.nav-group .nav-link {
 }
 
 .pos-open-cash-button {
+  align-self: flex-start;
   justify-self: end;
-  min-width: 184px;
+  min-width: 0;
 }
 
 .pos-open-session-banner {
@@ -3074,6 +3095,7 @@ details.nav-group .nav-link {
   display: grid;
   gap: 8px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  max-width: 100%;
 }
 
 .pos-header-grid label {
@@ -3084,6 +3106,7 @@ details.nav-group .nav-link {
 .pos-header-field {
   display: grid;
   gap: 4px;
+  min-width: 0;
 }
 
 .pos-header-field-wide,
@@ -3108,6 +3131,7 @@ details.nav-group .nav-link {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 8px;
+  min-width: 0;
 }
 
 .pos-segmented {
@@ -3121,6 +3145,7 @@ details.nav-group .nav-link {
   border: 1px solid var(--line);
   color: var(--text);
   min-height: 38px;
+  min-width: 0;
   padding: 8px 10px;
   width: auto;
 }
@@ -3164,6 +3189,7 @@ details.nav-group .nav-link {
 .pos-workspace {
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .pos-search-row {
@@ -3171,6 +3197,7 @@ details.nav-group .nav-link {
   display: grid;
   gap: 8px;
   grid-template-columns: minmax(360px, 1fr) auto;
+  min-width: 0;
 }
 
 .pos-article-input {
@@ -3187,6 +3214,8 @@ details.nav-group .nav-link {
   border-radius: 8px;
   max-height: calc(100vh - 460px);
   overflow: auto;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .pos-lines-table {
@@ -3264,6 +3293,9 @@ details.nav-group .nav-link {
   position: sticky;
   top: 12px;
   z-index: 15;
+  overflow: hidden;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .pos-summary-grid {
@@ -3271,11 +3303,13 @@ details.nav-group .nav-link {
   display: grid;
   gap: 8px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
 }
 
 .pos-summary-item {
   margin: 0;
   min-height: 58px;
+  min-width: 0;
 }
 
 .pos-total-text {
@@ -3289,6 +3323,7 @@ details.nav-group .nav-link {
   border-radius: 8px;
   display: grid;
   gap: 4px;
+  min-width: 0;
   padding: 8px;
 }
 
@@ -3314,6 +3349,7 @@ details.nav-group .nav-link {
   display: grid;
   gap: 8px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
 }
 
 .pos-status-strip {
@@ -3325,11 +3361,13 @@ details.nav-group .nav-link {
   grid-template-columns: repeat(6, minmax(0, 1fr));
   margin-bottom: 10px;
   padding: 10px;
+  min-width: 0;
 }
 
 .pos-status-strip div {
   display: grid;
   gap: 2px;
+  min-width: 0;
 }
 
 .pos-status-strip span {
@@ -3352,8 +3390,9 @@ details.nav-group .nav-link {
 .pos-cash-metrics {
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(240px, 1.2fr) minmax(220px, .8fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-bottom: 10px;
+  min-width: 0;
 }
 
 .pos-cash-total,
@@ -3362,7 +3401,9 @@ details.nav-group .nav-link {
   border: 1px solid var(--line);
   border-radius: 8px;
   display: grid;
+  min-width: 0;
   justify-items: end;
+  overflow-wrap: anywhere;
   padding: 10px 14px;
 }
 
@@ -3376,13 +3417,13 @@ details.nav-group .nav-link {
 
 .pos-cash-total strong {
   color: var(--primary-dark);
-  font-size: 2rem;
+  font-size: clamp(1.55rem, 2vw, 2rem);
   line-height: 1.05;
 }
 
 .pos-cash-change strong {
   color: var(--muted);
-  font-size: 1.45rem;
+  font-size: clamp(1.2rem, 1.6vw, 1.45rem);
   line-height: 1.05;
 }
 
@@ -3439,6 +3480,8 @@ details.nav-group .nav-link {
   border-radius: 8px;
   display: grid;
   justify-items: end;
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding: 8px 12px;
 }
 
@@ -3460,16 +3503,33 @@ details.nav-group .nav-link {
 }
 
 .pos-checkout-button {
-  font-size: 1.05rem;
+  font-size: 1rem;
   font-weight: 900;
   min-height: 54px;
-  padding: 12px 22px;
+  min-width: 0;
+  padding: 10px 18px;
   width: 100%;
 }
 
 .pos-checkout-actions > .pos-checkout-total,
 .pos-checkout-actions > .pos-checkout-button {
   grid-column: 1 / -1;
+}
+
+@media (max-width: 1450px) {
+  .pos-cash-metrics,
+  .pos-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pos-checkout-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .pos-checkout-actions > .pos-checkout-total,
+  .pos-checkout-actions > .pos-checkout-button {
+    grid-column: auto;
+  }
 }
 
 .pos-empty-hint {
@@ -3507,6 +3567,7 @@ details.nav-group .nav-link {
   border: 1px solid var(--line);
   border-radius: 8px;
   grid-column: 1 / -1;
+  min-width: 0;
   padding: 8px 10px;
 }
 
@@ -3535,6 +3596,7 @@ details.nav-group .nav-link {
   gap: 8px;
   grid-template-columns: minmax(0, 1fr) minmax(240px, 1fr);
   margin-top: 10px;
+  min-width: 0;
 }
 
 .pos-insurance-grid label {
@@ -3554,6 +3616,7 @@ details.nav-group .nav-link {
   display: grid;
   gap: 8px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
 }
 
 .pos-insurance-summary div {
