@@ -69,8 +69,6 @@ export function PosPage() {
   const paymentInputRef = useRef<HTMLInputElement | null>(null);
   const customerInputRef = useRef<HTMLInputElement | null>(null);
   const cashOpenUsdInputRef = useRef<HTMLInputElement | null>(null);
-  const saleTypeSelectRef = useRef<HTMLSelectElement | null>(null);
-  const membershipSelectRef = useRef<HTMLSelectElement | null>(null);
   const audioRef = useRef<AudioContext | null>(null);
   const deviceUuid = useMemo(() => getOrCreateDeviceUuid(), []);
   const permissions = currentUser?.permissions ?? [];
@@ -123,6 +121,10 @@ export function PosPage() {
   const articleById = useMemo(() => new Map((articles.data ?? []).map((article) => [article.articleId, article])), [articles.data]);
   const unitLabelById = useMemo(() => new Map((productUnits.data ?? []).map((unit) => [unit.productUnitId, unit.unitLabel])), [productUnits.data]);
   const selectedCustomer = useMemo(() => (customers.data ?? []).find((customer) => customer.customerId === form.customerId), [customers.data, form.customerId]);
+  const selectedMembership = useMemo(
+    () => (memberships.data ?? []).find((membership) => membership.membershipId === form.membershipId) ?? null,
+    [form.membershipId, memberships.data],
+  );
   const sellableLotById = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
     return new Map((lots.data ?? [])
@@ -375,6 +377,20 @@ export function PosPage() {
     onError: () => playBeep('error'),
   });
   const cancel = useMutation({ mutationFn: () => salesService.cancel(sale.saleId), onSuccess: () => prepareNextSale() });
+  const hasEditedQuantities = useMemo(
+    () => items.some((item: any) => String(itemQuantityDrafts[item.saleItemId] ?? item.quantity ?? '') !== String(item.quantity ?? '')),
+    [itemQuantityDrafts, items],
+  );
+  const draftStatusLabel = useMemo(() => {
+    if (!sale) return createDraft.isPending ? 'Preparation en cours' : 'Nouveau panier';
+    if (saleIdParam) return 'Vente reprise';
+    if (sale.status === 'VALIDATED') return 'Vente validee';
+    if (updateDraft.isPending || hasEditedQuantities) return 'Modifications non enregistrees';
+    return 'Brouillon enregistre';
+  }, [createDraft.isPending, hasEditedQuantities, sale, saleIdParam, updateDraft.isPending]);
+  const checkoutActionLabel = form.saleMode === 'ADVANCE'
+    ? 'Encaisser et generer le bon de retrait'
+    : 'Encaisser et valider la vente';
   const openCashSession = useMutation({
     mutationFn: async () => {
       if (!form.siteId) throw new Error('SITE_NOT_SELECTED');
@@ -912,6 +928,8 @@ export function PosPage() {
       {cashOpenError && !cashOpenModalOpen && <p className="form-error">{cashOpenError}</p>}
       {exchangeRateQuery.isError && <p className="form-error">Taux USD/CDF non charge. Fallback demo utilise : 1 USD = {formatMoney(POS_USD_CDF_FALLBACK_RATE, 'CDF')}.</p>}
 
+      <div className="pos-layout">
+        <div className="pos-main-column">
       {!activeCashSession && userOpenCashSession && (
         <section className="card compact-card pos-open-session-banner">
           <div className="pos-open-session-banner-header">
@@ -946,16 +964,16 @@ export function PosPage() {
 
       <section className="pos-status-strip">
         <div><span>Caisse</span><strong>{activeCashSession ? 'OUVERTE' : userOpenCashSession ? 'OUVERTE AILLEURS' : 'FERMEE'}</strong><small>{activeCashSession?.registerName ?? userOpenCashSession?.registerName ?? 'Aucune session'}</small></div>
+        <div><span>Poste</span><strong>{currentWorkstation?.workstationName ?? '-'}</strong><small>{currentWorkstation?.workstationCode ?? 'Poste non rattache'}</small></div>
         <div><span>Vendeur</span><strong>{currentUser?.fullName ?? '-'}</strong><small>{currentUser?.role ?? '-'}</small></div>
-        <div><span>Site</span><strong>{currentSite?.siteName ?? 'Site utilisateur'}</strong></div>
-        <div><span>Taux</span><strong>1 USD = {formatMoney(saleExchangeRate, 'CDF')}</strong></div>
-        <div><span>Type</span><strong>{form.saleType}</strong></div>
-        <div><span>Mode</span><strong>{form.saleMode === 'ADVANCE' ? 'AVANCE' : 'IMMEDIATE'}</strong></div>
+        <div><span>Client</span><strong>{selectedCustomer?.customerName ?? 'Client comptoir'}</strong><small>{selectedCustomer?.phone ?? 'Comptoir par defaut'}</small></div>
+        <div><span>Mode</span><strong>{form.saleMode === 'ADVANCE' ? 'Paiement en avance' : 'Vente immediate'}</strong><small>{form.saleType}</small></div>
+        <div><span>Brouillon</span><strong>{sale?.saleNumber ?? 'Nouveau panier'}</strong><small>{draftStatusLabel}</small></div>
       </section>
 
       <form className="card compact-card pos-header-grid" onSubmit={startSale}>
-        <label><span>Vente no</span><input className="input compact-input" value={sale?.saleNumber ?? 'Auto'} disabled /></label>
-        <label className="pos-client-field">
+        <label className="pos-header-field pos-header-sale"><span>Vente no</span><input className="input compact-input" value={sale?.saleNumber ?? 'Auto'} disabled /><small>{sale ? `Site ${currentSite?.siteName ?? form.siteId ?? '-'}` : 'Nouveau panier en preparation'}</small></label>
+        <label className="pos-client-field pos-header-field-wide">
           <span>Client</span>
           <FloatingSearchPopover
             columns={[
@@ -984,15 +1002,53 @@ export function PosPage() {
             suggestions={customerSuggestions}
             value={customerPopoverOpen ? customerQuery : selectedCustomer?.customerName ?? 'Client comptoir'}
           />
+          <small>{selectedCustomer ? `${selectedCustomer.customerCode ?? 'Client'}${selectedCustomer.phone ? ` - ${selectedCustomer.phone}` : ''}` : 'Client comptoir par defaut'}</small>
           {form.customerId && <button className="ghost-button compact-button pos-counter-customer-button" type="button" onClick={resetCounterCustomer}>Client comptoir</button>}
         </label>
-        <label><span>Type</span><select ref={saleTypeSelectRef} className="input compact-input" value={form.saleType} disabled={sale?.status && sale.status !== 'DRAFT'} onChange={(event) => setSaleType(event.target.value as PosForm['saleType'])}><option value="CASH">CASH</option><option value="INSURANCE">ASSURANCE</option></select></label>
-        <label><span>Mode</span><select className="input compact-input" value={form.saleMode} disabled={sale?.status && sale.status !== 'DRAFT'} onChange={(event) => setSaleMode(event.target.value as PosForm['saleMode'])}><option value="IMMEDIATE">Immediat</option><option value="ADVANCE">Paiement en avance</option></select></label>
-        <label><span>Assurance</span><select ref={membershipSelectRef} className="input compact-input" value={form.membershipId} disabled={form.saleType !== 'INSURANCE' || !sale || sale.status !== 'DRAFT'} onChange={(event) => update('membershipId', event.target.value)}><option value="">Membership / Plan</option>{(memberships.data ?? []).filter((membership) => membership.isActive).map((membership) => <option key={membership.membershipId} value={membership.membershipId}>{membership.organizationName} - {membership.planName} ({membership.coveragePercent}%)</option>)}</select></label>
-        <label><span>Site</span><input className="input compact-input" value={currentSite?.siteName ?? form.siteId ?? 'Site utilisateur'} disabled /></label>
-        <label><span>Devise</span><input className="input compact-input" value="USD / FC" disabled /></label>
-        <label><span>Taux</span><input className="input compact-input" value={`1 USD = ${formatMoney(saleExchangeRate, 'CDF')}`} disabled /></label>
-        {!sale ? <span className="badge badge-warning">{createDraft.isPending ? 'Preparation...' : 'En attente'}</span> : <span className={`badge ${sale.status === 'VALIDATED' ? 'badge-success' : 'badge-warning'}`}>{sale.status}</span>}
+        <div className="pos-header-field pos-header-control-group">
+          <span>Type</span>
+          <div className="pos-segmented" role="group" aria-label="Type de vente">
+            <button className={`pos-segmented-button ${form.saleType === 'CASH' ? 'active' : ''}`} type="button" disabled={sale?.status && sale.status !== 'DRAFT'} aria-pressed={form.saleType === 'CASH'} onClick={() => setSaleType('CASH')}>CASH</button>
+            <button className={`pos-segmented-button ${form.saleType === 'INSURANCE' ? 'active' : ''}`} type="button" disabled={sale?.status && sale.status !== 'DRAFT'} aria-pressed={form.saleType === 'INSURANCE'} onClick={() => setSaleType('INSURANCE')}>ASSURANCE</button>
+          </div>
+        </div>
+        <div className="pos-header-field pos-header-control-group">
+          <span>Mode</span>
+          <div className="pos-segmented" role="group" aria-label="Mode de vente">
+            <button className={`pos-segmented-button ${form.saleMode === 'IMMEDIATE' ? 'active' : ''}`} type="button" disabled={sale?.status && sale.status !== 'DRAFT'} aria-pressed={form.saleMode === 'IMMEDIATE'} onClick={() => setSaleMode('IMMEDIATE')}>Vente immediate</button>
+            <button className={`pos-segmented-button ${form.saleMode === 'ADVANCE' ? 'active' : ''}`} type="button" disabled={sale?.status && sale.status !== 'DRAFT'} aria-pressed={form.saleMode === 'ADVANCE'} onClick={() => setSaleMode('ADVANCE')}>Paiement en avance</button>
+          </div>
+        </div>
+        <label className="pos-header-field"><span>Site</span><input className="input compact-input" value={currentSite?.siteName ?? form.siteId ?? 'Site utilisateur'} disabled /></label>
+        <label className="pos-header-field"><span>Devise</span><input className="input compact-input" value="USD / FC" disabled /></label>
+        <label className="pos-header-field"><span>Taux</span><input className="input compact-input" value={`1 USD = ${formatMoney(saleExchangeRate, 'CDF')}`} disabled /></label>
+        <div className={`badge ${!sale ? 'badge-warning' : sale.status === 'VALIDATED' ? 'badge-success' : 'badge-warning'} pos-header-status-badge`}>{!sale ? (createDraft.isPending ? 'Preparation...' : 'En attente') : sale.status}</div>
+        <details className="pos-insurance-details" open={form.saleType === 'INSURANCE'}>
+          <summary>
+            <span>Assurance / Prise en charge</span>
+            <small>{form.saleType === 'INSURANCE' ? (selectedMembership ? `${selectedMembership.organizationName} - ${selectedMembership.planName}` : 'Selectionnez une assurance') : 'Optionnel pour les ventes CASH'}</small>
+          </summary>
+          <div className="pos-insurance-grid">
+            <label>
+              <span>Membership / Plan</span>
+              <select
+                className="input compact-input"
+                value={form.membershipId}
+                disabled={form.saleType !== 'INSURANCE' || !sale || sale.status !== 'DRAFT'}
+                onChange={(event) => update('membershipId', event.target.value)}
+              >
+                <option value="">Membership / Plan</option>
+                {(memberships.data ?? []).filter((membership) => membership.isActive).map((membership) => <option key={membership.membershipId} value={membership.membershipId}>{membership.organizationName} - {membership.planName} ({membership.coveragePercent}%)</option>)}
+              </select>
+            </label>
+            <div className="pos-insurance-summary">
+              <div><span>Organisme</span><strong>{selectedMembership?.organizationName ?? '-'}</strong></div>
+              <div><span>Plan</span><strong>{selectedMembership?.planName ?? '-'}</strong></div>
+              <div><span>Part patient</span><strong>{formatMoney(patientPayableFc, 'CDF')}</strong><small>{formatMoney(patientPayable, 'USD', currencySymbol)}</small></div>
+              <div><span>Part assurance</span><strong>{formatMoney(insuranceAmount * saleExchangeRate, 'CDF')}</strong><small>{formatMoney(insuranceAmount, 'USD', currencySymbol)}</small></div>
+            </div>
+          </div>
+        </details>
       </form>
       {form.saleType === 'INSURANCE' && !form.customerId && <p className="form-error">Veuillez selectionner un client assure.</p>}
 
@@ -1026,6 +1082,17 @@ export function PosPage() {
           />
           {form.saleType === 'INSURANCE' && <button className="ghost-button compact-button" type="button" disabled={!form.membershipId || items.length === 0 || applyInsurance.isPending || sale?.status !== 'DRAFT'} onClick={() => applyInsurance.mutate()}>{applyInsurance.isPending ? 'Application...' : 'Appliquer assurance'}</button>}
         </div>
+        {items.length === 0 && (
+          <div className="pos-empty-hint">
+            <p className="empty-state">Scannez ou recherchez un article pour commencer la vente.</p>
+            <div className="pos-shortcut-row" aria-label="Raccourcis POS">
+              <span>F2 : recherche</span>
+              <span>Entree : ajouter</span>
+              <span>Ctrl+S : enregistrer brouillon</span>
+              <span>Ctrl+Entree : encaisser</span>
+            </div>
+          </div>
+        )}
 
         <div className="table-wrap pos-grid-wrap">
           <table className="data-table pos-lines-table">
@@ -1095,6 +1162,8 @@ export function PosPage() {
       </section>
       <p className="muted pos-scan-help">Scanner un code-barres ou taper un nom/code/DCI. Entree sans texte passe au paiement.</p>
 
+        </div>
+        <aside className="pos-side-column">
       <section className="card compact-card pos-summary-panel">
         <div className="pos-cash-metrics">
           <div className="pos-cash-total">
@@ -1116,6 +1185,8 @@ export function PosPage() {
           <Summary label="Part patient USD" value={formatMoney(patientPayable, 'USD', currencySymbol)} />
           <Summary label="Part patient FC" value={formatMoney(patientPayableFc, 'CDF')} strong />
           <Summary label="Part assurance" value={`${formatMoney(insuranceAmount, 'USD', currencySymbol)} / ${formatMoney(insuranceAmount * saleExchangeRate, 'CDF')}`} />
+          <Summary label="Deja paye FC" value={formatMoney(paidEquivalentFc, 'CDF')} strong />
+          <Summary label="Reste a payer FC" value={formatMoney(Math.max(0, patientPayableFc - paidEquivalentFc), 'CDF')} />
           <label className="pos-paid-field pos-paid-fc"><span>Paye FC</span><input ref={paymentInputRef} className="input compact-input numeric-cell" type="number" min="0" step="1" value={paidFc} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); quickCheckout(); } }} onChange={(event) => { setPaidFc(event.target.value); setExactPayment(false); }} /></label>
           <label className="pos-paid-field"><span>Paye USD</span><input className="input compact-input numeric-cell" type="number" min="0" step="0.01" value={paidUsd} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); quickCheckout(); } }} onChange={(event) => { setPaidUsd(event.target.value); setExactPayment(false); }} /></label>
           <label className="pos-paid-field"><span>Rendu FC</span><input className="input compact-input numeric-cell" type="number" min="0" step="1" value={returnedFc} onChange={(event) => setReturnedFc(event.target.value)} /></label>
@@ -1132,7 +1203,7 @@ export function PosPage() {
           <label className="pos-paid-field" style={{ gridColumn: 'span 2' }}><span>Note</span><input className="input compact-input" placeholder="Observation facultative" value={settlementNote} onChange={(event) => setSettlementNote(event.target.value)} /></label>
         </div>
         <div className="page-actions pos-checkout-actions">
-          <button className="ghost-button compact-button pos-secondary-action pos-danger-action" type="button" disabled={!sale || sale.status !== 'DRAFT'} onClick={() => cancel.mutate()}>Annuler vente</button>
+          <button className="ghost-button compact-button pos-secondary-action pos-danger-action" type="button" disabled={!sale || sale.status !== 'DRAFT'} onClick={() => cancel.mutate()}>Vider le panier</button>
           <button className="ghost-button compact-button pos-secondary-action pos-print-action" type="button" disabled={!sale} onClick={printDraft}>Imprimer facture</button>
           <button className="ghost-button compact-button pos-secondary-action pos-exact-action" type="button" disabled={!sale || sale.status !== 'DRAFT' || items.length === 0} onClick={applyExactPayment}>Paiement exact</button>
           <button className="ghost-button compact-button pos-secondary-action" type="button" disabled={!form.siteId || updateDraft.isPending || createDraft.isPending} onClick={saveDraft}>Enregistrer brouillon</button>
@@ -1142,9 +1213,11 @@ export function PosPage() {
             <strong>{formatMoney(patientPayableFc, 'CDF')}</strong>
             <small>{formatMoney(patientPayable, 'USD', currencySymbol)}</small>
           </div>
-          <button className="button pos-checkout-button" type="button" disabled={!sale?.saleId || sale.status !== 'DRAFT' || items.length === 0 || validate.isPending || Boolean((paidUsd || paidFc || exactPayment) && !canValidate())} onClick={quickCheckout}>{validate.isPending ? 'ENCAISSEMENT...' : 'ENCAISSER'}</button>
+          <button className="button pos-checkout-button" type="button" disabled={!sale?.saleId || sale.status !== 'DRAFT' || items.length === 0 || validate.isPending || Boolean((paidUsd || paidFc || exactPayment) && !canValidate())} onClick={quickCheckout}>{validate.isPending ? 'ENCAISSEMENT...' : checkoutActionLabel}</button>
         </div>
       </section>
+        </aside>
+      </div>
 
       {cashOpenModalOpen && (
         <div className="modal-backdrop pos-open-cash-backdrop" role="dialog" aria-modal="true">
