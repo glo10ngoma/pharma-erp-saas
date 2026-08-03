@@ -104,6 +104,11 @@ export function CustomerReturnCreatePage() {
     enabled: canCreateUnlinked && origin === 'UNLINKED',
     placeholderData: (previous) => previous,
   });
+  const sitesQuery = useQuery({
+    queryKey: ['customer-return-create-sites'],
+    queryFn: async () => (await sitesService.getAll()).data,
+    enabled: canCreateUnlinked || origin === 'LINKED',
+  });
 
   const create = useMutation({
     mutationFn: (payload: Record<string, unknown>) => customerReturnsService.create(payload),
@@ -136,11 +141,6 @@ export function CustomerReturnCreatePage() {
     queryFn: async () => (await articlesService.getAll({ search: declaredArticleSearch || undefined, page: 1, limit: 50 })).data.items,
     enabled: canCreateUnlinked && origin === 'UNLINKED' && unlinkedMode === 'DECLARE',
     placeholderData: (previous) => previous,
-  });
-  const sitesQuery = useQuery({
-    queryKey: ['customer-return-create-sites'],
-    queryFn: async () => (await sitesService.getAll()).data,
-    enabled: canCreateUnlinked && origin === 'UNLINKED',
   });
   const activeArticleSuggestions = articlesQuery.data ?? [];
   const selectedDeclaredArticle = useMemo(
@@ -293,7 +293,14 @@ export function CustomerReturnCreatePage() {
                 <div className="sales-filter-grid">
                   <label className="field-block">
                     <span>Site</span>
-                    <input className="input" value={siteId} onChange={(event) => setSiteId(event.target.value)} placeholder="UUID du site ou filtre deja applique" />
+                    <select className="input" value={siteId} onChange={(event) => setSiteId(event.target.value)}>
+                      <option value="">Tous les sites</option>
+                      {(sitesQuery.data ?? []).map((site: SiteItem) => (
+                        <option key={site.siteId} value={site.siteId}>
+                          {site.siteName}
+                        </option>
+                      ))}
+                    </select>
                   </label>
                   <label className="field-block">
                     <span>Date debut</span>
