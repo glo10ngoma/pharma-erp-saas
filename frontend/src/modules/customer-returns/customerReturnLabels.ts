@@ -26,3 +26,30 @@ export function customerReturnConditionLabel(condition?: string | null) {
   if (condition === 'OTHER') return 'Autre';
   return condition;
 }
+
+export function customerReturnSettlementKindLabel(kind?: string | null) {
+  if (!kind) return '-';
+  if (kind === 'REFUND') return 'Remboursement';
+  if (kind === 'ADDITIONAL_PAYMENT') return 'Complement client';
+  if (kind === 'CUSTOMER_CREDIT') return 'Avoir client';
+  return kind;
+}
+
+export function customerReturnPaymentSourceLabel(source?: string | null) {
+  if (!source) return '-';
+  if (source === 'CASH_REGISTER') return 'Especes / caisse';
+  if (source === 'BANK') return 'Banque';
+  if (source === 'MOBILE_MONEY') return 'Mobile Money';
+  if (source === 'CUSTOMER_CREDIT') return 'Avoir client';
+  if (source === 'OTHER') return 'Autre';
+  return source;
+}
+
+export function customerCreditStatusLabel(status?: string | null) {
+  if (!status) return '-';
+  if (status === 'AVAILABLE') return 'Disponible';
+  if (status === 'PARTIALLY_USED') return 'Partiellement utilise';
+  if (status === 'USED') return 'Utilise';
+  if (status === 'CANCELLED') return 'Annule';
+  return status;
+}

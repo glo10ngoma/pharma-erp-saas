@@ -17,7 +17,65 @@ export type CustomerReturnItem = {
   returnedQuantity: number;
   conditionStatus: string;
   note?: string | null;
+  unitPriceSnapshot?: number;
+  lineReturnValue?: number;
+  salesUnitSnapshot?: string | null;
+  packagingSnapshot?: string | null;
   createdAt: string;
+};
+
+export type CustomerReturnReplacementItem = {
+  customerReturnReplacementItemId: string;
+  customerReturnId: string;
+  articleId: string;
+  articleCode?: string | null;
+  commercialName?: string | null;
+  salesUnitId?: string | null;
+  salesUnitSnapshot?: string | null;
+  packagingSnapshot?: string | null;
+  quantity: number;
+  unitPrice: number;
+  discountAmount: number;
+  lineTotal: number;
+  createdBy?: string | null;
+  createdAt: string;
+};
+
+export type CustomerReturnSettlement = {
+  customerReturnSettlementId: string;
+  customerReturnId: string;
+  customerId?: string | null;
+  settlementKind: string;
+  paymentSource: string;
+  currencyCode: string;
+  exchangeRateApplied: number;
+  amount: number;
+  amountEquivalentUsd: number;
+  cashSessionId?: string | null;
+  expirationDate?: string | null;
+  reference?: string | null;
+  note?: string | null;
+  createdBy?: string | null;
+  createdAt: string;
+};
+
+export type CustomerCredit = {
+  customerCreditId: string;
+  customerId: string;
+  customerName?: string | null;
+  customerReturnId?: string | null;
+  currencyCode: string;
+  initialAmount: number;
+  remainingAmount: number;
+  exchangeRateApplied: number;
+  status: string;
+  expirationDate?: string | null;
+  reference?: string | null;
+  note?: string | null;
+  createdBy?: string | null;
+  createdAt: string;
+  usedAt?: string | null;
+  cancelledAt?: string | null;
 };
 
 export type CustomerReturnSaleItem = NonNullable<Sale['items']>[number] & {
@@ -53,6 +111,14 @@ export type CustomerReturn = {
   reason?: string | null;
   note?: string | null;
   inspectionNote?: string | null;
+  returnedValueUsd?: number;
+  replacementValueUsd?: number;
+  financialDifferenceUsd?: number;
+  refundDueUsd?: number;
+  additionalPaymentDueUsd?: number;
+  customerCreditUsd?: number;
+  refundedAmountUsd?: number;
+  additionalPaidUsd?: number;
   createdBy?: string | null;
   inspectedBy?: string | null;
   validatedBy?: string | null;
@@ -62,6 +128,9 @@ export type CustomerReturn = {
   cancelledAt?: string | null;
   itemsCount?: number;
   items?: CustomerReturnItem[];
+  replacementItems?: CustomerReturnReplacementItem[];
+  settlements?: CustomerReturnSettlement[];
+  customerCredits?: CustomerCredit[];
   sale?: CustomerReturnSale;
 };
 
@@ -80,10 +149,15 @@ export const customerReturnsService = {
   create: (payload: Record<string, unknown>) => apiClient.post<CustomerReturn>('/customer-returns', payload),
   addItem: (id: string, payload: Record<string, unknown>) => apiClient.post<CustomerReturn>(`/customer-returns/${id}/items`, payload),
   removeItem: (id: string, itemId: string) => apiClient.delete<CustomerReturn>(`/customer-returns/${id}/items/${itemId}`),
+  addReplacement: (id: string, payload: Record<string, unknown>) => apiClient.post<CustomerReturn>(`/customer-returns/${id}/replacements`, payload),
+  removeReplacement: (id: string, itemId: string) => apiClient.delete<CustomerReturn>(`/customer-returns/${id}/replacements/${itemId}`),
+  addSettlement: (id: string, payload: Record<string, unknown>) => apiClient.post<CustomerReturn>(`/customer-returns/${id}/settlements`, payload),
+  removeSettlement: (id: string, settlementId: string) => apiClient.delete<CustomerReturn>(`/customer-returns/${id}/settlements/${settlementId}`),
   submitInspection: (id: string) => apiClient.post<{ submitted: boolean }>(`/customer-returns/${id}/submit-inspection`),
   inspect: (id: string, payload: Record<string, unknown>) => apiClient.post<{ inspected: boolean; status: string }>(`/customer-returns/${id}/inspect`, payload),
   validate: (id: string) => apiClient.post<{ validated: boolean }>(`/customer-returns/${id}/validate`),
   cancel: (id: string) => apiClient.post<{ cancelled: boolean }>(`/customer-returns/${id}/cancel`),
+  getCustomerCredits: (customerId?: string) => apiClient.get<CustomerCredit[]>('/customer-returns/customer-credits', { params: { customerId: customerId || undefined } }),
   searchValidatedSales: (params?: Record<string, string | number | undefined>) =>
     apiClient.get<SalesListResponse>('/customer-returns/validated-sales', { params }),
   getAttachments: (customerReturnId: string) => apiClient.get<PurchaseAttachment[]>(`/customer-returns/${customerReturnId}/attachments`),

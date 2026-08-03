@@ -7,6 +7,8 @@ import { RequirePermission } from '../common/decorators/require-permission.decor
 import { AuthUser } from '../common/types/auth-user';
 import { UploadPurchaseAttachmentDto } from '../purchases/dto/upload-purchase-attachment.dto';
 import { AddCustomerReturnItemDto } from './dto/add-customer-return-item.dto';
+import { AddCustomerReturnReplacementItemDto } from './dto/add-customer-return-replacement-item.dto';
+import { AddCustomerReturnSettlementDto } from './dto/add-customer-return-settlement.dto';
 import { CreateCustomerReturnDto } from './dto/create-customer-return.dto';
 import { InspectCustomerReturnDto } from './dto/inspect-customer-return.dto';
 import { ListCustomerReturnsDto } from './dto/list-customer-returns.dto';
@@ -18,6 +20,13 @@ import { CustomerReturnsService } from './customer-returns.service';
 @Controller('customer-returns')
 export class CustomerReturnsController {
   constructor(private readonly service: CustomerReturnsService) {}
+
+  @Get('customer-credits')
+  @RequirePermission('customer_credits.read')
+  @ApiOperation({ summary: 'Lister les avoirs clients' })
+  findCustomerCredits(@CurrentUser() user: AuthUser, @Query('customerId') customerId?: string) {
+    return this.service.findCustomerCredits(user, customerId);
+  }
 
   @Get()
   @RequirePermission('customer_returns.read')
@@ -59,6 +68,34 @@ export class CustomerReturnsController {
   @ApiOperation({ summary: 'Retirer une ligne de retour client' })
   removeItem(@CurrentUser() user: AuthUser, @Param('id') id: string, @Param('itemId') itemId: string) {
     return this.service.removeItem(user, id, itemId);
+  }
+
+  @Post(':id/replacements')
+  @RequirePermission('customer_returns.exchange')
+  @ApiOperation({ summary: 'Ajouter une ligne d echange client' })
+  addReplacement(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: AddCustomerReturnReplacementItemDto) {
+    return this.service.addReplacementItem(user, id, dto);
+  }
+
+  @Delete(':id/replacements/:itemId')
+  @RequirePermission('customer_returns.exchange')
+  @ApiOperation({ summary: 'Supprimer une ligne d echange client' })
+  removeReplacement(@CurrentUser() user: AuthUser, @Param('id') id: string, @Param('itemId') itemId: string) {
+    return this.service.removeReplacementItem(user, id, itemId);
+  }
+
+  @Post(':id/settlements')
+  @RequirePermission('customer_returns.read')
+  @ApiOperation({ summary: 'Ajouter une regularisation financiere du retour client' })
+  addSettlement(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: AddCustomerReturnSettlementDto) {
+    return this.service.addSettlement(user, id, dto);
+  }
+
+  @Delete(':id/settlements/:settlementId')
+  @RequirePermission('customer_returns.read')
+  @ApiOperation({ summary: 'Supprimer une regularisation financiere du retour client' })
+  removeSettlement(@CurrentUser() user: AuthUser, @Param('id') id: string, @Param('settlementId') settlementId: string) {
+    return this.service.removeSettlement(user, id, settlementId);
   }
 
   @Post(':id/submit-inspection')
