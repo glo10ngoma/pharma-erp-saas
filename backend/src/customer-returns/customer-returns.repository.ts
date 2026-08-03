@@ -201,7 +201,7 @@ export class CustomerReturnsRepository {
       filters.push(`cr.return_date < ($${params.length}::date + INTERVAL '1 day')`);
     }
 
-    const sortColumn = query.sortBy === 'createdAt' ? 'cr.created_at' : 'cr.return_date';
+    const sortColumn = query.sortBy === 'createdAt' ? 'filtered.created_at' : 'filtered.return_date';
     const sortOrder = query.sortOrder === 'asc' ? 'ASC' : 'DESC';
     const limit = query.limit ?? 25;
     const offset = ((query.page ?? 1) - 1) * limit;
