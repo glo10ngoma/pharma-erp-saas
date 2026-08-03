@@ -1,6 +1,8 @@
 export function customerReturnStatusLabel(status?: string | null) {
   if (!status) return '-';
   if (status === 'DRAFT') return 'Brouillon';
+  if (status === 'PENDING_TRACEABILITY') return 'Tracabilite a verifier';
+  if (status === 'PENDING_MANAGER_APPROVAL') return 'Validation responsable';
   if (status === 'PENDING_INSPECTION') return 'En inspection';
   if (status === 'APPROVED') return 'Approuve';
   if (status === 'REJECTED') return 'Rejete';
@@ -11,7 +13,8 @@ export function customerReturnStatusLabel(status?: string | null) {
 
 export function customerReturnStatusClass(status?: string | null) {
   if (status === 'VALIDATED' || status === 'APPROVED') return 'badge-success';
-  if (status === 'PENDING_INSPECTION') return 'badge-info';
+  if (status === 'PENDING_INSPECTION' || status === 'PENDING_TRACEABILITY') return 'badge-info';
+  if (status === 'PENDING_MANAGER_APPROVAL') return 'badge-warning';
   if (status === 'REJECTED' || status === 'CANCELLED') return 'badge-muted';
   return 'badge-warning';
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 const memoryStorage = require('multer').memoryStorage;
@@ -13,6 +13,7 @@ import { CreateCustomerReturnDto } from './dto/create-customer-return.dto';
 import { InspectCustomerReturnDto } from './dto/inspect-customer-return.dto';
 import { ListCustomerReturnsDto } from './dto/list-customer-returns.dto';
 import { SearchValidatedSalesDto } from './dto/search-validated-sales.dto';
+import { SearchCustomerReturnSalesDto } from './dto/search-customer-return-sales.dto';
 import { CustomerReturnsService } from './customer-returns.service';
 
 @ApiTags('customer-returns')
@@ -42,6 +43,13 @@ export class CustomerReturnsController {
     return this.service.searchValidatedSales(user, query);
   }
 
+  @Get('sales-search')
+  @RequirePermission('customer_returns.create')
+  @ApiOperation({ summary: 'Rechercher des ventes probables pour un retour client sans facture' })
+  searchSales(@CurrentUser() user: AuthUser, @Query() query: SearchCustomerReturnSalesDto) {
+    return this.service.searchProbableSales(user, query);
+  }
+
   @Post()
   @RequirePermission('customer_returns.create')
   @ApiOperation({ summary: 'Creer un dossier de retour client' })
@@ -54,6 +62,27 @@ export class CustomerReturnsController {
   @ApiOperation({ summary: 'Consulter un retour client' })
   findOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.service.findOne(user, id);
+  }
+
+  @Patch(':id')
+  @RequirePermission('customer_returns.traceability.review')
+  @ApiOperation({ summary: 'Mettre a jour les informations de tracabilite d un retour client' })
+  update(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: CreateCustomerReturnDto) {
+    return this.service.update(user, id, dto);
+  }
+
+  @Get(':id/traceability')
+  @RequirePermission('customer_returns.traceability.review')
+  @ApiOperation({ summary: 'Consulter le diagnostic de tracabilite d un retour client' })
+  traceability(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.service.traceability(user, id);
+  }
+
+  @Post(':id/approve-unlinked')
+  @RequirePermission('customer_returns.unlinked.approve')
+  @ApiOperation({ summary: 'Approuver responsablement un retour client sans facture' })
+  approveUnlinked(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.service.approveUnlinked(user, id);
   }
 
   @Post(':id/items')

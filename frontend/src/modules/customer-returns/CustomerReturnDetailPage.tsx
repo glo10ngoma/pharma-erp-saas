@@ -112,6 +112,9 @@ export function CustomerReturnDetailPage() {
   const canManageExchanges = canConfigureApproved && permissions.includes('customer_returns.exchange');
   const canManageSettlements = canConfigureApproved && (permissions.includes('customer_returns.refund') || permissions.includes('customer_returns.credit'));
   const canValidate = canConfigureApproved && permissions.includes('customer_returns.validate');
+  const canApproveUnlinked = current?.saleLinkStatus === 'UNLINKED'
+    && current.status === 'PENDING_MANAGER_APPROVAL'
+    && permissions.includes('customer_returns.unlinked.approve');
 
   const saleItemIds = useMemo(() => new Set(currentItems.map((item) => item.saleItemId)), [currentItems]);
   const availableSaleItems = useMemo(() => {
@@ -284,6 +287,15 @@ export function CustomerReturnDetailPage() {
     },
   });
 
+  const approveUnlinked = useMutation({
+    mutationFn: () => customerReturnsService.approveUnlinked(id),
+    onSuccess: async () => {
+      setActiveStep(3);
+      await qc.invalidateQueries({ queryKey: ['customer-return', id] });
+      await qc.invalidateQueries({ queryKey: ['customer-returns'] });
+    },
+  });
+
   const cancelReturn = useMutation({
     mutationFn: () => customerReturnsService.cancel(id),
     onSuccess: async () => {
@@ -303,6 +315,7 @@ export function CustomerReturnDetailPage() {
     addSettlement.error,
     removeSettlement.error,
     validateReturn.error,
+    approveUnlinked.error,
     cancelReturn.error,
   ].find(Boolean);
   const currentError = firstError ? apiErrorMessage(firstError) : '';
@@ -367,6 +380,11 @@ export function CustomerReturnDetailPage() {
               Valider
             </button>
           ) : null}
+          {canApproveUnlinked ? (
+            <button className="button compact-button" type="button" onClick={() => approveUnlinked.mutate()} disabled={approveUnlinked.isPending}>
+              Validation responsable
+            </button>
+          ) : null}
           {current.status !== 'VALIDATED' && current.status !== 'CANCELLED' ? (
             <button className="ghost-button compact-button" type="button" onClick={() => cancelReturn.mutate()} disabled={cancelReturn.isPending}>
               Annuler
@@ -387,6 +405,9 @@ export function CustomerReturnDetailPage() {
           <div><span>Client</span><strong>{current.customerNameSnapshot || current.organizationNameSnapshot || 'Comptoir'}</strong></div>
           <div><span>Site</span><strong>{current.siteNameSnapshot}</strong></div>
           <div><span>Statut</span><strong><span className={`badge ${customerReturnStatusClass(current.status)}`}>{customerReturnStatusLabel(current.status)}</span></strong></div>
+          <div><span>Origine</span><strong>{current.saleLinkStatus === 'UNLINKED' ? 'Retour sans facture' : 'Vente retrouvee'}</strong></div>
+          <div><span>Tracabilite</span><strong>{current.traceabilityStatus || '-'}</strong></div>
+          <div><span>Confiance</span><strong>{current.confidenceScore ?? 0}%</strong></div>
           <div><span>Montant retourne</span><strong>{formatMoney(current.returnedValueUsd ?? 0, 'USD')}</strong></div>
           <div><span>Montant remis</span><strong>{formatMoney(current.replacementValueUsd ?? 0, 'USD')}</strong></div>
           <div><span>Difference</span><strong>{formatMoney(Math.abs(current.financialDifferenceUsd ?? 0), 'USD')}</strong></div>
@@ -395,6 +416,42 @@ export function CustomerReturnDetailPage() {
           <div><span>Avoir cree</span><strong>{formatMoney(current.customerCreditUsd ?? 0, 'USD')}</strong></div>
         </div>
       </section>
+
+      {current.saleLinkStatus === 'UNLINKED' ? (
+        <section className="card compact-card">
+          <div className="panel-heading">
+            <div>
+              <h2>Retour sans facture</h2>
+              <p className="muted">Dossier exceptionnel soumis a tracabilite et validation responsable. Aucun mouvement stock ou caisse n est cree automatiquement.</p>
+            </div>
+            <span className={`badge ${current.traceabilityStatus === 'STRONG' ? 'badge-success' : current.traceabilityStatus === 'PARTIAL' ? 'badge-info' : current.traceabilityStatus === 'WEAK' ? 'badge-warning' : 'badge-muted'}`}>
+              {current.traceabilityStatus || 'NONE'} - {current.confidenceScore ?? 0}%
+            </span>
+          </div>
+          <div className="detail-grid">
+            <div><span>Nom declare</span><strong>{current.declaredCustomerName || '-'}</strong></div>
+            <div><span>Telephone</span><strong>{current.declaredCustomerPhone || '-'}</strong></div>
+            <div><span>Article declare</span><strong>{current.declaredArticleName || '-'}</strong></div>
+            <div><span>Quantite</span><strong>{current.declaredQuantity ?? '-'}</strong></div>
+            <div><span>Lot</span><strong>{current.declaredLotNumber || '-'}</strong></div>
+            <div><span>Expiration</span><strong>{current.declaredExpiryDate ? formatDate(current.declaredExpiryDate) : '-'}</strong></div>
+            <div><span>Achat approx.</span><strong>{current.approximatePurchaseDate ? formatDate(current.approximatePurchaseDate) : '-'}</strong></div>
+            <div><span>Prix declare</span><strong>{formatMoney(current.declaredPrice || 0, 'USD')}</strong></div>
+            <div><span>Responsabilite</span><strong>{current.responsibilityOrigin || '-'}</strong></div>
+            <div><span>Decision</span><strong>{current.commercialDecision || '-'}</strong></div>
+            <div><span>Responsable</span><strong>{current.approvedWithoutSale ? 'Valide' : 'En attente'}</strong></div>
+            <div><span>Approbation</span><strong>{current.approvedAt ? formatDate(current.approvedAt) : '-'}</strong></div>
+          </div>
+          {current.traceabilityNote ? <p className="muted">{current.traceabilityNote}</p> : null}
+          {canApproveUnlinked ? (
+            <div className="modal-actions">
+              <button className="button compact-button" type="button" onClick={() => approveUnlinked.mutate()} disabled={approveUnlinked.isPending}>
+                {approveUnlinked.isPending ? 'Validation...' : 'Valider responsablement'}
+              </button>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       <div className="card purchase-return-stepper-card">
         <div className="purchase-return-stepper" role="tablist" aria-label="Etapes retour client">

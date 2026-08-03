@@ -9,6 +9,7 @@ import { CreateCustomerReturnDto } from './dto/create-customer-return.dto';
 import { InspectCustomerReturnDto } from './dto/inspect-customer-return.dto';
 import { ListCustomerReturnsDto } from './dto/list-customer-returns.dto';
 import { SearchValidatedSalesDto } from './dto/search-validated-sales.dto';
+import { SearchCustomerReturnSalesDto } from './dto/search-customer-return-sales.dto';
 import { CustomerReturnsRepository, CustomerReturnSaleItem } from './customer-returns.repository';
 
 @Injectable()
@@ -38,11 +39,19 @@ export class CustomerReturnsService {
     });
   }
 
+  searchProbableSales(user: AuthUser, query: SearchCustomerReturnSalesDto) {
+    return this.repository.searchProbableSales(user, query);
+  }
+
   async create(user: AuthUser, dto: CreateCustomerReturnDto) {
     return this.wrap(async () => {
-      const sale = await this.salesService.findOne(user, dto.saleId);
-      if (!sale) throw new NotFoundException('SALE_NOT_FOUND');
-      if (sale.status !== 'VALIDATED') throw new BadRequestException('CUSTOMER_RETURN_SALE_NOT_VALIDATED');
+      const isUnlinked = dto.saleLinkStatus === 'UNLINKED';
+      if (isUnlinked && !user.permissions.includes('customer_returns.unlinked.create')) {
+        throw new ForbiddenException('PERMISSION_DENIED');
+      }
+      const sale = isUnlinked ? null : await this.salesService.findOne(user, dto.saleId!);
+      if (!isUnlinked && !sale) throw new NotFoundException('SALE_NOT_FOUND');
+      if (sale && sale.status !== 'VALIDATED') throw new BadRequestException('CUSTOMER_RETURN_SALE_NOT_VALIDATED');
       const customerReturnId = await this.repository.create(user, dto, sale);
       return this.findOne(user, customerReturnId);
     });
@@ -51,6 +60,12 @@ export class CustomerReturnsService {
   async findOne(user: AuthUser, id: string) {
     const found = await this.repository.findOne(user, id);
     if (!found) throw new NotFoundException('CUSTOMER_RETURN_NOT_FOUND');
+    if (!found.saleId) {
+      return {
+        ...found,
+        sale: null,
+      };
+    }
     const sale = await this.salesService.findOne(user, found.saleId);
     const returnedQuantities = await this.repository.findReturnedQuantitiesBySale(user, found.saleId);
     const returnableItems = (sale.items ?? []).map((item: CustomerReturnSaleItem) => {
@@ -77,6 +92,7 @@ export class CustomerReturnsService {
       const current = await this.repository.findOne(user, id);
       if (!current) throw new NotFoundException('CUSTOMER_RETURN_NOT_FOUND');
       if (current.status !== 'DRAFT') throw new BadRequestException('CUSTOMER_RETURN_NOT_DRAFT');
+      if (!current.saleId) throw new BadRequestException('CUSTOMER_RETURN_SALE_NOT_FOUND');
 
       const sale = await this.salesService.findOne(user, current.saleId);
       const selectedItem = (sale.items ?? []).find((item: CustomerReturnSaleItem) => item.saleItemId === dto.saleItemId);
@@ -92,6 +108,28 @@ export class CustomerReturnsService {
       await this.repository.addItem(user, id, dto, selectedItem, availableQuantity, current.saleId);
       return this.findOne(user, id);
     });
+  }
+
+  async update(user: AuthUser, id: string, dto: Partial<CreateCustomerReturnDto>) {
+    if (!user.permissions.includes('customer_returns.traceability.review')) {
+      throw new ForbiddenException('PERMISSION_DENIED');
+    }
+    await this.wrap(() => this.repository.updateTraceability(user, id, dto));
+    return this.findOne(user, id);
+  }
+
+  async approveUnlinked(user: AuthUser, id: string) {
+    if (!user.permissions.includes('customer_returns.unlinked.approve')) {
+      throw new ForbiddenException('PERMISSION_DENIED');
+    }
+    await this.wrap(() => this.repository.approveUnlinked(user, id));
+    return this.findOne(user, id);
+  }
+
+  async traceability(user: AuthUser, id: string) {
+    const found = await this.repository.traceability(user, id);
+    if (!found) throw new NotFoundException('CUSTOMER_RETURN_NOT_FOUND');
+    return found;
   }
 
   async removeItem(user: AuthUser, id: string, itemId: string) {
@@ -201,6 +239,8 @@ export class CustomerReturnsService {
           'CUSTOMER_RETURN_EMPTY',
           'CUSTOMER_RETURN_ALREADY_VALIDATED',
           'CUSTOMER_RETURN_SALE_MISMATCH',
+          'CUSTOMER_RETURN_NOT_UNLINKED',
+          'CUSTOMER_RETURN_MANAGER_APPROVAL_REQUIRED',
           'CUSTOMER_RETURN_SETTLEMENT_REQUIRED',
           'CUSTOMER_REQUIRED_FOR_CREDIT',
           'CUSTOMER_CREDIT_SOURCE_REQUIRED',
@@ -211,6 +251,9 @@ export class CustomerReturnsService {
           'CASH_SESSION_REQUIRED',
           'CASH_SESSION_NOT_OPEN',
           'ARTICLE_NOT_IN_TENANT',
+          'ARTICLE_NOT_FOUND',
+          'SITE_NOT_FOUND',
+          'SITE_REQUIRED_FOR_UNLINKED_RETURN',
         ];
         if (bad.includes(error.message)) throw new BadRequestException(error.message);
         if (error.message === 'PERMISSION_DENIED') throw new ForbiddenException('PERMISSION_DENIED');

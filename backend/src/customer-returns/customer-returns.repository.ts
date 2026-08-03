@@ -7,6 +7,7 @@ import { AddCustomerReturnSettlementDto } from './dto/add-customer-return-settle
 import { CreateCustomerReturnDto } from './dto/create-customer-return.dto';
 import { InspectCustomerReturnDto } from './dto/inspect-customer-return.dto';
 import { ListCustomerReturnsDto } from './dto/list-customer-returns.dto';
+import { SearchCustomerReturnSalesDto } from './dto/search-customer-return-sales.dto';
 
 type Queryable = { query: DatabaseService['query'] };
 
@@ -15,10 +16,10 @@ type CustomerReturnRow = {
   tenant_id: string;
   site_id: string;
   site_name: string | null;
-  sale_id: string;
-  sale_number_snapshot: string;
-  sale_date_snapshot: Date;
-  sale_type_snapshot: string;
+  sale_id: string | null;
+  sale_number_snapshot: string | null;
+  sale_date_snapshot: Date | null;
+  sale_type_snapshot: string | null;
   customer_id: string | null;
   customer_name_snapshot: string | null;
   organization_id: string | null;
@@ -48,8 +49,44 @@ type CustomerReturnRow = {
   inspected_at: Date | null;
   validated_at: Date | null;
   cancelled_at: Date | null;
+  sale_link_status: string;
+  traceability_status: string;
+  probable_sale_id: string | null;
+  confidence_score: string;
+  created_without_sale: boolean;
+  approved_without_sale: boolean;
+  approved_by: string | null;
+  approved_at: Date | null;
+  declared_customer_name: string | null;
+  declared_customer_phone: string | null;
+  declared_article_id: string | null;
+  declared_article_name: string | null;
+  declared_quantity: string | null;
+  declared_lot_number: string | null;
+  declared_expiry_date: Date | null;
+  approximate_purchase_date: Date | null;
+  supposed_site_id: string | null;
+  declared_price: string | null;
+  responsibility_origin: string | null;
+  commercial_decision: string | null;
+  traceability_note: string | null;
   items_count?: string;
   total_count?: string;
+};
+
+type ProbableSaleRow = {
+  sale_id: string;
+  sale_number: string;
+  sale_date: Date;
+  customer_name: string | null;
+  customer_phone: string | null;
+  site_id: string;
+  site_name: string | null;
+  total_amount: string;
+  currency_code: string | null;
+  article_hits: string;
+  lot_hits: string;
+  confidence_score: string;
 };
 
 type CustomerReturnItemRow = {
@@ -221,6 +258,12 @@ export class CustomerReturnsRepository {
           cr.refunded_amount_usd, cr.additional_paid_usd,
           cr.created_by, cr.inspected_by, cr.validated_by, cr.created_at, cr.inspected_at,
           cr.validated_at, cr.cancelled_at,
+          cr.sale_link_status, cr.traceability_status, cr.probable_sale_id, cr.confidence_score,
+          cr.created_without_sale, cr.approved_without_sale, cr.approved_by, cr.approved_at,
+          cr.declared_customer_name, cr.declared_customer_phone, cr.declared_article_id,
+          cr.declared_article_name, cr.declared_quantity, cr.declared_lot_number,
+          cr.declared_expiry_date, cr.approximate_purchase_date, cr.supposed_site_id,
+          cr.declared_price, cr.responsibility_origin, cr.commercial_decision, cr.traceability_note,
           COUNT(*) OVER()::int AS total_count,
           (
             SELECT COUNT(*)::int
@@ -263,7 +306,13 @@ export class CustomerReturnsRepository {
         cr.refund_due_usd, cr.additional_payment_due_usd, cr.customer_credit_usd,
         cr.refunded_amount_usd, cr.additional_paid_usd,
         cr.created_by, cr.inspected_by, cr.validated_by, cr.created_at, cr.inspected_at,
-        cr.validated_at, cr.cancelled_at
+        cr.validated_at, cr.cancelled_at,
+        cr.sale_link_status, cr.traceability_status, cr.probable_sale_id, cr.confidence_score,
+        cr.created_without_sale, cr.approved_without_sale, cr.approved_by, cr.approved_at,
+        cr.declared_customer_name, cr.declared_customer_phone, cr.declared_article_id,
+        cr.declared_article_name, cr.declared_quantity, cr.declared_lot_number,
+        cr.declared_expiry_date, cr.approximate_purchase_date, cr.supposed_site_id,
+        cr.declared_price, cr.responsibility_origin, cr.commercial_decision, cr.traceability_note
       FROM customer_returns cr
       LEFT JOIN sites s ON s.site_id = cr.site_id AND s.tenant_id = cr.tenant_id
       WHERE cr.tenant_id = $1
@@ -285,6 +334,8 @@ export class CustomerReturnsRepository {
   }
 
   async create(user: AuthUser, dto: CreateCustomerReturnDto, sale: any) {
+    if (!sale) return this.createUnlinked(user, dto);
+
     return this.db.transaction(async (client) => {
       const returnNumber = dto.returnNumber?.trim() || await this.nextReturnNumber(client, user.tenantId);
       const inserted = await client.query<{ customer_return_id: string }>(
@@ -293,10 +344,16 @@ export class CustomerReturnsRepository {
           tenant_id, site_id, sale_id, customer_id, organization_id, membership_id,
           return_number, return_date, sale_number_snapshot, sale_date_snapshot, sale_type_snapshot,
           customer_name_snapshot, organization_name_snapshot, site_name_snapshot,
-          currency_code, exchange_rate_snapshot, reason, note, created_by
+          currency_code, exchange_rate_snapshot, reason, note, created_by,
+          sale_link_status, traceability_status, probable_sale_id, confidence_score, created_without_sale,
+          declared_customer_name, declared_customer_phone, declared_article_id, declared_article_name,
+          declared_quantity, declared_lot_number, declared_expiry_date, approximate_purchase_date,
+          supposed_site_id, declared_price, responsibility_origin, commercial_decision, traceability_note
         )
         VALUES (
-          $1,$2,$3,$4,$5,$6,$7,COALESCE($8::date, CURRENT_DATE),$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19
+          $1,$2,$3,$4,$5,$6,$7,COALESCE($8::date, CURRENT_DATE),$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
+          'LINKED','STRONG',$20,100,FALSE,
+          $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33
         )
         RETURNING customer_return_id
         `,
@@ -320,6 +377,20 @@ export class CustomerReturnsRepository {
           dto.reason?.trim() || null,
           dto.note?.trim() || null,
           user.userId,
+          dto.probableSaleId ?? null,
+          dto.declaredCustomerName?.trim() || sale.customerName || null,
+          dto.declaredCustomerPhone?.trim() || null,
+          dto.declaredArticleId ?? null,
+          null,
+          dto.declaredQuantity ?? null,
+          dto.declaredLotNumber?.trim() || null,
+          this.toCivilDate(dto.declaredExpiryDate),
+          this.toCivilDate(dto.approximatePurchaseDate),
+          dto.supposedSiteId ?? sale.siteId,
+          dto.declaredPrice ?? null,
+          dto.responsibilityOrigin ?? null,
+          dto.commercialDecision ?? null,
+          null,
         ],
       );
       await this.insertAudit(client, user, inserted.rows[0].customer_return_id, 'CUSTOMER_RETURN_CREATED', {
@@ -328,6 +399,290 @@ export class CustomerReturnsRepository {
       });
       return inserted.rows[0].customer_return_id;
     });
+  }
+
+  async searchProbableSales(user: AuthUser, query: SearchCustomerReturnSalesDto) {
+    const params: unknown[] = [user.tenantId, user.siteId ?? null];
+    const filters = ['s.tenant_id = $1', '($2::uuid IS NULL OR s.site_id = $2::uuid)', "s.status = 'VALIDATED'"];
+    const term = query.search?.trim();
+    const articleTerm = query.article?.trim() || term;
+    const lotTerm = query.lotNumber?.trim();
+
+    if (query.siteId) {
+      params.push(query.siteId);
+      filters.push(`s.site_id = $${params.length}::uuid`);
+    }
+    if (query.ticketNumber?.trim()) {
+      params.push(`%${query.ticketNumber.trim()}%`);
+      filters.push(`s.sale_number ILIKE $${params.length}`);
+    }
+    if (query.phone?.trim()) {
+      params.push(`%${query.phone.trim()}%`);
+      filters.push(`COALESCE(c.phone, '') ILIKE $${params.length}`);
+    }
+    if (query.customerName?.trim()) {
+      params.push(`%${query.customerName.trim()}%`);
+      filters.push(`COALESCE(c.customer_name, '') ILIKE $${params.length}`);
+    }
+    if (query.seller?.trim()) {
+      params.push(`%${query.seller.trim()}%`);
+      filters.push(`COALESCE(u.full_name, '') ILIKE $${params.length}`);
+    }
+    if (query.approximateDate) {
+      params.push(query.approximateDate);
+      filters.push(`s.sale_date BETWEEN ($${params.length}::date - INTERVAL '7 days') AND ($${params.length}::date + INTERVAL '7 days')`);
+    }
+    if (query.approximateAmount !== undefined) {
+      params.push(query.approximateAmount);
+      filters.push(`ABS(s.total_amount - $${params.length}::numeric) <= GREATEST($${params.length}::numeric * 0.20, 1)`);
+    }
+    if (term) {
+      params.push(`%${term}%`);
+      filters.push(`(
+        s.sale_number ILIKE $${params.length}
+        OR COALESCE(c.customer_name, '') ILIKE $${params.length}
+        OR COALESCE(c.phone, '') ILIKE $${params.length}
+        OR EXISTS (
+          SELECT 1
+          FROM sale_items si
+          JOIN articles a ON a.article_id = si.article_id AND a.tenant_id = si.tenant_id
+          LEFT JOIN lots l ON l.lot_id = si.lot_id AND l.tenant_id = si.tenant_id
+          WHERE si.tenant_id = s.tenant_id
+            AND si.sale_id = s.sale_id
+            AND (
+              COALESCE(a.article_code, '') ILIKE $${params.length}
+              OR COALESCE(a.commercial_name, '') ILIKE $${params.length}
+              OR COALESCE(a.dci, '') ILIKE $${params.length}
+              OR COALESCE(a.barcode, '') ILIKE $${params.length}
+              OR COALESCE(l.lot_number, '') ILIKE $${params.length}
+            )
+        )
+      )`);
+    }
+    if (articleTerm) {
+      params.push(`%${articleTerm}%`);
+      filters.push(`EXISTS (
+        SELECT 1
+        FROM sale_items si
+        JOIN articles a ON a.article_id = si.article_id AND a.tenant_id = si.tenant_id
+        WHERE si.tenant_id = s.tenant_id
+          AND si.sale_id = s.sale_id
+          AND (
+            COALESCE(a.article_code, '') ILIKE $${params.length}
+            OR COALESCE(a.commercial_name, '') ILIKE $${params.length}
+            OR COALESCE(a.dci, '') ILIKE $${params.length}
+            OR COALESCE(a.barcode, '') ILIKE $${params.length}
+          )
+      )`);
+    }
+    if (lotTerm) {
+      params.push(`%${lotTerm}%`);
+      filters.push(`EXISTS (
+        SELECT 1
+        FROM sale_items si
+        JOIN lots l ON l.lot_id = si.lot_id AND l.tenant_id = si.tenant_id
+        WHERE si.tenant_id = s.tenant_id
+          AND si.sale_id = s.sale_id
+          AND COALESCE(l.lot_number, '') ILIKE $${params.length}
+      )`);
+    }
+
+    const limit = query.limit ?? 25;
+    const offset = ((query.page ?? 1) - 1) * limit;
+    params.push(limit, offset);
+
+    const result = await this.db.query<ProbableSaleRow>(
+      `
+      WITH scored AS (
+        SELECT
+          s.sale_id, s.sale_number, s.sale_date, c.customer_name, c.phone AS customer_phone,
+          s.site_id, st.site_name, s.total_amount, cur.currency_code,
+          COUNT(DISTINCT si.sale_item_id) FILTER (
+            WHERE $${params.length + 1}::text IS NOT NULL
+              AND (
+                a.article_code ILIKE ('%' || $${params.length + 1}::text || '%')
+                OR a.commercial_name ILIKE ('%' || $${params.length + 1}::text || '%')
+                OR COALESCE(a.dci, '') ILIKE ('%' || $${params.length + 1}::text || '%')
+                OR COALESCE(a.barcode, '') ILIKE ('%' || $${params.length + 1}::text || '%')
+              )
+          )::int AS article_hits,
+          COUNT(DISTINCT si.sale_item_id) FILTER (
+            WHERE $${params.length + 2}::text IS NOT NULL
+              AND COALESCE(l.lot_number, '') ILIKE ('%' || $${params.length + 2}::text || '%')
+          )::int AS lot_hits,
+          LEAST(100,
+            CASE WHEN $${params.length + 3}::text IS NOT NULL AND COALESCE(c.phone, '') ILIKE ('%' || $${params.length + 3}::text || '%') THEN 25 ELSE 0 END
+            + CASE WHEN $${params.length + 4}::text IS NOT NULL AND COALESCE(c.customer_name, '') ILIKE ('%' || $${params.length + 4}::text || '%') THEN 15 ELSE 0 END
+            + CASE WHEN $${params.length + 1}::text IS NOT NULL AND COUNT(DISTINCT si.sale_item_id) FILTER (
+                WHERE a.article_code ILIKE ('%' || $${params.length + 1}::text || '%')
+                  OR a.commercial_name ILIKE ('%' || $${params.length + 1}::text || '%')
+                  OR COALESCE(a.dci, '') ILIKE ('%' || $${params.length + 1}::text || '%')
+                  OR COALESCE(a.barcode, '') ILIKE ('%' || $${params.length + 1}::text || '%')
+              ) > 0 THEN 30 ELSE 0 END
+            + CASE WHEN $${params.length + 2}::text IS NOT NULL AND COUNT(DISTINCT si.sale_item_id) FILTER (
+                WHERE COALESCE(l.lot_number, '') ILIKE ('%' || $${params.length + 2}::text || '%')
+              ) > 0 THEN 20 ELSE 0 END
+            + CASE WHEN $${params.length + 5}::date IS NOT NULL AND s.sale_date BETWEEN ($${params.length + 5}::date - INTERVAL '7 days') AND ($${params.length + 5}::date + INTERVAL '7 days') THEN 10 ELSE 0 END
+          )::numeric AS confidence_score
+        FROM sales s
+        JOIN sites st ON st.site_id = s.site_id AND st.tenant_id = s.tenant_id
+        LEFT JOIN customers c ON c.customer_id = s.customer_id AND c.tenant_id = s.tenant_id
+        LEFT JOIN currencies cur ON cur.currency_id = s.currency_id
+        LEFT JOIN users u ON u.user_id = s.created_by AND u.tenant_id = s.tenant_id
+        LEFT JOIN sale_items si ON si.sale_id = s.sale_id AND si.tenant_id = s.tenant_id
+        LEFT JOIN articles a ON a.article_id = si.article_id AND a.tenant_id = si.tenant_id
+        LEFT JOIN lots l ON l.lot_id = si.lot_id AND l.tenant_id = si.tenant_id
+        WHERE ${filters.join(' AND ')}
+        GROUP BY s.sale_id, s.sale_number, s.sale_date, c.customer_name, c.phone, s.site_id,
+                 st.site_name, s.total_amount, cur.currency_code
+      )
+      SELECT *
+      FROM scored
+      ORDER BY confidence_score DESC, sale_date DESC
+      LIMIT $${params.length - 1}
+      OFFSET $${params.length}
+      `,
+      [...params, articleTerm ?? null, lotTerm ?? null, query.phone ?? null, query.customerName ?? null, query.approximateDate ?? null],
+    );
+
+    return result.rows.map((row) => ({
+      saleId: row.sale_id,
+      saleNumber: row.sale_number,
+      saleDate: row.sale_date,
+      customerName: row.customer_name,
+      customerPhone: row.customer_phone,
+      siteId: row.site_id,
+      siteName: row.site_name,
+      totalAmount: Number(row.total_amount),
+      currencyCode: row.currency_code ?? 'USD',
+      articleHits: Number(row.article_hits),
+      lotHits: Number(row.lot_hits),
+      confidenceScore: Number(row.confidence_score),
+      traceabilityLabel: this.traceabilityLabel(Number(row.confidence_score)),
+    }));
+  }
+
+  async updateTraceability(user: AuthUser, customerReturnId: string, dto: Partial<CreateCustomerReturnDto>) {
+    return this.db.transaction(async (client) => {
+      const current = await this.findHeader(client, user.tenantId, customerReturnId, user.siteId ?? null, true);
+      if (!current) throw new Error('CUSTOMER_RETURN_NOT_FOUND');
+      if (current.sale_link_status !== 'UNLINKED') throw new Error('CUSTOMER_RETURN_NOT_UNLINKED');
+      if (!['PENDING_TRACEABILITY', 'PENDING_MANAGER_APPROVAL', 'DRAFT'].includes(current.status)) {
+        throw new Error('CUSTOMER_RETURN_NOT_DRAFT');
+      }
+
+      const declaredArticleId = dto.declaredArticleId ?? current.declared_article_id ?? undefined;
+      const declaredLotNumber = dto.declaredLotNumber ?? current.declared_lot_number ?? undefined;
+      const approximatePurchaseDate = dto.approximatePurchaseDate ?? this.toCivilDate(current.approximate_purchase_date);
+      const supposedSiteId = dto.supposedSiteId ?? current.supposed_site_id ?? current.site_id;
+      const traceability = await this.evaluateTraceability(
+        client,
+        user.tenantId,
+        declaredArticleId,
+        declaredLotNumber,
+        approximatePurchaseDate ?? undefined,
+        supposedSiteId,
+        dto.declaredPrice ?? Number(current.declared_price ?? 0),
+      );
+      const status = traceability.traceabilityStatus === 'STRONG' || traceability.traceabilityStatus === 'PARTIAL'
+        ? 'PENDING_MANAGER_APPROVAL'
+        : 'PENDING_TRACEABILITY';
+
+      await client.query(
+        `
+        UPDATE customer_returns
+        SET declared_customer_name = COALESCE($3, declared_customer_name),
+            declared_customer_phone = COALESCE($4, declared_customer_phone),
+            declared_article_id = COALESCE($5::uuid, declared_article_id),
+            declared_article_name = COALESCE($6, declared_article_name),
+            declared_quantity = COALESCE($7::numeric, declared_quantity),
+            declared_lot_number = COALESCE($8, declared_lot_number),
+            declared_expiry_date = COALESCE($9::date, declared_expiry_date),
+            approximate_purchase_date = COALESCE($10::date, approximate_purchase_date),
+            supposed_site_id = COALESCE($11::uuid, supposed_site_id),
+            declared_price = COALESCE($12::numeric, declared_price),
+            reason = COALESCE($13, reason),
+            note = COALESCE($14, note),
+            responsibility_origin = COALESCE($15, responsibility_origin),
+            commercial_decision = COALESCE($16, commercial_decision),
+            traceability_status = $17,
+            confidence_score = $18,
+            traceability_note = $19,
+            status = $20
+        WHERE tenant_id = $1 AND customer_return_id = $2::uuid
+        `,
+        [
+          user.tenantId,
+          customerReturnId,
+          dto.declaredCustomerName?.trim() || null,
+          dto.declaredCustomerPhone?.trim() || null,
+          dto.declaredArticleId ?? null,
+          traceability.articleName,
+          dto.declaredQuantity ?? null,
+          dto.declaredLotNumber?.trim() || null,
+          this.toCivilDate(dto.declaredExpiryDate),
+          this.toCivilDate(dto.approximatePurchaseDate),
+          dto.supposedSiteId ?? null,
+          dto.declaredPrice ?? null,
+          dto.reason?.trim() || null,
+          dto.note?.trim() || null,
+          dto.responsibilityOrigin ?? null,
+          dto.commercialDecision ?? null,
+          traceability.traceabilityStatus,
+          traceability.confidenceScore,
+          traceability.traceabilityNote,
+          status,
+        ],
+      );
+      await this.insertAudit(client, user, customerReturnId, 'UPDATE', {
+        action: 'TRACEABILITY_REVIEW',
+        traceabilityStatus: traceability.traceabilityStatus,
+        confidenceScore: traceability.confidenceScore,
+      });
+      return { updated: true };
+    });
+  }
+
+  async approveUnlinked(user: AuthUser, customerReturnId: string) {
+    return this.db.transaction(async (client) => {
+      const current = await this.findHeader(client, user.tenantId, customerReturnId, user.siteId ?? null, true);
+      if (!current) throw new Error('CUSTOMER_RETURN_NOT_FOUND');
+      if (current.sale_link_status !== 'UNLINKED') throw new Error('CUSTOMER_RETURN_NOT_UNLINKED');
+      if (current.status !== 'PENDING_MANAGER_APPROVAL') throw new Error('CUSTOMER_RETURN_MANAGER_APPROVAL_REQUIRED');
+      await client.query(
+        `
+        UPDATE customer_returns
+        SET approved_without_sale = TRUE,
+            approved_by = $3,
+            approved_at = CURRENT_TIMESTAMP,
+            status = 'PENDING_INSPECTION'
+        WHERE tenant_id = $1 AND customer_return_id = $2::uuid
+        `,
+        [user.tenantId, customerReturnId, user.userId],
+      );
+      await this.insertAudit(client, user, customerReturnId, 'UPDATE', { action: 'APPROVE_UNLINKED_RETURN' });
+      return { approved: true };
+    });
+  }
+
+  async traceability(user: AuthUser, customerReturnId: string) {
+    const current = await this.findHeader(this.db, user.tenantId, customerReturnId, user.siteId ?? null);
+    if (!current) return null;
+    return {
+      saleLinkStatus: current.sale_link_status,
+      traceabilityStatus: current.traceability_status,
+      confidenceScore: Number(current.confidence_score ?? 0),
+      probableSaleId: current.probable_sale_id,
+      createdWithoutSale: current.created_without_sale,
+      approvedWithoutSale: current.approved_without_sale,
+      approvedBy: current.approved_by,
+      approvedAt: current.approved_at,
+      declaredArticleId: current.declared_article_id,
+      declaredArticleName: current.declared_article_name,
+      declaredLotNumber: current.declared_lot_number,
+      traceabilityNote: current.traceability_note,
+      label: this.traceabilityLabel(Number(current.confidence_score ?? 0)),
+    };
   }
 
   async addItem(user: AuthUser, customerReturnId: string, dto: AddCustomerReturnItemDto, saleItem: CustomerReturnSaleItem, availableQuantity: number, saleId: string) {
@@ -911,7 +1266,13 @@ export class CustomerReturnsRepository {
         cr.refund_due_usd, cr.additional_payment_due_usd, cr.customer_credit_usd,
         cr.refunded_amount_usd, cr.additional_paid_usd,
         cr.created_by, cr.inspected_by, cr.validated_by, cr.created_at, cr.inspected_at,
-        cr.validated_at, cr.cancelled_at
+        cr.validated_at, cr.cancelled_at,
+        cr.sale_link_status, cr.traceability_status, cr.probable_sale_id, cr.confidence_score,
+        cr.created_without_sale, cr.approved_without_sale, cr.approved_by, cr.approved_at,
+        cr.declared_customer_name, cr.declared_customer_phone, cr.declared_article_id,
+        cr.declared_article_name, cr.declared_quantity, cr.declared_lot_number,
+        cr.declared_expiry_date, cr.approximate_purchase_date, cr.supposed_site_id,
+        cr.declared_price, cr.responsibility_origin, cr.commercial_decision, cr.traceability_note
       FROM customer_returns cr
       LEFT JOIN sites s ON s.site_id = cr.site_id AND s.tenant_id = cr.tenant_id
       WHERE cr.tenant_id = $1
@@ -923,6 +1284,210 @@ export class CustomerReturnsRepository {
       [tenantId, customerReturnId, siteId],
     );
     return result.rows[0] ?? null;
+  }
+
+  private async createUnlinked(user: AuthUser, dto: CreateCustomerReturnDto) {
+    return this.db.transaction(async (client) => {
+      const siteId = dto.supposedSiteId ?? user.siteId;
+      if (!siteId) throw new Error('SITE_REQUIRED_FOR_UNLINKED_RETURN');
+      const site = await client.query<{ site_id: string; site_name: string }>(
+        `
+        SELECT site_id, site_name
+        FROM sites
+        WHERE tenant_id = $1
+          AND site_id = $2::uuid
+          AND is_active = TRUE
+        LIMIT 1
+        `,
+        [user.tenantId, siteId],
+      );
+      if (!site.rows[0]) throw new Error('SITE_NOT_FOUND');
+
+      const traceability = await this.evaluateTraceability(
+        client,
+        user.tenantId,
+        dto.declaredArticleId,
+        dto.declaredLotNumber,
+        dto.approximatePurchaseDate,
+        siteId,
+        dto.declaredPrice,
+      );
+      const returnNumber = dto.returnNumber?.trim() || await this.nextReturnNumber(client, user.tenantId);
+      const status = traceability.traceabilityStatus === 'STRONG' || traceability.traceabilityStatus === 'PARTIAL'
+        ? 'PENDING_MANAGER_APPROVAL'
+        : 'PENDING_TRACEABILITY';
+
+      const inserted = await client.query<{ customer_return_id: string }>(
+        `
+        INSERT INTO customer_returns (
+          tenant_id, site_id, sale_id, customer_id, organization_id, membership_id,
+          return_number, return_date, sale_number_snapshot, sale_date_snapshot, sale_type_snapshot,
+          customer_name_snapshot, organization_name_snapshot, site_name_snapshot,
+          currency_code, exchange_rate_snapshot, reason, note, created_by,
+          status, sale_link_status, traceability_status, probable_sale_id, confidence_score,
+          created_without_sale, declared_customer_name, declared_customer_phone, declared_article_id,
+          declared_article_name, declared_quantity, declared_lot_number, declared_expiry_date,
+          approximate_purchase_date, supposed_site_id, declared_price, responsibility_origin,
+          commercial_decision, traceability_note
+        )
+        VALUES (
+          $1,$2,NULL,NULL,NULL,NULL,
+          $3,COALESCE($4::date, CURRENT_DATE),'SANS-FACTURE',NULL,'UNLINKED',
+          $5,NULL,$6,'USD',1,$7,$8,$9,
+          $10,'UNLINKED',$11,$12,$13,
+          TRUE,$14,$15,$16,$17,$18,$19,$20,
+          $21,$22,$23,$24,$25,$26
+        )
+        RETURNING customer_return_id
+        `,
+        [
+          user.tenantId,
+          siteId,
+          returnNumber,
+          dto.returnDate ?? null,
+          dto.declaredCustomerName?.trim() || null,
+          site.rows[0].site_name,
+          dto.reason?.trim() || null,
+          dto.note?.trim() || null,
+          user.userId,
+          status,
+          traceability.traceabilityStatus,
+          dto.probableSaleId ?? null,
+          traceability.confidenceScore,
+          dto.declaredCustomerName?.trim() || null,
+          dto.declaredCustomerPhone?.trim() || null,
+          dto.declaredArticleId ?? null,
+          traceability.articleName || null,
+          dto.declaredQuantity ?? null,
+          dto.declaredLotNumber?.trim() || null,
+          this.toCivilDate(dto.declaredExpiryDate),
+          this.toCivilDate(dto.approximatePurchaseDate),
+          siteId,
+          dto.declaredPrice ?? null,
+          dto.responsibilityOrigin ?? null,
+          dto.commercialDecision ?? 'INSPECTION_REQUIRED',
+          traceability.traceabilityNote,
+        ],
+      );
+      await this.insertAudit(client, user, inserted.rows[0].customer_return_id, 'CUSTOMER_RETURN_CREATED', {
+        returnNumber,
+        saleLinkStatus: 'UNLINKED',
+        traceabilityStatus: traceability.traceabilityStatus,
+        confidenceScore: traceability.confidenceScore,
+      });
+      return inserted.rows[0].customer_return_id;
+    });
+  }
+
+  private async evaluateTraceability(
+    queryable: Queryable,
+    tenantId: string,
+    articleId?: string,
+    lotNumber?: string,
+    approximatePurchaseDate?: string | null,
+    siteId?: string | null,
+    declaredPrice?: number,
+  ) {
+    const article = articleId
+      ? await queryable.query<{ article_id: string; commercial_name: string }>(
+        `SELECT article_id, commercial_name FROM articles WHERE tenant_id = $1 AND article_id = $2::uuid LIMIT 1`,
+        [tenantId, articleId],
+      )
+      : { rows: [] as Array<{ article_id: string; commercial_name: string }> };
+
+    const lot = articleId && lotNumber?.trim()
+      ? await queryable.query<{
+        lot_id: string;
+        lot_number: string;
+        selling_price: string;
+        purchase_movement_count: string;
+        sold_quantity: string;
+        date_match_count: string;
+        price_match_count: string;
+      }>(
+        `
+        SELECT
+          l.lot_id,
+          l.lot_number,
+          l.selling_price,
+          COUNT(DISTINCT sm.movement_id) FILTER (WHERE sm.movement_type IN ('PURCHASE_IN', 'TRANSFER_IN', 'INVENTORY_GAIN'))::int AS purchase_movement_count,
+          COALESCE(SUM(si.quantity), 0)::numeric AS sold_quantity,
+          COUNT(DISTINCT s.sale_id) FILTER (
+            WHERE $5::date IS NOT NULL
+              AND s.sale_date BETWEEN ($5::date - INTERVAL '30 days') AND ($5::date + INTERVAL '30 days')
+          )::int AS date_match_count,
+          COUNT(DISTINCT s.sale_id) FILTER (
+            WHERE $6::numeric IS NOT NULL
+              AND ABS(si.unit_price - $6::numeric) <= GREATEST($6::numeric * 0.20, 1)
+          )::int AS price_match_count
+        FROM lots l
+        LEFT JOIN stock_movements sm ON sm.tenant_id = l.tenant_id AND sm.lot_id = l.lot_id
+        LEFT JOIN sale_items si ON si.tenant_id = l.tenant_id AND si.lot_id = l.lot_id
+        LEFT JOIN sales s ON s.tenant_id = si.tenant_id AND s.sale_id = si.sale_id AND s.status = 'VALIDATED'
+        WHERE l.tenant_id = $1
+          AND l.article_id = $2::uuid
+          AND l.lot_number = $3
+          AND ($4::uuid IS NULL OR EXISTS (
+            SELECT 1
+            FROM stocks st
+            WHERE st.tenant_id = l.tenant_id
+              AND st.lot_id = l.lot_id
+              AND st.site_id = $4::uuid
+          ))
+        GROUP BY l.lot_id, l.lot_number, l.selling_price
+        LIMIT 1
+        `,
+        [tenantId, articleId, lotNumber.trim(), siteId ?? null, approximatePurchaseDate ?? null, declaredPrice ?? null],
+      )
+      : { rows: [] as Array<{
+        lot_id: string;
+        lot_number: string;
+        selling_price: string;
+        purchase_movement_count: string;
+        sold_quantity: string;
+        date_match_count: string;
+        price_match_count: string;
+      }> };
+
+    let score = 0;
+    const notes: string[] = [];
+    if (article.rows[0]) {
+      score += 25;
+      notes.push('Article reconnu dans le referentiel.');
+    } else {
+      notes.push('Article non reconnu.');
+    }
+    if (lot.rows[0]) {
+      score += 25;
+      notes.push('Lot reconnu pour cet article.');
+      if (Number(lot.rows[0].purchase_movement_count) > 0) {
+        score += 20;
+        notes.push('Lot recu par la pharmacie.');
+      }
+      if (Number(lot.rows[0].sold_quantity) > 0) {
+        score += 20;
+        notes.push('Lot deja vendu.');
+      }
+      if (Number(lot.rows[0].date_match_count) > 0) {
+        score += 5;
+        notes.push('Periode d achat plausible.');
+      }
+      if (Number(lot.rows[0].price_match_count) > 0) {
+        score += 5;
+        notes.push('Prix declare coherent.');
+      }
+    } else {
+      notes.push('Lot non retrouve pour cet article/site.');
+    }
+
+    const confidenceScore = Math.min(100, score);
+    const traceabilityStatus = confidenceScore >= 80 ? 'STRONG' : confidenceScore >= 50 ? 'PARTIAL' : confidenceScore >= 25 ? 'WEAK' : 'NONE';
+    return {
+      articleName: article.rows[0]?.commercial_name ?? null,
+      confidenceScore,
+      traceabilityStatus,
+      traceabilityNote: notes.join(' '),
+    };
   }
 
   private async assertArticle(tenantId: string, articleId: string) {
@@ -1151,6 +1716,27 @@ export class CustomerReturnsRepository {
       validatedAt: row.validated_at,
       cancelledAt: row.cancelled_at,
       itemsCount: Number(row.items_count ?? 0),
+      saleLinkStatus: row.sale_link_status ?? 'LINKED',
+      traceabilityStatus: row.traceability_status ?? 'STRONG',
+      probableSaleId: row.probable_sale_id,
+      confidenceScore: Number(row.confidence_score ?? 100),
+      createdWithoutSale: row.created_without_sale ?? false,
+      approvedWithoutSale: row.approved_without_sale ?? false,
+      approvedBy: row.approved_by,
+      approvedAt: row.approved_at,
+      declaredCustomerName: row.declared_customer_name,
+      declaredCustomerPhone: row.declared_customer_phone,
+      declaredArticleId: row.declared_article_id,
+      declaredArticleName: row.declared_article_name,
+      declaredQuantity: row.declared_quantity === null || row.declared_quantity === undefined ? null : Number(row.declared_quantity),
+      declaredLotNumber: row.declared_lot_number,
+      declaredExpiryDate: row.declared_expiry_date,
+      approximatePurchaseDate: row.approximate_purchase_date,
+      supposedSiteId: row.supposed_site_id,
+      declaredPrice: row.declared_price === null || row.declared_price === undefined ? null : Number(row.declared_price),
+      responsibilityOrigin: row.responsibility_origin,
+      commercialDecision: row.commercial_decision,
+      traceabilityNote: row.traceability_note,
     };
   }
 
@@ -1177,6 +1763,13 @@ export class CustomerReturnsRepository {
 
   private roundMoney(value: number) {
     return Number(value.toFixed(2));
+  }
+
+  private traceabilityLabel(score: number) {
+    if (score >= 80) return 'Tracabilite forte';
+    if (score >= 50) return 'Tracabilite moyenne';
+    if (score >= 25) return 'Tracabilite faible';
+    return 'Tracabilite non etablie';
   }
 
   private toUsd(amount: number, currencyCode: string, exchangeRate: number) {

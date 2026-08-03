@@ -119,6 +119,27 @@ export type CustomerReturn = {
   customerCreditUsd?: number;
   refundedAmountUsd?: number;
   additionalPaidUsd?: number;
+  saleLinkStatus?: string;
+  traceabilityStatus?: string;
+  probableSaleId?: string | null;
+  confidenceScore?: number;
+  createdWithoutSale?: boolean;
+  approvedWithoutSale?: boolean;
+  approvedBy?: string | null;
+  approvedAt?: string | null;
+  declaredCustomerName?: string | null;
+  declaredCustomerPhone?: string | null;
+  declaredArticleId?: string | null;
+  declaredArticleName?: string | null;
+  declaredQuantity?: number | null;
+  declaredLotNumber?: string | null;
+  declaredExpiryDate?: string | null;
+  approximatePurchaseDate?: string | null;
+  supposedSiteId?: string | null;
+  declaredPrice?: number | null;
+  responsibilityOrigin?: string | null;
+  commercialDecision?: string | null;
+  traceabilityNote?: string | null;
   createdBy?: string | null;
   inspectedBy?: string | null;
   validatedBy?: string | null;
@@ -131,7 +152,7 @@ export type CustomerReturn = {
   replacementItems?: CustomerReturnReplacementItem[];
   settlements?: CustomerReturnSettlement[];
   customerCredits?: CustomerCredit[];
-  sale?: CustomerReturnSale;
+  sale?: CustomerReturnSale | null;
 };
 
 export type CustomerReturnListResponse = {
@@ -147,6 +168,7 @@ export const customerReturnsService = {
     apiClient.get<CustomerReturnListResponse>('/customer-returns', { params }),
   getById: (id: string) => apiClient.get<CustomerReturn>(`/customer-returns/${id}`),
   create: (payload: Record<string, unknown>) => apiClient.post<CustomerReturn>('/customer-returns', payload),
+  update: (id: string, payload: Record<string, unknown>) => apiClient.patch<CustomerReturn>(`/customer-returns/${id}`, payload),
   addItem: (id: string, payload: Record<string, unknown>) => apiClient.post<CustomerReturn>(`/customer-returns/${id}/items`, payload),
   removeItem: (id: string, itemId: string) => apiClient.delete<CustomerReturn>(`/customer-returns/${id}/items/${itemId}`),
   addReplacement: (id: string, payload: Record<string, unknown>) => apiClient.post<CustomerReturn>(`/customer-returns/${id}/replacements`, payload),
@@ -160,6 +182,24 @@ export const customerReturnsService = {
   getCustomerCredits: (customerId?: string) => apiClient.get<CustomerCredit[]>('/customer-returns/customer-credits', { params: { customerId: customerId || undefined } }),
   searchValidatedSales: (params?: Record<string, string | number | undefined>) =>
     apiClient.get<SalesListResponse>('/customer-returns/validated-sales', { params }),
+  searchProbableSales: (params?: Record<string, string | number | undefined>) =>
+    apiClient.get<Array<{
+      saleId: string;
+      saleNumber: string;
+      saleDate: string;
+      customerName?: string | null;
+      customerPhone?: string | null;
+      siteId: string;
+      siteName?: string | null;
+      totalAmount: number;
+      currencyCode?: string | null;
+      articleHits: number;
+      lotHits: number;
+      confidenceScore: number;
+      traceabilityLabel: string;
+    }>>('/customer-returns/sales-search', { params }),
+  getTraceability: (id: string) => apiClient.get<Record<string, unknown>>(`/customer-returns/${id}/traceability`),
+  approveUnlinked: (id: string) => apiClient.post<CustomerReturn>(`/customer-returns/${id}/approve-unlinked`),
   getAttachments: (customerReturnId: string) => apiClient.get<PurchaseAttachment[]>(`/customer-returns/${customerReturnId}/attachments`),
   uploadAttachment: (customerReturnId: string, payload: { file: File; attachmentType?: string; description?: string }) => {
     const form = new FormData();
