@@ -1,4 +1,4 @@
-import { KeyboardEvent, MutableRefObject, ReactNode, useEffect, useRef, useState } from 'react';
+import { KeyboardEvent, MutableRefObject, ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 type Column<T> = {
@@ -51,6 +51,7 @@ export function FloatingSearchPopover<T>({
 }: Props<T>) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
+  const listboxId = useId();
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [position, setPosition] = useState({ left: 0, top: 0, width: 700 });
   const visibleSuggestions = suggestions.slice(0, maxVisible);
@@ -101,6 +102,11 @@ export function FloatingSearchPopover<T>({
       onClose();
       return;
     }
+    if (event.key === 'ArrowDown' && !open) {
+      event.preventDefault();
+      onOpen();
+      return;
+    }
     if (event.key === 'ArrowDown' && open) {
       event.preventDefault();
       setHighlightedIndex((index) => Math.min(index + 1, Math.max(visibleSuggestions.length - 1, 0)));
@@ -127,6 +133,12 @@ export function FloatingSearchPopover<T>({
       }}
       className={inputClassName}
       data-grid-cell={dataGridCell}
+      role="combobox"
+      aria-autocomplete="list"
+      aria-expanded={open}
+      aria-haspopup="listbox"
+      aria-controls={open ? listboxId : undefined}
+      aria-activedescendant={open && visibleSuggestions[highlightedIndex] ? `${listboxId}-option-${highlightedIndex}` : undefined}
       placeholder={placeholder}
       value={value}
       onClick={onOpen}
@@ -143,13 +155,19 @@ export function FloatingSearchPopover<T>({
           placeholder={searchPlaceholder}
           value={value}
           autoFocus
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          aria-controls={listboxId}
+          aria-activedescendant={visibleSuggestions[highlightedIndex] ? `${listboxId}-option-${highlightedIndex}` : undefined}
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={handleKeys}
         />
-        <div className="article-popover-list">
+        <div className="article-popover-list" id={listboxId} role="listbox">
           <div className="article-popover-head">{columns.map((column) => <span key={column.header}>{column.header}</span>)}</div>
           {visibleSuggestions.length === 0 && <div className="article-popover-empty">{emptyText}</div>}
-          {visibleSuggestions.map((suggestion, index) => <button className={`article-popover-option ${index === highlightedIndex ? 'selected' : ''}`} type="button" key={getKey(suggestion)} onMouseEnter={() => setHighlightedIndex(index)} onClick={() => choose(suggestion)}>
+          {visibleSuggestions.map((suggestion, index) => <button className={`article-popover-option ${index === highlightedIndex ? 'selected' : ''}`} type="button" key={getKey(suggestion)} id={`${listboxId}-option-${index}`} role="option" aria-selected={index === highlightedIndex} onMouseEnter={() => setHighlightedIndex(index)} onClick={() => choose(suggestion)}>
             {columns.map((column) => <span key={column.header}>{column.render(suggestion)}</span>)}
           </button>)}
         </div>

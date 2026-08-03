@@ -1,4 +1,4 @@
-import { FormEvent, Suspense, lazy, useMemo, useState } from 'react';
+import { FormEvent, KeyboardEvent, Suspense, lazy, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
@@ -23,6 +23,7 @@ import {
 const LazyAttachments = lazy(async () => ({ default: PurchaseAttachmentsCard }));
 
 type WizardStep = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+const STEP_ORDER: WizardStep[] = [1, 2, 3, 4, 5, 6, 7];
 type SettlementFlowMode = 'NONE' | 'REFUND' | 'CUSTOMER_CREDIT' | 'ADDITIONAL_PAYMENT' | 'MIXED';
 
 const STEP_LABELS: Record<WizardStep, string> = {
@@ -115,6 +116,30 @@ export function CustomerReturnDetailPage() {
   const canApproveUnlinked = current?.saleLinkStatus === 'UNLINKED'
     && current.status === 'PENDING_MANAGER_APPROVAL'
     && permissions.includes('customer_returns.unlinked.approve');
+
+  const goToStep = (step: WizardStep) => setActiveStep(step);
+  const handleStepKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const index = STEP_ORDER.indexOf(activeStep);
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+      event.preventDefault();
+      goToStep(STEP_ORDER[Math.min(index + 1, STEP_ORDER.length - 1)]);
+      return;
+    }
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      goToStep(STEP_ORDER[Math.max(index - 1, 0)]);
+      return;
+    }
+    if (event.key === 'Home') {
+      event.preventDefault();
+      goToStep(STEP_ORDER[0]);
+      return;
+    }
+    if (event.key === 'End') {
+      event.preventDefault();
+      goToStep(STEP_ORDER[STEP_ORDER.length - 1]);
+    }
+  };
 
   const saleItemIds = useMemo(() => new Set(currentItems.map((item) => item.saleItemId)), [currentItems]);
   const availableSaleItems = useMemo(() => {
@@ -454,7 +479,7 @@ export function CustomerReturnDetailPage() {
       ) : null}
 
       <div className="card purchase-return-stepper-card">
-        <div className="purchase-return-stepper" role="tablist" aria-label="Etapes retour client">
+        <div className="purchase-return-stepper" role="tablist" aria-label="Etapes retour client" onKeyDown={handleStepKeyDown}>
           {(Object.keys(STEP_LABELS) as unknown as WizardStep[]).map((step) => {
             const isActive = step === activeStep;
             const complete = stepCompletion[step];
@@ -463,8 +488,12 @@ export function CustomerReturnDetailPage() {
                 key={step}
                 type="button"
                 id={`customer-return-step-${step}`}
+                role="tab"
+                aria-selected={isActive}
+                aria-controls={`customer-return-panel-${step}`}
+                aria-current={isActive ? 'step' : undefined}
                 className={`purchase-return-step${isActive ? ' is-active' : ''}${complete ? ' is-complete' : ''}`}
-                onClick={() => setActiveStep(step)}
+                onClick={() => goToStep(step)}
               >
                 <span className="purchase-return-step-index">{step}</span>
                 <span className="purchase-return-step-label">{STEP_LABELS[step]}</span>
@@ -476,7 +505,7 @@ export function CustomerReturnDetailPage() {
       </div>
 
       {activeStep === 1 ? (
-        <section className="card purchase-return-step-section">
+        <section className="card purchase-return-step-section" id="customer-return-panel-1" role="tabpanel" aria-labelledby="customer-return-step-1">
           <div className="purchase-return-step-header">
             <div>
               <h2>Recherche vente</h2>
@@ -495,7 +524,7 @@ export function CustomerReturnDetailPage() {
       ) : null}
 
       {activeStep === 2 ? (
-        <section className="card purchase-return-step-section">
+        <section className="card purchase-return-step-section" id="customer-return-panel-2" role="tabpanel" aria-labelledby="customer-return-step-2">
           <div className="purchase-return-step-header">
             <div>
               <h2>Produits retournes</h2>
@@ -617,7 +646,7 @@ export function CustomerReturnDetailPage() {
       ) : null}
 
       {activeStep === 3 ? (
-        <section className="card purchase-return-step-section">
+        <section className="card purchase-return-step-section" id="customer-return-panel-3" role="tabpanel" aria-labelledby="customer-return-step-3">
           <div className="purchase-return-step-header">
             <div>
               <h2>Inspection</h2>
@@ -663,7 +692,7 @@ export function CustomerReturnDetailPage() {
       ) : null}
 
       {activeStep === 4 ? (
-        <section className="card purchase-return-step-section">
+        <section className="card purchase-return-step-section" id="customer-return-panel-4" role="tabpanel" aria-labelledby="customer-return-step-4">
           <div className="purchase-return-step-header">
             <div>
               <h2>Produits remis en echange</h2>
@@ -775,7 +804,7 @@ export function CustomerReturnDetailPage() {
       ) : null}
 
       {activeStep === 5 ? (
-        <section className="card purchase-return-step-section">
+        <section className="card purchase-return-step-section" id="customer-return-panel-5" role="tabpanel" aria-labelledby="customer-return-step-5">
           <div className="purchase-return-step-header">
             <div>
               <h2>Difference financiere</h2>
@@ -804,7 +833,7 @@ export function CustomerReturnDetailPage() {
       ) : null}
 
       {activeStep === 6 ? (
-        <section className="card purchase-return-step-section">
+        <section className="card purchase-return-step-section" id="customer-return-panel-6" role="tabpanel" aria-labelledby="customer-return-step-6">
           <div className="purchase-return-step-header">
             <div>
               <h2>Regularisations</h2>
@@ -968,7 +997,7 @@ export function CustomerReturnDetailPage() {
       ) : null}
 
       {activeStep === 7 ? (
-        <section className="card purchase-return-step-section">
+        <section className="card purchase-return-step-section" id="customer-return-panel-7" role="tabpanel" aria-labelledby="customer-return-step-7">
           <div className="purchase-return-step-header">
             <div>
               <h2>Validation</h2>
