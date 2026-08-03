@@ -5,6 +5,7 @@ import { AddCustomerReturnItemDto } from './dto/add-customer-return-item.dto';
 import { AddCustomerReturnReplacementItemDto } from './dto/add-customer-return-replacement-item.dto';
 import { AddCustomerReturnSettlementDto } from './dto/add-customer-return-settlement.dto';
 import { CreateCustomerReturnDto } from './dto/create-customer-return.dto';
+import { CreateCustomerReturnItemDto } from './dto/create-customer-return-item.dto';
 import { InspectCustomerReturnDto } from './dto/inspect-customer-return.dto';
 import { ListCustomerReturnsDto } from './dto/list-customer-returns.dto';
 import { SearchCustomerReturnSalesDto } from './dto/search-customer-return-sales.dto';
@@ -92,19 +93,23 @@ type ProbableSaleRow = {
 type CustomerReturnItemRow = {
   customer_return_item_id: string;
   customer_return_id: string;
-  sale_id: string;
-  sale_item_id: string;
+  sale_id: string | null;
+  sale_item_id: string | null;
   article_id: string;
   article_code_snapshot: string | null;
   commercial_name_snapshot: string | null;
   lot_id: string | null;
   lot_number_snapshot: string | null;
   expiry_date_snapshot: Date | null;
-  sale_quantity: string;
+  declared_lot_number: string | null;
+  declared_expiry_date: Date | null;
+  sale_quantity: string | null;
   returned_quantity: string;
   condition_status: string;
   note: string | null;
-  unit_price_snapshot: string;
+  reason: string | null;
+  unit_price_snapshot: string | null;
+  declared_unit_price: string | null;
   line_return_value: string;
   sales_unit_snapshot: string | null;
   packaging_snapshot: string | null;
@@ -1134,8 +1139,9 @@ export class CustomerReturnsRepository {
       SELECT
         cri.customer_return_item_id, cri.customer_return_id, cri.sale_id, cri.sale_item_id, cri.article_id,
         cri.article_code_snapshot, cri.commercial_name_snapshot, cri.lot_id, cri.lot_number_snapshot,
-        cri.expiry_date_snapshot, cri.sale_quantity, cri.returned_quantity, cri.condition_status,
-        cri.note, cri.unit_price_snapshot, cri.line_return_value, cri.sales_unit_snapshot,
+        cri.expiry_date_snapshot, cri.declared_lot_number, cri.declared_expiry_date,
+        cri.sale_quantity, cri.returned_quantity, cri.condition_status, cri.reason,
+        cri.note, cri.unit_price_snapshot, cri.declared_unit_price, cri.line_return_value, cri.sales_unit_snapshot,
         cri.packaging_snapshot, cri.created_at
       FROM customer_return_items cri
       WHERE cri.tenant_id = $1
@@ -1155,11 +1161,15 @@ export class CustomerReturnsRepository {
       lotId: row.lot_id,
       lotNumber: row.lot_number_snapshot,
       expiryDate: row.expiry_date_snapshot,
-      saleQuantity: Number(row.sale_quantity),
+      declaredLotNumber: row.declared_lot_number,
+      declaredExpiryDate: row.declared_expiry_date,
+      saleQuantity: Number(row.sale_quantity ?? row.returned_quantity ?? 0),
       returnedQuantity: Number(row.returned_quantity),
       conditionStatus: row.condition_status,
+      reason: row.reason,
       note: row.note,
-      unitPriceSnapshot: Number(row.unit_price_snapshot),
+      unitPriceSnapshot: Number(row.unit_price_snapshot ?? row.declared_unit_price ?? 0),
+      declaredUnitPrice: Number(row.declared_unit_price ?? row.unit_price_snapshot ?? 0),
       lineReturnValue: Number(row.line_return_value),
       salesUnitSnapshot: row.sales_unit_snapshot,
       packagingSnapshot: row.packaging_snapshot,
@@ -1303,19 +1313,28 @@ export class CustomerReturnsRepository {
       );
       if (!site.rows[0]) throw new Error('SITE_NOT_FOUND');
 
+      const items = this.normalizeUnlinkedItems(dto);
+      if (!items.length) throw new Error('CUSTOMER_RETURN_EMPTY');
+
+      const primaryItem = items[0];
       const traceability = await this.evaluateTraceability(
         client,
         user.tenantId,
-        dto.declaredArticleId,
-        dto.declaredLotNumber,
-        dto.approximatePurchaseDate,
+        primaryItem.articleId,
+        primaryItem.lotNumber ?? undefined,
+        dto.approximatePurchaseDate ?? primaryItem.expiryDate ?? null,
         siteId,
-        dto.declaredPrice,
+        primaryItem.declaredPrice,
       );
       const returnNumber = dto.returnNumber?.trim() || await this.nextReturnNumber(client, user.tenantId);
       const status = traceability.traceabilityStatus === 'STRONG' || traceability.traceabilityStatus === 'PARTIAL'
         ? 'PENDING_MANAGER_APPROVAL'
         : 'PENDING_TRACEABILITY';
+      const headerDeclaredArticle = await this.assertArticle(user.tenantId, primaryItem.articleId);
+      const declaredCustomerName = dto.declaredCustomerName?.trim() || null;
+      const declaredCustomerPhone = dto.declaredCustomerPhone?.trim() || null;
+      const note = dto.note?.trim() || null;
+      const reason = dto.reason?.trim() || null;
 
       const inserted = await client.query<{ customer_return_id: string }>(
         `
@@ -1325,18 +1344,20 @@ export class CustomerReturnsRepository {
           customer_name_snapshot, organization_name_snapshot, site_name_snapshot,
           currency_code, exchange_rate_snapshot, reason, note, created_by,
           status, sale_link_status, traceability_status, probable_sale_id, confidence_score,
-          created_without_sale, declared_customer_name, declared_customer_phone, declared_article_id,
-          declared_article_name, declared_quantity, declared_lot_number, declared_expiry_date,
-          approximate_purchase_date, supposed_site_id, declared_price, responsibility_origin,
-          commercial_decision, traceability_note
+          created_without_sale, approved_without_sale, approved_by, approved_at,
+          declared_customer_name, declared_customer_phone, declared_article_id, declared_article_name,
+          declared_quantity, declared_lot_number, declared_expiry_date, approximate_purchase_date,
+          supposed_site_id, declared_price, responsibility_origin, commercial_decision, traceability_note
         )
         VALUES (
           $1,$2,NULL,NULL,NULL,NULL,
-          $3,COALESCE($4::date, CURRENT_DATE),'SANS-FACTURE',NULL,'UNLINKED',
-          $5,NULL,$6,'USD',1,$7,$8,$9,
-          $10,'UNLINKED',$11,$12,$13,
-          TRUE,$14,$15,$16,$17,$18,$19,$20,
-          $21,$22,$23,$24,$25,$26
+          $3,COALESCE($4::date, CURRENT_DATE),$5,$6,'UNLINKED',
+          $7,NULL,$8,'USD',1,$9,$10,$11,
+          $12,'UNLINKED',$13,$14,$15,
+          TRUE,FALSE,NULL,NULL,
+          $16,$17,$18,$19,
+          $20,$21,$22,$23,
+          $24,$25,$26,$27,$28
         )
         RETURNING customer_return_id
         `,
@@ -1345,38 +1366,117 @@ export class CustomerReturnsRepository {
           siteId,
           returnNumber,
           dto.returnDate ?? null,
-          dto.declaredCustomerName?.trim() || null,
+          'SANS-FACTURE',
+          dto.approximatePurchaseDate ?? null,
+          declaredCustomerName,
           site.rows[0].site_name,
-          dto.reason?.trim() || null,
-          dto.note?.trim() || null,
+          reason,
+          note,
           user.userId,
           status,
           traceability.traceabilityStatus,
           dto.probableSaleId ?? null,
           traceability.confidenceScore,
-          dto.declaredCustomerName?.trim() || null,
-          dto.declaredCustomerPhone?.trim() || null,
-          dto.declaredArticleId ?? null,
-          traceability.articleName || null,
-          dto.declaredQuantity ?? null,
-          dto.declaredLotNumber?.trim() || null,
-          this.toCivilDate(dto.declaredExpiryDate),
-          this.toCivilDate(dto.approximatePurchaseDate),
+          declaredCustomerName,
+          declaredCustomerPhone,
+          primaryItem.articleId,
+          headerDeclaredArticle.commercial_name,
+          primaryItem.quantity,
+          primaryItem.lotNumber?.trim() || null,
+          this.toCivilDate(primaryItem.expiryDate),
+          this.toCivilDate(dto.approximatePurchaseDate ?? null),
           siteId,
-          dto.declaredPrice ?? null,
+          primaryItem.declaredPrice ?? null,
           dto.responsibilityOrigin ?? null,
           dto.commercialDecision ?? 'INSPECTION_REQUIRED',
           traceability.traceabilityNote,
         ],
       );
-      await this.insertAudit(client, user, inserted.rows[0].customer_return_id, 'CUSTOMER_RETURN_CREATED', {
+      const customerReturnId = inserted.rows[0].customer_return_id;
+      for (const item of items) {
+        const article = item.articleId === primaryItem.articleId ? headerDeclaredArticle : await this.assertArticle(user.tenantId, item.articleId);
+        const quantity = Number(item.quantity);
+        const declaredPrice = Number(item.declaredPrice ?? 0);
+        const lineReturnValue = this.roundMoney(quantity * declaredPrice);
+        await client.query(
+          `
+          INSERT INTO customer_return_items (
+            tenant_id, customer_return_id, sale_id, sale_item_id, article_id, lot_id,
+            article_code_snapshot, commercial_name_snapshot, lot_number_snapshot, expiry_date_snapshot,
+            declared_lot_number, declared_expiry_date, sale_quantity, returned_quantity,
+            condition_status, reason, note, unit_price_snapshot, declared_unit_price,
+            line_return_value, sales_unit_snapshot, packaging_snapshot
+          )
+          VALUES (
+            $1,$2,NULL,NULL,$3,$4,
+            $5,$6,$7,$8,
+            $9,$10,$11,$12,
+            $13,$14,$15,$16,$17,
+            $18,$19,$20
+          )
+          `,
+          [
+            user.tenantId,
+            customerReturnId,
+            item.articleId,
+            item.lotId ?? null,
+            article.article_code,
+            article.commercial_name,
+            item.lotNumber?.trim() || null,
+            this.toCivilDate(item.expiryDate),
+            item.lotNumber?.trim() || null,
+            this.toCivilDate(item.expiryDate),
+            quantity,
+            quantity,
+            item.condition ?? 'GOOD',
+            item.reason?.trim() || null,
+            item.note?.trim() || null,
+            declaredPrice,
+            declaredPrice,
+            lineReturnValue,
+            await this.unitLabel(user.tenantId, article.sales_unit_id ?? ''),
+            article.packaging ?? null,
+          ],
+        );
+      }
+      await this.syncFinancials(user.tenantId, customerReturnId, client);
+      await this.insertAudit(client, user, customerReturnId, 'CUSTOMER_RETURN_CREATED', {
         returnNumber,
         saleLinkStatus: 'UNLINKED',
         traceabilityStatus: traceability.traceabilityStatus,
         confidenceScore: traceability.confidenceScore,
+        items: items.length,
       });
-      return inserted.rows[0].customer_return_id;
+      return customerReturnId;
     });
+  }
+
+  private normalizeUnlinkedItems(dto: CreateCustomerReturnDto) {
+    if (dto.items?.length) {
+      return dto.items.map((item) => ({
+        articleId: item.articleId,
+        lotId: item.lotId ?? null,
+        quantity: Number(item.quantity),
+        lotNumber: item.lotNumber?.trim() || null,
+        expiryDate: item.expiryDate ?? null,
+        declaredPrice: Number(item.declaredPrice ?? 0),
+        reason: item.reason?.trim() || null,
+        condition: item.condition ?? 'GOOD',
+        note: item.note?.trim() || null,
+      }));
+    }
+    if (!dto.declaredArticleId) return [];
+    return [{
+      articleId: dto.declaredArticleId,
+      lotId: null,
+      quantity: Number(dto.declaredQuantity ?? 0),
+      lotNumber: dto.declaredLotNumber?.trim() || null,
+      expiryDate: dto.declaredExpiryDate ?? null,
+      declaredPrice: Number(dto.declaredPrice ?? 0),
+      reason: dto.reason?.trim() || null,
+      condition: 'GOOD' as const,
+      note: dto.note?.trim() || null,
+    }];
   }
 
   private async evaluateTraceability(

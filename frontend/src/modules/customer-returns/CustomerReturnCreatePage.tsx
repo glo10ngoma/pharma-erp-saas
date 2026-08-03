@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { KeyboardEvent, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
@@ -11,6 +11,34 @@ import { formatDate } from '../../utils/date';
 import { formatMoney } from '../../utils/money';
 import { customerReturnStatusClass, customerReturnStatusLabel } from './customerReturnLabels';
 
+type UnlinkedReturnItemDraft = {
+  localId: string;
+  articleId: string;
+  articleSearch: string;
+  quantity: string;
+  lotNumber: string;
+  expiryDate: string;
+  declaredPrice: string;
+  reason: string;
+  condition: 'GOOD' | 'OPENED' | 'DAMAGED' | 'EXPIRED' | 'WRONG_PRODUCT' | 'OTHER';
+  note: string;
+};
+
+const createEmptyUnlinkedItem = (localId: string): UnlinkedReturnItemDraft => ({
+  localId,
+  articleId: '',
+  articleSearch: '',
+  quantity: '1',
+  lotNumber: '',
+  expiryDate: '',
+  declaredPrice: '',
+  reason: '',
+  condition: 'GOOD',
+  note: '',
+});
+
+const DRAFT_LINE_ID = '__draft__';
+
 export function CustomerReturnCreatePage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -22,22 +50,26 @@ export function CustomerReturnCreatePage() {
   const [origin, setOrigin] = useState<'LINKED' | 'UNLINKED'>('LINKED');
   const [linkedSalesPopoverOpen, setLinkedSalesPopoverOpen] = useState(false);
   const [unlinkedMode, setUnlinkedMode] = useState<'RETURN' | 'DECLARE'>('RETURN');
-  const [declaredArticlePopoverOpen, setDeclaredArticlePopoverOpen] = useState(false);
   const [probableSaleSearch, setProbableSaleSearch] = useState('');
   const [declaredCustomerName, setDeclaredCustomerName] = useState('');
   const [declaredCustomerPhone, setDeclaredCustomerPhone] = useState('');
   const [declaredArticleSearch, setDeclaredArticleSearch] = useState('');
   const [declaredArticleId, setDeclaredArticleId] = useState('');
+  const [declaredArticlePopoverOpen, setDeclaredArticlePopoverOpen] = useState(false);
   const [declaredQuantity, setDeclaredQuantity] = useState('1');
   const [declaredLotNumber, setDeclaredLotNumber] = useState('');
   const [declaredExpiryDate, setDeclaredExpiryDate] = useState('');
   const [approximatePurchaseDate, setApproximatePurchaseDate] = useState('');
   const [supposedSiteId, setSupposedSiteId] = useState('');
   const [declaredPrice, setDeclaredPrice] = useState('');
+  const [draftLineReason, setDraftLineReason] = useState('');
+  const [draftLineCondition, setDraftLineCondition] = useState<UnlinkedReturnItemDraft['condition']>('GOOD');
+  const [draftLineNote, setDraftLineNote] = useState('');
   const [responsibilityOrigin, setResponsibilityOrigin] = useState('OTHER');
   const [commercialDecision, setCommercialDecision] = useState('INSPECTION_REQUIRED');
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
+  const [unlinkedReturnItems, setUnlinkedReturnItems] = useState<UnlinkedReturnItemDraft[]>([]);
   const canCreate = permissions.includes('customer_returns.create');
   const canCreateUnlinked = permissions.includes('customer_returns.unlinked.create');
 
@@ -73,19 +105,6 @@ export function CustomerReturnCreatePage() {
     placeholderData: (previous) => previous,
   });
 
-  const articlesQuery = useQuery({
-    queryKey: ['customer-return-create-articles', declaredArticleSearch],
-    queryFn: async () => (await articlesService.getAll({ search: declaredArticleSearch || undefined, page: 1, limit: 50 })).data.items,
-    enabled: canCreateUnlinked && origin === 'UNLINKED',
-    placeholderData: (previous) => previous,
-  });
-
-  const sitesQuery = useQuery({
-    queryKey: ['customer-return-create-sites'],
-    queryFn: async () => (await sitesService.getAll()).data,
-    enabled: canCreateUnlinked && origin === 'UNLINKED',
-  });
-
   const create = useMutation({
     mutationFn: (payload: Record<string, unknown>) => customerReturnsService.create(payload),
     onSuccess: async (response) => {
@@ -96,9 +115,6 @@ export function CustomerReturnCreatePage() {
 
   const sales = query.data?.items ?? [];
   const probableSales = probableSalesQuery.data ?? [];
-  const articles = articlesQuery.data ?? [];
-  const sites = sitesQuery.data ?? [];
-  const selectedDeclaredArticle = articles.find((article) => article.articleId === declaredArticleId);
   const filteredSales = useMemo(() => sales.filter((sale) => {
     const term = search.trim().toLowerCase();
     if (!term) return true;
@@ -114,6 +130,121 @@ export function CustomerReturnCreatePage() {
     setLinkedSalesPopoverOpen(false);
     setDeclaredArticlePopoverOpen(false);
   }, [origin]);
+
+  const articlesQuery = useQuery({
+    queryKey: ['customer-return-create-articles', declaredArticleSearch],
+    queryFn: async () => (await articlesService.getAll({ search: declaredArticleSearch || undefined, page: 1, limit: 50 })).data.items,
+    enabled: canCreateUnlinked && origin === 'UNLINKED' && unlinkedMode === 'DECLARE',
+    placeholderData: (previous) => previous,
+  });
+  const sitesQuery = useQuery({
+    queryKey: ['customer-return-create-sites'],
+    queryFn: async () => (await sitesService.getAll()).data,
+    enabled: canCreateUnlinked && origin === 'UNLINKED',
+  });
+  const activeArticleSuggestions = articlesQuery.data ?? [];
+  const selectedDeclaredArticle = useMemo(
+    () => activeArticleSuggestions.find((article) => article.articleId === declaredArticleId) ?? null,
+    [activeArticleSuggestions, declaredArticleId],
+  );
+
+  const addDraftLine = () => {
+    if (!declaredArticleId || !selectedDeclaredArticle) return false;
+    if (Number(declaredQuantity || 0) <= 0) return false;
+
+    const articleLabel = declaredArticleSearch.trim() || selectedDeclaredArticle.commercialName || selectedDeclaredArticle.articleCode || '';
+    setUnlinkedReturnItems((items) => [
+      ...items,
+      {
+        localId: crypto.randomUUID(),
+        articleId: declaredArticleId,
+        articleSearch: articleLabel,
+        quantity: declaredQuantity,
+        lotNumber: declaredLotNumber,
+        expiryDate: declaredExpiryDate,
+        declaredPrice,
+        reason: draftLineReason || reason,
+        condition: draftLineCondition,
+        note: draftLineNote || note,
+      },
+    ]);
+    setDeclaredArticleId('');
+    setDeclaredArticleSearch('');
+    setDeclaredQuantity('1');
+    setDeclaredLotNumber('');
+    setDeclaredExpiryDate('');
+    setDeclaredPrice('');
+    setDraftLineReason('');
+    setDraftLineCondition('GOOD');
+    setDraftLineNote('');
+    setDeclaredArticlePopoverOpen(false);
+    return true;
+  };
+
+  const duplicateLine = (line: UnlinkedReturnItemDraft) => {
+    setUnlinkedReturnItems((items) => [
+      ...items,
+      {
+        ...line,
+        localId: crypto.randomUUID(),
+      },
+    ]);
+  };
+
+  const removeLine = (localId: string) => {
+    setUnlinkedReturnItems((items) => items.filter((item) => item.localId !== localId));
+  };
+
+  const handleDraftKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      addDraftLine();
+    }
+  };
+
+  const draftLineReady = Boolean(
+    declaredArticleId
+      && selectedDeclaredArticle
+      && Number(declaredQuantity || 0) > 0,
+  );
+  const unlinkedPreviewItems = useMemo(() => {
+    if (!draftLineReady || !selectedDeclaredArticle) return unlinkedReturnItems;
+    return [
+      ...unlinkedReturnItems,
+      {
+        localId: DRAFT_LINE_ID,
+        articleId: declaredArticleId,
+        articleSearch: declaredArticleSearch.trim() || selectedDeclaredArticle.commercialName || selectedDeclaredArticle.articleCode || '',
+        quantity: declaredQuantity,
+        lotNumber: declaredLotNumber,
+        expiryDate: declaredExpiryDate,
+        declaredPrice,
+        reason: draftLineReason || reason,
+        condition: draftLineCondition,
+        note: draftLineNote || note,
+      },
+    ];
+  }, [
+    declaredArticleId,
+    declaredArticleSearch,
+    declaredExpiryDate,
+    declaredLotNumber,
+    declaredPrice,
+    declaredQuantity,
+    draftLineCondition,
+    draftLineNote,
+    draftLineReason,
+    note,
+    reason,
+    selectedDeclaredArticle,
+    unlinkedReturnItems,
+    draftLineReady,
+  ]);
+  const unlinkedPreviewTotals = useMemo(() => ({
+    lines: unlinkedPreviewItems.length,
+    quantity: unlinkedPreviewItems.reduce((total, item) => total + Number(item.quantity || 0), 0),
+    value: unlinkedPreviewItems.reduce((total, item) => total + (Number(item.quantity || 0) * Number(item.declaredPrice || 0)), 0),
+  }), [unlinkedPreviewItems]);
 
   return (
     <>
@@ -222,7 +353,7 @@ export function CustomerReturnCreatePage() {
               <div className="panel-heading">
                 <div>
                   <h2>Retour sans facture</h2>
-                  <p className="muted">La trace du dossier reste distincte: retour sans facture ou vente non retrouvee.</p>
+                  <p className="muted">La trace du dossier reste distincte : retour sans facture ou vente non retrouvee.</p>
                 </div>
               </div>
 
@@ -261,12 +392,40 @@ export function CustomerReturnCreatePage() {
                   <input className="input" value={declaredCustomerPhone} onChange={(event) => setDeclaredCustomerPhone(event.target.value)} placeholder="Telephone declare" />
                 </label>
                 <label className="field-block">
-                  <span>Motif</span>
+                  <span>Site suppose</span>
+                  <select className="input" value={supposedSiteId || currentUser?.siteId || ''} onChange={(event) => setSupposedSiteId(event.target.value)}>
+                    <option value="">Choisir site</option>
+                    {(sitesQuery.data ?? []).map((site: SiteItem) => <option key={site.siteId} value={site.siteId}>{site.siteName}</option>)}
+                  </select>
+                </label>
+                <label className="field-block">
+                  <span>Date achat approx.</span>
+                  <input className="input" type="date" value={approximatePurchaseDate} onChange={(event) => setApproximatePurchaseDate(event.target.value)} />
+                </label>
+                <label className="field-block">
+                  <span>Motif dossier</span>
                   <input className="input" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Motif obligatoire" />
                 </label>
                 <label className="field-block">
-                  <span>Observation</span>
+                  <span>Observation dossier</span>
                   <input className="input" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Observation, photo produit a joindre ensuite" />
+                </label>
+                <label className="field-block">
+                  <span>Responsabilite</span>
+                  <select className="input" value={responsibilityOrigin} onChange={(event) => setResponsibilityOrigin(event.target.value)}>
+                    <option value="PHARMACY_ERROR">Erreur pharmacie</option>
+                    <option value="CUSTOMER_ERROR">Erreur client</option>
+                    <option value="SUPPLIER_DEFECT">Defectueux fournisseur</option>
+                    <option value="OTHER">Autre</option>
+                  </select>
+                </label>
+                <label className="field-block">
+                  <span>Decision</span>
+                  <select className="input" value={commercialDecision} onChange={(event) => setCommercialDecision(event.target.value)}>
+                    <option value="INSPECTION_REQUIRED">Retour a inspecter</option>
+                    <option value="ACCEPTED_WITH_RESERVE">Accepte sous reserve</option>
+                    <option value="REFUSED">Retour refuse</option>
+                  </select>
                 </label>
               </div>
 
@@ -309,7 +468,13 @@ export function CustomerReturnCreatePage() {
                             <td className="numeric-text">{formatMoney(sale.totalAmount, sale.currencyCode || 'USD')}</td>
                             <td><span className="badge badge-info">{sale.confidenceScore}% - {sale.traceabilityLabel}</span></td>
                             <td>
-                              <button className="ghost-button compact-button" type="button" onClick={() => create.mutate({ saleId: sale.saleId, probableSaleId: sale.saleId, saleLinkStatus: 'PROBABLE', reason: reason || undefined, note: note || undefined })}>
+                              <button className="ghost-button compact-button" type="button" onClick={() => create.mutate({
+                                saleId: sale.saleId,
+                                probableSaleId: sale.saleId,
+                                saleLinkStatus: 'PROBABLE',
+                                reason: reason || undefined,
+                                note: note || undefined,
+                              })}>
                                 Utiliser
                               </button>
                             </td>
@@ -325,110 +490,155 @@ export function CustomerReturnCreatePage() {
                 <div className="card compact-card">
                   <div className="panel-heading">
                     <div>
-                      <h3>Declarer une vente non retrouvee</h3>
-                      <p className="muted">Aucun remboursement, echange, stock ou caisse n est genere a cette etape.</p>
+                      <h3>Déclarer plusieurs articles sans facture</h3>
+                      <p className="muted">Chaque ligne est ajoutée explicitement, puis le dossier est enregistré de manière transactionnelle.</p>
                     </div>
                   </div>
-                  <div className="grid-form">
-                    <label className="field-block">
-                      <span>Article</span>
-                      <FloatingSearchPopover
-                        value={declaredArticleSearch}
-                        onChange={setDeclaredArticleSearch}
-                        onOpen={() => setDeclaredArticlePopoverOpen(true)}
-                        onClose={() => setDeclaredArticlePopoverOpen(false)}
-                        onSelect={(article: Article) => {
-                          setDeclaredArticleId(article.articleId);
-                          setDeclaredArticleSearch(article.commercialName || article.articleCode);
-                          if (!declaredPrice && article.sellingPrice) setDeclaredPrice(String(article.sellingPrice));
-                        }}
-                        open={declaredArticlePopoverOpen}
-                        placeholder="Rechercher article, code, DCI..."
-                        searchPlaceholder="Code, nom, DCI, barcode..."
-                        suggestions={articles}
-                        getKey={(article) => article.articleId}
-                        columns={[
-                          { header: 'Code', render: (article) => article.articleCode },
-                          { header: 'Nom', render: (article) => article.commercialName },
-                          { header: 'DCI', render: (article) => article.dci || '-' },
-                          { header: 'Prix', render: (article) => formatMoney(article.sellingPrice || 0, 'USD') },
-                        ]}
-                        footerLabel="Entree pour selectionner - Echap pour fermer"
-                        maxVisible={25}
-                      />
-                    </label>
-                    <label className="field-block">
-                      <span>Quantite</span>
-                      <input className="input" type="number" min="0.001" step="0.001" value={declaredQuantity} onChange={(event) => setDeclaredQuantity(event.target.value)} />
-                    </label>
-                    <label className="field-block">
-                      <span>Lot</span>
-                      <input className="input" value={declaredLotNumber} onChange={(event) => setDeclaredLotNumber(event.target.value)} placeholder="Numero de lot" />
-                    </label>
-                    <label className="field-block">
-                      <span>Expiration</span>
-                      <input className="input" type="date" value={declaredExpiryDate} onChange={(event) => setDeclaredExpiryDate(event.target.value)} />
-                    </label>
-                    <label className="field-block">
-                      <span>Date achat approx.</span>
-                      <input className="input" type="date" value={approximatePurchaseDate} onChange={(event) => setApproximatePurchaseDate(event.target.value)} />
-                    </label>
-                    <label className="field-block">
-                      <span>Site suppose</span>
-                      <select className="input" value={supposedSiteId || currentUser?.siteId || ''} onChange={(event) => setSupposedSiteId(event.target.value)}>
-                        <option value="">Choisir site</option>
-                        {sites.map((site: SiteItem) => <option key={site.siteId} value={site.siteId}>{site.siteName}</option>)}
-                      </select>
-                    </label>
-                    <label className="field-block">
-                      <span>Prix declare</span>
-                      <input className="input" type="number" min="0" step="0.01" value={declaredPrice} onChange={(event) => setDeclaredPrice(event.target.value)} />
-                    </label>
-                    <label className="field-block">
-                      <span>Responsabilite</span>
-                      <select className="input" value={responsibilityOrigin} onChange={(event) => setResponsibilityOrigin(event.target.value)}>
-                        <option value="PHARMACY_ERROR">Erreur pharmacie</option>
-                        <option value="CUSTOMER_ERROR">Erreur client</option>
-                        <option value="SUPPLIER_DEFECT">Defectueux fournisseur</option>
-                        <option value="OTHER">Autre</option>
-                      </select>
-                    </label>
-                    <label className="field-block">
-                      <span>Decision</span>
-                      <select className="input" value={commercialDecision} onChange={(event) => setCommercialDecision(event.target.value)}>
-                        <option value="INSPECTION_REQUIRED">Retour a inspecter</option>
-                        <option value="ACCEPTED_WITH_RESERVE">Accepte sous reserve</option>
-                        <option value="REFUSED">Retour refuse</option>
-                      </select>
-                    </label>
+
+                  <div className="table-wrap">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Article</th>
+                          <th>Quantité</th>
+                          <th>Lot</th>
+                          <th>Expiration</th>
+                          <th>Prix déclaré</th>
+                          <th>Motif</th>
+                          <th>État</th>
+                          <th>Observation</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {unlinkedReturnItems.length === 0 ? (
+                          <tr>
+                            <td colSpan={9}><p className="empty-state">Aucune ligne encore ajoutée.</p></td>
+                          </tr>
+                        ) : unlinkedReturnItems.map((item) => (
+                          <tr key={item.localId}>
+                            <td>
+                              <strong>{item.articleSearch || '-'}</strong>
+                              <div className="muted">{item.articleId}</div>
+                            </td>
+                            <td className="numeric-text">{item.quantity}</td>
+                            <td>{item.lotNumber || '-'}</td>
+                            <td>{item.expiryDate ? formatDate(item.expiryDate) : '-'}</td>
+                            <td className="numeric-text">{formatMoney(Number(item.declaredPrice || 0), 'USD')}</td>
+                            <td>{item.reason || reason || '-'}</td>
+                            <td><span className="badge badge-info">{item.condition}</span></td>
+                            <td>{item.note || note || '-'}</td>
+                            <td className="table-actions">
+                              <button className="ghost-button compact-button" type="button" onClick={() => duplicateLine(item)}>Dupliquer</button>
+                              <button className="ghost-button compact-button" type="button" onClick={() => removeLine(item.localId)}>Supprimer</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr>
+                          <td>
+                            <FloatingSearchPopover
+                              value={declaredArticleSearch}
+                              onChange={(value) => {
+                                setDeclaredArticleSearch(value);
+                                setDeclaredArticleId('');
+                                setDeclaredArticlePopoverOpen(true);
+                              }}
+                              onOpen={() => setDeclaredArticlePopoverOpen(true)}
+                              onClose={() => setDeclaredArticlePopoverOpen(false)}
+                              onSelect={(article: Article) => {
+                                setDeclaredArticleId(article.articleId);
+                                setDeclaredArticleSearch(article.commercialName || article.articleCode || '');
+                                if (!declaredPrice && article.sellingPrice) setDeclaredPrice(String(article.sellingPrice));
+                              }}
+                              open={declaredArticlePopoverOpen}
+                              placeholder="Rechercher ou scanner un article..."
+                              searchPlaceholder="Code, nom, DCI, dosage..."
+                              suggestions={activeArticleSuggestions}
+                              getKey={(article) => article.articleId}
+                              columns={[
+                                { header: 'Code', render: (article) => article.articleCode },
+                                { header: 'Nom', render: (article) => article.commercialName },
+                                { header: 'DCI', render: (article) => article.dci || '-' },
+                                { header: 'Dosage', render: (article) => article.dosage || '-' },
+                                { header: 'Prix', render: (article) => formatMoney(article.sellingPrice || 0, 'USD') },
+                              ]}
+                              footerLabel="Entrée pour sélectionner - Échap pour fermer"
+                              maxVisible={25}
+                            />
+                          </td>
+                          <td>
+                            <input className="input" type="number" min="0.001" step="0.001" value={declaredQuantity} onChange={(event) => setDeclaredQuantity(event.target.value)} onKeyDown={handleDraftKeyDown} />
+                          </td>
+                          <td>
+                            <input className="input" value={declaredLotNumber} onChange={(event) => setDeclaredLotNumber(event.target.value)} placeholder="Lot" onKeyDown={handleDraftKeyDown} />
+                          </td>
+                          <td>
+                            <input className="input" type="date" value={declaredExpiryDate} onChange={(event) => setDeclaredExpiryDate(event.target.value)} onKeyDown={handleDraftKeyDown} />
+                          </td>
+                          <td>
+                            <input className="input" type="number" min="0" step="0.01" value={declaredPrice} onChange={(event) => setDeclaredPrice(event.target.value)} onKeyDown={handleDraftKeyDown} />
+                          </td>
+                          <td>
+                            <input className="input" value={draftLineReason} onChange={(event) => setDraftLineReason(event.target.value)} placeholder="Motif ligne" onKeyDown={handleDraftKeyDown} />
+                          </td>
+                          <td>
+                            <select className="input" value={draftLineCondition} onChange={(event) => setDraftLineCondition(event.target.value as UnlinkedReturnItemDraft['condition'])} onKeyDown={handleDraftKeyDown}>
+                              <option value="GOOD">Bon état</option>
+                              <option value="OPENED">Ouvert</option>
+                              <option value="DAMAGED">Endommagé</option>
+                              <option value="EXPIRED">Expiré</option>
+                              <option value="WRONG_PRODUCT">Mauvais produit</option>
+                              <option value="OTHER">Autre</option>
+                            </select>
+                          </td>
+                          <td>
+                            <input className="input" value={draftLineNote} onChange={(event) => setDraftLineNote(event.target.value)} placeholder="Observation ligne" onKeyDown={handleDraftKeyDown} />
+                          </td>
+                          <td className="table-actions">
+                            <button className="button compact-button" type="button" onClick={addDraftLine} disabled={!draftLineReady}>
+                              + Ajouter ligne
+                            </button>
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
                   </div>
+
                   <div className="detail-grid">
-                    <div><span>Article retenu</span><strong>{selectedDeclaredArticle?.commercialName || '-'}</strong></div>
+                    <div><span>Lignes</span><strong>{unlinkedPreviewTotals.lines}</strong></div>
+                    <div><span>Quantité totale</span><strong>{unlinkedPreviewTotals.quantity}</strong></div>
+                    <div><span>Valeur déclarée</span><strong>{formatMoney(unlinkedPreviewTotals.value, 'USD')}</strong></div>
                     <div><span>Trace attendue</span><strong>Validation responsable obligatoire</strong></div>
-                    <div><span>Stock</span><strong>Aucun mouvement</strong></div>
-                    <div><span>Caisse</span><strong>Aucun remboursement automatique</strong></div>
                   </div>
+
                   {create.isError ? <p className="form-error">{apiErrorMessage(create.error)}</p> : null}
                   <div className="modal-actions">
                     <button
                       className="button compact-button"
                       type="button"
-                      disabled={create.isPending || !declaredCustomerName || !declaredCustomerPhone || !declaredArticleId || !declaredLotNumber || !declaredExpiryDate || !approximatePurchaseDate || !(supposedSiteId || currentUser?.siteId) || !reason}
+                      disabled={create.isPending || !declaredCustomerName || !declaredCustomerPhone || !reason || !(supposedSiteId || currentUser?.siteId) || unlinkedPreviewItems.length === 0}
                       onClick={() => create.mutate({
                         saleLinkStatus: 'UNLINKED',
                         declaredCustomerName,
                         declaredCustomerPhone,
-                        declaredArticleId,
-                        declaredQuantity: Number(declaredQuantity),
-                        declaredLotNumber,
-                        declaredExpiryDate,
-                        approximatePurchaseDate,
-                        supposedSiteId: supposedSiteId || currentUser?.siteId,
-                        declaredPrice: Number(declaredPrice || 0),
-                        responsibilityOrigin,
-                        commercialDecision,
                         reason,
                         note,
+                        approximatePurchaseDate,
+                        supposedSiteId: supposedSiteId || currentUser?.siteId,
+                        responsibilityOrigin,
+                        commercialDecision,
+                        items: unlinkedPreviewItems.map((item) => ({
+                          articleId: item.articleId,
+                          quantity: Number(item.quantity || 0),
+                          lotNumber: item.lotNumber || undefined,
+                          expiryDate: item.expiryDate || undefined,
+                          declaredPrice: Number(item.declaredPrice || 0),
+                          reason: item.reason || undefined,
+                          condition: item.condition,
+                          note: item.note || undefined,
+                        })),
                       })}
                     >
                       {create.isPending ? 'Creation...' : 'Creer le retour sans facture'}

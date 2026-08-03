@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
-import { IsDateString, IsIn, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min, ValidateIf } from 'class-validator';
+import { ValidateNested, IsArray, ArrayMinSize, IsDateString, IsIn, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min, ValidateIf } from 'class-validator';
+import { CreateCustomerReturnItemDto } from './create-customer-return-item.dto';
 
 export class CreateCustomerReturnDto {
   @IsOptional()
@@ -75,6 +76,13 @@ export class CreateCustomerReturnDto {
   @IsNumber()
   @Min(0)
   declaredPrice?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => CreateCustomerReturnItemDto)
+  items?: CreateCustomerReturnItemDto[];
 
   @IsOptional()
   @IsIn(['PHARMACY_ERROR', 'CUSTOMER_ERROR', 'SUPPLIER_DEFECT', 'OTHER'])

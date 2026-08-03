@@ -1028,27 +1028,27 @@ export function CustomerReturnDetailPage() {
               </button>
             </div>
           ) : null}
+
+          {permissions.includes('customer_return_attachments.read') ? (
+            <Suspense fallback={<p className="loading-state">Chargement des pieces jointes...</p>}>
+              <LazyAttachments
+                title="Pieces jointes retour client"
+                queryKey={['customer-return-attachments', id]}
+                api={{
+                  list: () => customerReturnsService.getAttachments(id),
+                  upload: (payload) => customerReturnsService.uploadAttachment(id, payload),
+                  openUrl: (attachmentId) => customerReturnsService.getAttachmentUrl(id, attachmentId),
+                  remove: (attachmentId) => customerReturnsService.deleteAttachment(id, attachmentId),
+                }}
+                canCreate={permissions.includes('customer_return_attachments.create')}
+                canDelete={permissions.includes('customer_return_attachments.delete')}
+              />
+            </Suspense>
+          ) : null}
+
+          <CommentsPanel entityType="CUSTOMER_RETURN" entityId={current.customerReturnId} title="Commentaires" />
         </section>
       ) : null}
-
-      {permissions.includes('customer_return_attachments.read') ? (
-        <Suspense fallback={<p className="loading-state">Chargement des pieces jointes...</p>}>
-          <LazyAttachments
-            title="Pieces jointes retour client"
-            queryKey={['customer-return-attachments', id]}
-            api={{
-              list: () => customerReturnsService.getAttachments(id),
-              upload: (payload) => customerReturnsService.uploadAttachment(id, payload),
-              openUrl: (attachmentId) => customerReturnsService.getAttachmentUrl(id, attachmentId),
-              remove: (attachmentId) => customerReturnsService.deleteAttachment(id, attachmentId),
-            }}
-            canCreate={permissions.includes('customer_return_attachments.create')}
-            canDelete={permissions.includes('customer_return_attachments.delete')}
-          />
-        </Suspense>
-      ) : null}
-
-      <CommentsPanel entityType="CUSTOMER_RETURN" entityId={current.customerReturnId} title="Commentaires" />
     </>
   );
 }
