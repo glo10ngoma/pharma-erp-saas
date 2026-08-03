@@ -131,7 +131,9 @@ export function App() {
                 <Route path="/pos" element={<PosPage />} />
                 <Route path="/sales/:id" element={<SaleDetailPage />} />
                 <Route path="/customer-returns" element={<CustomerReturnsPage />} />
-                <Route path="/customer-returns/new" element={<CustomerReturnCreatePage />} />
+                <Route path="/customer-returns/new" element={<Navigate to="/customer-returns/new/linked" replace />} />
+                <Route path="/customer-returns/new/linked" element={<CustomerReturnCreatePage mode="linked" />} />
+                <Route path="/customer-returns/new/unlinked" element={<CustomerReturnCreatePage mode="unlinked" />} />
                 <Route path="/customer-returns/:id" element={<CustomerReturnDetailPage />} />
                 <Route path="/cash" element={<CashPage />} />
                 <Route path="/cash/movements" element={<CashPage />} />

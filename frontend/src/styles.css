@@ -529,6 +529,65 @@ details.nav-group .nav-link {
   margin-bottom: 16px;
 }
 
+.customer-return-entry-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.customer-return-entry-actions .button,
+.customer-return-entry-actions .ghost-button,
+.table-actions .button,
+.table-actions .ghost-button,
+.table-action-button {
+  margin-top: 0;
+  width: auto;
+}
+
+.customer-return-entry-cards {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 16px;
+}
+
+.customer-return-entry-card {
+  display: grid;
+  gap: 10px;
+}
+
+.customer-return-probable-details {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.customer-return-probable-details > summary {
+  color: var(--primary-dark);
+  cursor: pointer;
+  font-weight: 800;
+  list-style: none;
+}
+
+.customer-return-probable-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.customer-return-probable-body {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.table-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .toolbar span,
 .muted {
   color: var(--muted);
@@ -3886,6 +3945,21 @@ details.nav-group .nav-link {
   .toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .customer-return-entry-actions,
+  .customer-return-entry-cards {
+    grid-template-columns: 1fr;
+    justify-content: flex-start;
+  }
+
+  .customer-return-entry-actions {
+    display: grid;
+  }
+
+  .customer-return-entry-actions .button,
+  .customer-return-entry-actions .ghost-button {
+    width: 100%;
   }
 
   .section-heading {

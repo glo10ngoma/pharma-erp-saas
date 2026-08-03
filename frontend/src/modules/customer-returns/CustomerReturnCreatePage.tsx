@@ -1,4 +1,4 @@
-import { KeyboardEvent, useEffect, useMemo, useState } from 'react';
+import { KeyboardEvent, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
@@ -39,18 +39,24 @@ const createEmptyUnlinkedItem = (localId: string): UnlinkedReturnItemDraft => ({
 
 const DRAFT_LINE_ID = '__draft__';
 
-export function CustomerReturnCreatePage() {
+type CustomerReturnCreatePageProps = {
+  mode?: 'linked' | 'unlinked';
+};
+
+export function CustomerReturnCreatePage({ mode = 'linked' }: CustomerReturnCreatePageProps) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { permissions, currentUser } = useAuth();
+  const isLinkedFlow = mode === 'linked';
+  const isUnlinkedFlow = mode === 'unlinked';
   const [search, setSearch] = useState('');
   const [siteId, setSiteId] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [origin, setOrigin] = useState<'LINKED' | 'UNLINKED'>('LINKED');
   const [linkedSalesPopoverOpen, setLinkedSalesPopoverOpen] = useState(false);
-  const [unlinkedMode, setUnlinkedMode] = useState<'RETURN' | 'DECLARE'>('RETURN');
+  const [unlinkedMode, setUnlinkedMode] = useState<'RETURN' | 'DECLARE'>('DECLARE');
   const [probableSaleSearch, setProbableSaleSearch] = useState('');
+  const [probableTicketNumber, setProbableTicketNumber] = useState('');
   const [declaredCustomerName, setDeclaredCustomerName] = useState('');
   const [declaredCustomerPhone, setDeclaredCustomerPhone] = useState('');
   const [declaredArticleSearch, setDeclaredArticleSearch] = useState('');
@@ -67,6 +73,7 @@ export function CustomerReturnCreatePage() {
   const [draftLineNote, setDraftLineNote] = useState('');
   const [responsibilityOrigin, setResponsibilityOrigin] = useState('OTHER');
   const [commercialDecision, setCommercialDecision] = useState('INSPECTION_REQUIRED');
+  const [probableSeller, setProbableSeller] = useState('');
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
   const [unlinkedReturnItems, setUnlinkedReturnItems] = useState<UnlinkedReturnItemDraft[]>([]);
@@ -84,30 +91,32 @@ export function CustomerReturnCreatePage() {
       limit: 25,
     })).data,
     placeholderData: (previous) => previous,
-    enabled: canCreate && origin === 'LINKED',
+    enabled: canCreate && isLinkedFlow,
   });
 
   const probableSalesQuery = useQuery({
-    queryKey: ['customer-returns-sales-search', probableSaleSearch, declaredCustomerPhone, declaredCustomerName, declaredArticleSearch, declaredLotNumber, approximatePurchaseDate, supposedSiteId, declaredPrice],
+    queryKey: ['customer-returns-sales-search', probableSaleSearch, probableTicketNumber, declaredCustomerPhone, declaredCustomerName, declaredArticleSearch, declaredLotNumber, approximatePurchaseDate, supposedSiteId, declaredPrice, probableSeller],
     queryFn: async () => (await customerReturnsService.searchProbableSales({
       search: probableSaleSearch || undefined,
+      ticketNumber: probableTicketNumber || undefined,
       phone: declaredCustomerPhone || undefined,
       customerName: declaredCustomerName || undefined,
       article: declaredArticleSearch || undefined,
       lotNumber: declaredLotNumber || undefined,
       approximateDate: approximatePurchaseDate || undefined,
       siteId: supposedSiteId || undefined,
+      seller: probableSeller || undefined,
       approximateAmount: declaredPrice ? Number(declaredPrice) : undefined,
       page: 1,
       limit: 25,
     })).data,
-    enabled: canCreateUnlinked && origin === 'UNLINKED',
+    enabled: canCreateUnlinked && isUnlinkedFlow,
     placeholderData: (previous) => previous,
   });
   const sitesQuery = useQuery({
     queryKey: ['customer-return-create-sites'],
     queryFn: async () => (await sitesService.getAll()).data,
-    enabled: canCreateUnlinked || origin === 'LINKED',
+    enabled: canCreate || canCreateUnlinked,
   });
 
   const create = useMutation({
@@ -131,15 +140,10 @@ export function CustomerReturnCreatePage() {
     ].some((value) => String(value ?? '').toLowerCase().includes(term));
   }), [sales, search]);
 
-  useEffect(() => {
-    setLinkedSalesPopoverOpen(false);
-    setDeclaredArticlePopoverOpen(false);
-  }, [origin]);
-
   const articlesQuery = useQuery({
     queryKey: ['customer-return-create-articles', declaredArticleSearch],
     queryFn: async () => (await articlesService.getAll({ search: declaredArticleSearch || undefined, page: 1, limit: 50 })).data.items,
-    enabled: canCreateUnlinked && origin === 'UNLINKED' && unlinkedMode === 'DECLARE',
+    enabled: canCreateUnlinked && isUnlinkedFlow,
     placeholderData: (previous) => previous,
   });
   const activeArticleSuggestions = articlesQuery.data ?? [];
@@ -251,12 +255,16 @@ export function CustomerReturnCreatePage() {
       <div className="breadcrumb">
         <Link to="/customer-returns">Retours clients</Link>
         <span>&gt;</span>
-        <strong>Nouveau dossier</strong>
+        <strong>{isLinkedFlow ? 'Nouveau retour lie a une vente' : 'Nouveau retour sans facture'}</strong>
       </div>
       <div className="toolbar">
         <div>
-          <h1>Nouveau retour client</h1>
-          <p className="muted">Selectionnez une vente validee ou ouvrez un dossier exceptionnel sans facture avec tracabilite renforcee.</p>
+          <h1>{isLinkedFlow ? 'Nouveau retour lie a une vente' : 'Nouveau retour sans facture'}</h1>
+          <p className="muted">
+            {isLinkedFlow
+              ? 'Recherchez une vente validee puis ouvrez le dossier associe.'
+              : 'Saisissez les informations du client puis ajoutez au moins un article retourne.'}
+          </p>
         </div>
         <Link className="ghost-button compact-button" to="/customer-returns">Retour liste</Link>
       </div>
@@ -267,27 +275,13 @@ export function CustomerReturnCreatePage() {
         </div>
       ) : (
         <>
-          <div className="card compact-card">
-            <div className="panel-heading">
-              <div>
-                <h2>Origine du retour</h2>
-                <p className="muted">Le retour avec vente identifiee reste le flux standard.</p>
-              </div>
+          {!isLinkedFlow && !canCreateUnlinked ? (
+            <div className="card">
+              <p className="empty-state">Permission customer_returns.unlinked.create requise pour les retours sans facture.</p>
             </div>
-            <div className="segmented-control">
-              <button className={origin === 'LINKED' ? 'is-active' : ''} type="button" onClick={() => setOrigin('LINKED')}>
-                Vente identifiee
-              </button>
-              <button className={origin === 'UNLINKED' ? 'is-active' : ''} type="button" onClick={() => setOrigin('UNLINKED')} disabled={!canCreateUnlinked}>
-                Vente non retrouvee / sans facture
-              </button>
-            </div>
-            {!canCreateUnlinked && origin === 'LINKED' ? (
-              <p className="muted">Permission customer_returns.unlinked.create requise pour les retours sans facture.</p>
-            ) : null}
-          </div>
+          ) : null}
 
-          {origin === 'LINKED' ? (
+          {isLinkedFlow ? (
             <>
               <div className="card sales-filters">
                 <div className="sales-filter-grid">
@@ -364,30 +358,91 @@ export function CustomerReturnCreatePage() {
                 </div>
               </div>
 
-              <div className="segmented-control" role="tablist" aria-label="Flux sans facture">
-                <button
-                  type="button"
-                  role="tab"
-                  id="customer-return-unlinked-tab-return"
-                  aria-controls="customer-return-unlinked-panel-return"
-                  aria-selected={unlinkedMode === 'RETURN'}
-                  className={unlinkedMode === 'RETURN' ? 'is-active' : ''}
-                  onClick={() => setUnlinkedMode('RETURN')}
-                >
-                  Retour sans facture
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  id="customer-return-unlinked-tab-declare"
-                  aria-controls="customer-return-unlinked-panel-declare"
-                  aria-selected={unlinkedMode === 'DECLARE'}
-                  className={unlinkedMode === 'DECLARE' ? 'is-active' : ''}
-                  onClick={() => setUnlinkedMode('DECLARE')}
-                >
-                  Declarer une vente non retrouvee
-                </button>
-              </div>
+              <details className="customer-return-probable-details">
+                <summary>Rechercher une vente probable</summary>
+                <div className="customer-return-probable-body">
+                  <div className="grid-form">
+                    <label className="field-block">
+                      <span>Ticket</span>
+                      <input className="input" value={probableTicketNumber} onChange={(event) => setProbableTicketNumber(event.target.value)} placeholder="Numero de ticket ou facture" />
+                    </label>
+                    <label className="field-block">
+                      <span>Telephone</span>
+                      <input className="input" value={declaredCustomerPhone} onChange={(event) => setDeclaredCustomerPhone(event.target.value)} placeholder="Telephone declare" />
+                    </label>
+                    <label className="field-block">
+                      <span>Client</span>
+                      <input className="input" value={declaredCustomerName} onChange={(event) => setDeclaredCustomerName(event.target.value)} placeholder="Nom client" />
+                    </label>
+                    <label className="field-block">
+                      <span>Article</span>
+                      <input className="input" value={declaredArticleSearch} onChange={(event) => setDeclaredArticleSearch(event.target.value)} placeholder="Article recherche" />
+                    </label>
+                    <label className="field-block">
+                      <span>Lot</span>
+                      <input className="input" value={declaredLotNumber} onChange={(event) => setDeclaredLotNumber(event.target.value)} placeholder="Lot recherche" />
+                    </label>
+                    <label className="field-block">
+                      <span>Date approx.</span>
+                      <input className="input" type="date" value={approximatePurchaseDate} onChange={(event) => setApproximatePurchaseDate(event.target.value)} />
+                    </label>
+                    <label className="field-block">
+                      <span>Site</span>
+                      <select className="input" value={supposedSiteId || currentUser?.siteId || ''} onChange={(event) => setSupposedSiteId(event.target.value)}>
+                        <option value="">Tous les sites</option>
+                        {(sitesQuery.data ?? []).map((site: SiteItem) => <option key={site.siteId} value={site.siteId}>{site.siteName}</option>)}
+                      </select>
+                    </label>
+                    <label className="field-block">
+                      <span>Montant</span>
+                      <input className="input" type="number" min="0" step="0.01" value={declaredPrice} onChange={(event) => setDeclaredPrice(event.target.value)} placeholder="Montant approx." />
+                    </label>
+                    <label className="field-block">
+                      <span>Vendeur</span>
+                      <input className="input" value={probableSeller} onChange={(event) => setProbableSeller(event.target.value)} placeholder="Nom du vendeur" />
+                    </label>
+                  </div>
+                  <div className="table-wrap">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Vente probable</th>
+                          <th>Date</th>
+                          <th>Client</th>
+                          <th>Site</th>
+                          <th>Montant</th>
+                          <th>Confiance</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {probableSales.length === 0 ? (
+                          <tr><td colSpan={7}><p className="empty-state">Aucune vente probable ne correspond aux criteres.</p></td></tr>
+                        ) : probableSales.map((sale) => (
+                          <tr key={sale.saleId}>
+                            <td><strong>{sale.saleNumber}</strong></td>
+                            <td>{formatDate(sale.saleDate)}</td>
+                            <td>{sale.customerName || sale.customerPhone || 'Comptoir'}</td>
+                            <td>{sale.siteName || '-'}</td>
+                            <td className="numeric-text">{formatMoney(sale.totalAmount, sale.currencyCode || 'USD')}</td>
+                            <td><span className="badge badge-info">{sale.confidenceScore}% - {sale.traceabilityLabel}</span></td>
+                            <td>
+                              <button className="button compact-button" type="button" onClick={() => create.mutate({
+                                saleId: sale.saleId,
+                                saleLinkStatus: 'LINKED',
+                                reason: reason || undefined,
+                                note: note || undefined,
+                              })}>
+                                Rattacher ce retour a cette vente
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </details>
 
               <div className="grid-form">
                 <label className="field-block">

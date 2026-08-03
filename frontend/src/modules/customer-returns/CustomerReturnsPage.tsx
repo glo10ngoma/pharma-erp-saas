@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
 import { SearchBox } from '../../components/SearchBox';
@@ -11,10 +11,19 @@ import { customerReturnStatusClass, customerReturnStatusLabel } from './customer
 export function CustomerReturnsPage() {
   const navigate = useNavigate();
   const { permissions } = useAuth();
+  const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
   const canCreate = permissions.includes('customer_returns.create');
+  const canApproveUnlinked = permissions.includes('customer_returns.unlinked.approve');
+
+  const approveUnlinked = useMutation({
+    mutationFn: (customerReturnId: string) => customerReturnsService.approveUnlinked(customerReturnId),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['customer-returns'] });
+    },
+  });
 
   const query = useQuery({
     queryKey: ['customer-returns', search, status, page],
@@ -43,12 +52,36 @@ export function CustomerReturnsPage() {
           <h1>Retours clients</h1>
           <p className="muted">Dossiers de retours clients, inspection et validation. Aucun impact stock ou caisse automatique.</p>
         </div>
-        {canCreate && (
-          <button className="button" type="button" onClick={() => navigate('/customer-returns/new')}>
-            + Nouveau retour client
-          </button>
-        )}
+        {canCreate ? (
+          <div className="customer-return-entry-actions">
+            <button className="button" type="button" onClick={() => navigate('/customer-returns/new/linked')}>
+              + Retour lié à une vente
+            </button>
+            <button className="ghost-button compact-button" type="button" onClick={() => navigate('/customer-returns/new/unlinked')}>
+              + Retour sans facture
+            </button>
+          </div>
+        ) : null}
       </div>
+
+      {canCreate ? (
+        <div className="customer-return-entry-cards">
+          <section className="card compact-card customer-return-entry-card">
+            <h2>Retour lié à une vente</h2>
+            <p className="muted">Utilisez ce parcours lorsque le ticket ou la vente peut être retrouvé.</p>
+            <button className="button compact-button" type="button" onClick={() => navigate('/customer-returns/new/linked')}>
+              Ouvrir le parcours
+            </button>
+          </section>
+          <section className="card compact-card customer-return-entry-card">
+            <h2>Retour sans facture</h2>
+            <p className="muted">Utilisez ce parcours lorsque la vente ne peut pas être identifiée. Une validation responsable sera requise.</p>
+            <button className="ghost-button compact-button" type="button" onClick={() => navigate('/customer-returns/new/unlinked')}>
+              Ouvrir le parcours
+            </button>
+          </section>
+        </div>
+      ) : null}
 
       <div className="stats-grid">
         <KpiCard label="Total" value={String(stats.total)} />
@@ -111,12 +144,40 @@ export function CustomerReturnsPage() {
                     <td><span className={`badge ${customerReturnStatusClass(row.status)}`}>{customerReturnStatusLabel(row.status)}</span></td>
                     <td>{row.reason || '-'}</td>
                     <td className="table-actions">
-                      <button className="ghost-button compact-button" type="button" onClick={(event) => { event.stopPropagation(); navigate(`/customer-returns/${row.customerReturnId}`); }}>
-                        Voir
-                      </button>
-                      {canCreate && row.status === 'DRAFT' ? (
-                        <Link className="ghost-button compact-button" to={`/customer-returns/${row.customerReturnId}`}>Ouvrir</Link>
-                      ) : null}
+                      {row.saleLinkStatus === 'UNLINKED' ? (
+                        <>
+                          <Link className="ghost-button compact-button table-action-button" to={`/customer-returns/${row.customerReturnId}#customer-return-traceability`} onClick={(event) => event.stopPropagation()}>
+                            Voir la traçabilité
+                          </Link>
+                          <Link className="ghost-button compact-button table-action-button" to={`/customer-returns/${row.customerReturnId}`} onClick={(event) => event.stopPropagation()}>
+                            Ouvrir le retour
+                          </Link>
+                          {canApproveUnlinked && row.status === 'PENDING_MANAGER_APPROVAL' ? (
+                            <button
+                              className="button compact-button table-action-button"
+                              type="button"
+                              disabled={approveUnlinked.isPending}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                approveUnlinked.mutate(row.customerReturnId);
+                              }}
+                            >
+                              Approuver
+                            </button>
+                          ) : null}
+                        </>
+                      ) : (
+                        <>
+                          {row.saleId ? (
+                            <Link className="ghost-button compact-button table-action-button" to={`/sales/${row.saleId}`} onClick={(event) => event.stopPropagation()}>
+                              Voir la vente
+                            </Link>
+                          ) : null}
+                          <Link className="ghost-button compact-button table-action-button" to={`/customer-returns/${row.customerReturnId}`} onClick={(event) => event.stopPropagation()}>
+                            Ouvrir le retour
+                          </Link>
+                        </>
+                      )}
                     </td>
                   </tr>
                 ))}

@@ -106,6 +106,26 @@ export function CustomerReturnDetailPage() {
   const settlements = current?.settlements ?? [];
   const customerCredits = current?.customerCredits ?? [];
   const returnableItems = sale?.returnableItems ?? [];
+  const returnTypeLabel = current?.saleLinkStatus === 'UNLINKED'
+    ? 'Retour sans facture'
+    : current?.saleLinkStatus === 'PROBABLE'
+      ? 'Vente probable'
+      : 'Retour lie a une vente';
+  const linkStateLabel = current?.saleLinkStatus === 'UNLINKED'
+    ? 'Vente non retrouvee'
+    : current?.saleLinkStatus === 'PROBABLE'
+      ? 'Vente probable'
+      : 'Vente identifiee';
+  const approvalStateLabel = current?.saleLinkStatus === 'UNLINKED'
+    ? (current?.approvedWithoutSale ? 'Validation responsable faite' : 'Validation responsable requise')
+    : 'Non applicable';
+  const traceabilityTone = current?.traceabilityStatus === 'STRONG'
+    ? 'badge-success'
+    : current?.traceabilityStatus === 'PARTIAL'
+      ? 'badge-info'
+      : current?.traceabilityStatus === 'WEAK'
+        ? 'badge-warning'
+        : 'badge-muted';
 
   const canEditDraft = current?.status === 'DRAFT' && permissions.includes('customer_returns.create');
   const canInspect = current?.status === 'PENDING_INSPECTION' && permissions.includes('customer_returns.inspect');
@@ -423,6 +443,18 @@ export function CustomerReturnDetailPage() {
       ) : null}
 
       <section className="card compact-card">
+        <div className="panel-heading">
+          <div>
+            <h2>Type de retour</h2>
+            <p className="muted">Le statut du lien et la tracabilite du dossier sont visibles ici en premier.</p>
+          </div>
+        </div>
+        <div className="detail-grid" id="customer-return-traceability">
+          <div><span>Type de retour</span><strong>{returnTypeLabel}</strong></div>
+          <div><span>Statut du lien</span><strong>{linkStateLabel}</strong></div>
+          <div><span>Tracabilite</span><strong><span className={`badge ${traceabilityTone}`}>{current.traceabilityStatus || 'NONE'} - {current.confidenceScore ?? 0}%</span></strong></div>
+          <div><span>Approbation</span><strong>{approvalStateLabel}</strong></div>
+        </div>
         <div className="detail-grid">
           <div><span>Retour</span><strong>{current.returnNumber}</strong></div>
           <div><span>Date</span><strong>{formatDate(current.returnDate)}</strong></div>
