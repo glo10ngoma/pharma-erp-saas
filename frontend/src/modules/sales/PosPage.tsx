@@ -944,47 +944,6 @@ export function PosPage() {
 
       <div className="pos-layout">
         <div className="pos-main-column">
-      {!activeCashSession && userOpenCashSession && (
-        <section className="card compact-card pos-open-session-banner">
-          <div className="pos-open-session-banner-header">
-            <div>
-              <h2>Session ouverte sur un autre poste</h2>
-              <p className="muted">Reprenez cette session ou ouvrez-la dans le module Caisse pour la fermer proprement.</p>
-            </div>
-            <span className="badge badge-warning">Session detectee</span>
-          </div>
-          <div className="pos-open-session-grid">
-            <div><span>session_id</span><strong>{userOpenCashSession.cashSessionId}</strong></div>
-            <div><span>workstation_name</span><strong>{userOpenCashSession.workstationName ?? '-'}</strong></div>
-            <div><span>workstation_id</span><strong>{userOpenCashSession.workstationId ?? '-'}</strong></div>
-            <div><span>device_uuid</span><strong>{userOpenCashSession.deviceUuid ?? '-'}</strong></div>
-            <div><span>user_id</span><strong>{userOpenCashSession.userId ?? currentUser?.id ?? '-'}</strong></div>
-            <div><span>site_id</span><strong>{userOpenCashSession.siteId}</strong></div>
-          </div>
-          <div className="page-actions pos-open-session-actions">
-            <button className="button compact-button" type="button" onClick={() => acceptOpenSession(userOpenCashSession.cashSessionId)}>
-              Reprendre cette session
-            </button>
-            {canCloseCash ? (
-              <Link className="ghost-button compact-button" to={`/cash?siteId=${encodeURIComponent(form.siteId)}&sessionId=${encodeURIComponent(userOpenCashSession.cashSessionId)}`}>
-                Fermer cette session
-              </Link>
-            ) : (
-              <small className="muted">La fermeture de session nécessite la permission cash_sessions.close.</small>
-            )}
-          </div>
-        </section>
-      )}
-
-      <section className="pos-status-strip">
-        <div><span>Caisse</span><strong>{activeCashSession ? 'OUVERTE' : userOpenCashSession ? 'OUVERTE AILLEURS' : 'FERMEE'}</strong><small>{activeCashSession?.registerName ?? userOpenCashSession?.registerName ?? 'Aucune session'}</small></div>
-        <div><span>Poste</span><strong>{currentWorkstation?.workstationName ?? '-'}</strong><small>{currentWorkstation?.workstationCode ?? 'Poste non rattache'}</small></div>
-        <div><span>Vendeur</span><strong>{currentUser?.fullName ?? '-'}</strong><small>{currentUser?.role ?? '-'}</small></div>
-        <div><span>Client</span><strong>{selectedCustomer?.customerName ?? 'Client comptoir'}</strong><small>{selectedCustomer?.phone ?? 'Comptoir par defaut'}</small></div>
-        <div><span>Mode</span><strong>{form.saleMode === 'ADVANCE' ? 'Paiement en avance' : 'Vente immediate'}</strong><small>{form.saleType}</small></div>
-        <div><span>Brouillon</span><strong>{sale?.saleNumber ?? 'Nouveau panier'}</strong><small>{draftStatusLabel}</small></div>
-      </section>
-
       <form className="card compact-card pos-header-grid" onSubmit={startSale}>
         <label className="pos-header-field pos-header-sale"><span>Vente no</span><input className="input compact-input" value={sale?.saleNumber ?? 'Auto'} disabled /><small>{sale ? `Site ${currentSite?.siteName ?? form.siteId ?? '-'}` : 'Nouveau panier en preparation'}</small></label>
         <label className="pos-client-field pos-header-field-wide">
@@ -1064,6 +1023,38 @@ export function PosPage() {
           </div>
         </details>
       </form>
+      {!activeCashSession && userOpenCashSession && (
+        <section className="card compact-card pos-open-session-banner">
+          <div className="pos-open-session-banner-header">
+            <div>
+              <h2>Session ouverte sur un autre poste</h2>
+              <p className="muted">Reprenez cette session ou ouvrez-la dans le module Caisse pour la fermer proprement.</p>
+            </div>
+            <span className="badge badge-warning">Session detectee</span>
+          </div>
+          <div className="pos-open-session-grid">
+            <div><span>session_id</span><strong>{userOpenCashSession.cashSessionId}</strong></div>
+            <div><span>workstation_name</span><strong>{userOpenCashSession.workstationName ?? '-'}</strong></div>
+            <div><span>workstation_id</span><strong>{userOpenCashSession.workstationId ?? '-'}</strong></div>
+            <div><span>device_uuid</span><strong>{userOpenCashSession.deviceUuid ?? '-'}</strong></div>
+            <div><span>user_id</span><strong>{userOpenCashSession.userId ?? currentUser?.id ?? '-'}</strong></div>
+            <div><span>site_id</span><strong>{userOpenCashSession.siteId}</strong></div>
+          </div>
+          <div className="page-actions pos-open-session-actions">
+            <button className="button compact-button" type="button" onClick={() => acceptOpenSession(userOpenCashSession.cashSessionId)}>
+              Reprendre cette session
+            </button>
+            {canCloseCash ? (
+              <Link className="ghost-button compact-button" to={`/cash?siteId=${encodeURIComponent(form.siteId)}&sessionId=${encodeURIComponent(userOpenCashSession.cashSessionId)}`}>
+                Fermer cette session
+              </Link>
+            ) : (
+              <small className="muted">La fermeture de session nÃ©cessite la permission cash_sessions.close.</small>
+            )}
+          </div>
+        </section>
+      )}
+
       {form.saleType === 'INSURANCE' && !form.customerId && <p className="form-error">Veuillez selectionner un client assure.</p>}
 
       <section className="card compact-card pos-workspace">
@@ -1193,10 +1184,10 @@ export function PosPage() {
         </div>
         <div className="pos-summary-grid">
           <Summary label="Art." title="Articles" value={String(items.length)} />
-          <Summary label="Qté" title="Quantité totale" value={String(quantityTotal)} />
-          <Summary label="S/total USD" title="Sous-total en dollars américains" value={formatMoney(subtotal, 'USD', currencySymbol)} />
+          <Summary label="QtÃ©" title="QuantitÃ© totale" value={String(quantityTotal)} />
+          <Summary label="S/total USD" title="Sous-total en dollars amÃ©ricains" value={formatMoney(subtotal, 'USD', currencySymbol)} />
           <Summary label="Total FC" title="Total en francs congolais" value={formatMoney(total * saleExchangeRate, 'CDF')} strong />
-          <Summary label="Patient USD" title="Part patient en dollars américains" value={formatMoney(patientPayable, 'USD', currencySymbol)} />
+          <Summary label="Patient USD" title="Part patient en dollars amÃ©ricains" value={formatMoney(patientPayable, 'USD', currencySymbol)} />
           <Summary label="Patient FC" title="Part patient en francs congolais" value={formatMoney(patientPayableFc, 'CDF')} strong />
           {showInsuranceSummary ? (
             <Summary label="Assurance" title="Part assurance" value={`${formatMoney(insuranceAmount, 'USD', currencySymbol)} / ${formatMoney(insuranceAmount * saleExchangeRate, 'CDF')}`} />
@@ -1207,16 +1198,16 @@ export function PosPage() {
           <details className="pos-summary-details" open={exactPayment || hasChangeDue || showInsuranceSummary}>
             <summary>Details</summary>
             <div className="pos-summary-grid pos-summary-grid-secondary">
-              <Summary label="Paye FC" title="Montant payé en francs congolais" value={formatMoney(paidEquivalentFc, 'CDF')} />
-              <Summary label="Reste FC" title="Reste à payer en francs congolais" value={formatMoney(Math.max(0, patientPayableFc - paidEquivalentFc), 'CDF')} />
-              <Summary label="Net USD" title="Montant net reçu en dollars américains" value={formatMoney(netReceivedUsd, 'USD', currencySymbol)} />
-              <Summary label="Net CDF" title="Montant net reçu en francs congolais" value={formatMoney(netReceivedCdf, 'CDF')} />
-              <Summary label="Net eq. USD" title="Montant net équivalent en dollars américains" value={formatMoney(netTotalEquivalentUsd, 'USD', currencySymbol)} strong />
-              <Summary label="Ecart USD" title="Écart en dollars américains" value={formatMoney(settlementDifferenceUsd, 'USD', currencySymbol)} strong />
-              <Summary label="Ecart FC" title="Écart en francs congolais" value={formatMoney(settlementDifferenceFc, 'CDF')} />
-              <Summary label="Type ecart" title="Type d'écart" value={settlementStatusLabel} />
-              <Summary label="Rendu sugg. FC" title="Rendu suggéré en francs congolais" value={formatMoney(suggestedChangeFc, 'CDF')} />
-              <Summary label="Rendu sugg. USD" title="Rendu suggéré en dollars américains" value={formatMoney(suggestedChangeUsd, 'USD', currencySymbol)} />
+              <Summary label="Paye FC" title="Montant payÃ© en francs congolais" value={formatMoney(paidEquivalentFc, 'CDF')} />
+              <Summary label="Reste FC" title="Reste Ã  payer en francs congolais" value={formatMoney(Math.max(0, patientPayableFc - paidEquivalentFc), 'CDF')} />
+              <Summary label="Net USD" title="Montant net reÃ§u en dollars amÃ©ricains" value={formatMoney(netReceivedUsd, 'USD', currencySymbol)} />
+              <Summary label="Net CDF" title="Montant net reÃ§u en francs congolais" value={formatMoney(netReceivedCdf, 'CDF')} />
+              <Summary label="Net eq. USD" title="Montant net Ã©quivalent en dollars amÃ©ricains" value={formatMoney(netTotalEquivalentUsd, 'USD', currencySymbol)} strong />
+              <Summary label="Ecart USD" title="Ã‰cart en dollars amÃ©ricains" value={formatMoney(settlementDifferenceUsd, 'USD', currencySymbol)} strong />
+              <Summary label="Ecart FC" title="Ã‰cart en francs congolais" value={formatMoney(settlementDifferenceFc, 'CDF')} />
+              <Summary label="Type ecart" title="Type d'Ã©cart" value={settlementStatusLabel} />
+              <Summary label="Rendu sugg. FC" title="Rendu suggÃ©rÃ© en francs congolais" value={formatMoney(suggestedChangeFc, 'CDF')} />
+              <Summary label="Rendu sugg. USD" title="Rendu suggÃ©rÃ© en dollars amÃ©ricains" value={formatMoney(suggestedChangeUsd, 'USD', currencySymbol)} />
             </div>
           </details>
         ) : null}

@@ -3093,8 +3093,9 @@ details.nav-group .nav-link {
 .pos-header-grid {
   align-items: end;
   display: grid;
-  gap: 8px;
+  gap: 6px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 10px;
   max-width: 100%;
 }
 
@@ -3118,7 +3119,7 @@ details.nav-group .nav-link {
 
 .pos-header-sale small {
   color: var(--muted);
-  font-size: .72rem;
+  font-size: .68rem;
   font-weight: 800;
 }
 
@@ -3130,13 +3131,13 @@ details.nav-group .nav-link {
   background: var(--surface-soft);
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 8px;
+  padding: 6px;
   min-width: 0;
 }
 
 .pos-segmented {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
@@ -3144,9 +3145,9 @@ details.nav-group .nav-link {
   background: var(--surface);
   border: 1px solid var(--line);
   color: var(--text);
-  min-height: 38px;
+  min-height: 34px;
   min-width: 0;
-  padding: 8px 10px;
+  padding: 6px 8px;
   width: auto;
 }
 
@@ -3181,7 +3182,7 @@ details.nav-group .nav-link {
 .pos-header-grid span,
 .pos-paid-field span {
   color: var(--muted);
-  font-size: .72rem;
+  font-size: .68rem;
   font-weight: 900;
   text-transform: uppercase;
 }
@@ -3195,7 +3196,7 @@ details.nav-group .nav-link {
 .pos-search-row {
   align-items: end;
   display: grid;
-  gap: 8px;
+  gap: 6px;
   grid-template-columns: minmax(360px, 1fr) auto;
   min-width: 0;
 }
@@ -3600,27 +3601,27 @@ details.nav-group .nav-link {
   border-radius: 8px;
   grid-column: 1 / -1;
   min-width: 0;
-  padding: 8px 10px;
+  padding: 6px 8px;
 }
 
 .pos-insurance-details summary {
   align-items: center;
   cursor: pointer;
   display: flex;
-  gap: 10px;
+  gap: 8px;
   justify-content: space-between;
 }
 
 .pos-insurance-details summary span {
   color: var(--text);
-  font-size: .78rem;
+  font-size: .72rem;
   font-weight: 900;
   text-transform: uppercase;
 }
 
 .pos-insurance-details summary small {
   color: var(--muted);
-  font-size: .74rem;
+  font-size: .7rem;
 }
 
 .pos-insurance-grid {
