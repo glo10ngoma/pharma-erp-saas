@@ -1093,12 +1093,21 @@ export class CustomerReturnsRepository {
   }
 
   private async insertAudit(queryable: Queryable, user: AuthUser, recordId: string, actionType: string, payload: unknown) {
+    const allowedActionTypes = new Set(['INSERT', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT', 'VALIDATE', 'CANCEL']);
+    const persistedActionType = allowedActionTypes.has(actionType)
+      ? actionType
+      : actionType === 'CUSTOMER_RETURN_CREATED'
+        ? 'INSERT'
+        : 'UPDATE';
+    const auditPayload = typeof payload === 'object' && payload !== null
+      ? { ...payload, customerReturnActionType: actionType }
+      : { value: payload, customerReturnActionType: actionType };
     await queryable.query(
       `
       INSERT INTO audit_logs (tenant_id, site_id, user_id, table_name, record_id, action_type, new_value)
       VALUES ($1,$2,$3,'customer_returns',$4,$5,$6::jsonb)
       `,
-      [user.tenantId, user.siteId ?? null, user.userId, recordId, actionType, JSON.stringify(payload)],
+      [user.tenantId, user.siteId ?? null, user.userId, recordId, persistedActionType, JSON.stringify(auditPayload)],
     );
   }
 
