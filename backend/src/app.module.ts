@@ -42,6 +42,7 @@ import { CommentsModule } from './comments/comments.module';
 import { InternalChatModule } from './internal-chat/internal-chat.module';
 import { ActivityModule } from './activity/activity.module';
 import { PurchaseReturnsModule } from './purchase-returns/purchase-returns.module';
+import { CustomerReturnsModule } from './customer-returns/customer-returns.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { PurchaseReturnsModule } from './purchase-returns/purchase-returns.modul
     CustomersModule,
     PurchasesModule,
     PurchaseReturnsModule,
+    CustomerReturnsModule,
     LotsModule,
     StocksModule,
     StockMovementsModule,

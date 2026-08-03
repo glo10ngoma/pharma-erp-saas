@@ -47,7 +47,8 @@ export type PurchaseAttachment = {
   purchaseAttachmentId: string;
   purchaseId?: string | null;
   purchaseReturnId?: string | null;
-  attachmentScope: 'PURCHASE' | 'PURCHASE_RETURN';
+  customerReturnId?: string | null;
+  attachmentScope: 'PURCHASE' | 'PURCHASE_RETURN' | 'CUSTOMER_RETURN';
   attachmentType: string;
   fileName: string;
   originalFileName: string;

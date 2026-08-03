@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Modal } from '../../components/Modal';
 import { SearchBox } from '../../components/SearchBox';
 import { useAuth } from '../../auth/AuthContext';
@@ -35,6 +35,7 @@ const DEFAULT_PAGE_SIZE = 25;
 
 export function SalesPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { permissions } = useAuth();
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -84,6 +85,14 @@ export function SalesPage() {
     enabled: Boolean(selectedSaleId),
     queryFn: async () => (await salesService.getById(selectedSaleId as string)).data,
   });
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const nextSaleMode = params.get('saleMode');
+    if (!nextSaleMode) return;
+    setFilters((current) => (current.saleMode === nextSaleMode ? current : { ...current, saleMode: nextSaleMode as FiltersState['saleMode'], preset: 'CUSTOM' }));
+    setPage(1);
+  }, [location.search]);
 
   const rows = sales.data?.items ?? [];
   const paymentModes = useMemo(() => unique(rows.flatMap((sale) => (sale.paymentModes ?? '').split(',').map((value) => value.trim()).filter(Boolean))), [rows]);

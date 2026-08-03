@@ -39,6 +39,9 @@ import { OrganizationsPage } from './modules/insurance/OrganizationsPage';
 import { InsurancePlansPage } from './modules/insurance/InsurancePlansPage';
 import { MembershipsPage } from './modules/insurance/MembershipsPage';
 import { ReceivablesPage } from './modules/insurance/ReceivablesPage';
+import { CustomerReturnsPage } from './modules/customer-returns/CustomerReturnsPage';
+import { CustomerReturnCreatePage } from './modules/customer-returns/CustomerReturnCreatePage';
+import { CustomerReturnDetailPage } from './modules/customer-returns/CustomerReturnDetailPage';
 import { InventoriesPage } from './modules/inventories/InventoriesPage';
 import { InventoryDetailPage } from './modules/inventories/InventoryDetailPage';
 import { ProfilePage } from './modules/profile/ProfilePage';
@@ -127,6 +130,9 @@ export function App() {
                 <Route path="/sales" element={<SalesPage />} />
                 <Route path="/pos" element={<PosPage />} />
                 <Route path="/sales/:id" element={<SaleDetailPage />} />
+                <Route path="/customer-returns" element={<CustomerReturnsPage />} />
+                <Route path="/customer-returns/new" element={<CustomerReturnCreatePage />} />
+                <Route path="/customer-returns/:id" element={<CustomerReturnDetailPage />} />
                 <Route path="/cash" element={<CashPage />} />
                 <Route path="/cash/movements" element={<CashPage />} />
                 <Route path="/cash/settlement-differences" element={<CashPage />} />

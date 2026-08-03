@@ -1,0 +1,116 @@
+import { Body, Controller, Delete, Get, Param, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+const memoryStorage = require('multer').memoryStorage;
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { RequirePermission } from '../common/decorators/require-permission.decorator';
+import { AuthUser } from '../common/types/auth-user';
+import { UploadPurchaseAttachmentDto } from '../purchases/dto/upload-purchase-attachment.dto';
+import { AddCustomerReturnItemDto } from './dto/add-customer-return-item.dto';
+import { CreateCustomerReturnDto } from './dto/create-customer-return.dto';
+import { InspectCustomerReturnDto } from './dto/inspect-customer-return.dto';
+import { ListCustomerReturnsDto } from './dto/list-customer-returns.dto';
+import { SearchValidatedSalesDto } from './dto/search-validated-sales.dto';
+import { CustomerReturnsService } from './customer-returns.service';
+
+@ApiTags('customer-returns')
+@ApiBearerAuth()
+@Controller('customer-returns')
+export class CustomerReturnsController {
+  constructor(private readonly service: CustomerReturnsService) {}
+
+  @Get()
+  @RequirePermission('customer_returns.read')
+  @ApiOperation({ summary: 'Lister les retours clients' })
+  findAll(@CurrentUser() user: AuthUser, @Query() query: ListCustomerReturnsDto) {
+    return this.service.findAll(user, query);
+  }
+
+  @Get('validated-sales')
+  @RequirePermission('customer_returns.create')
+  @ApiOperation({ summary: 'Rechercher des ventes validees pour un retour client' })
+  searchValidatedSales(@CurrentUser() user: AuthUser, @Query() query: SearchValidatedSalesDto) {
+    return this.service.searchValidatedSales(user, query);
+  }
+
+  @Post()
+  @RequirePermission('customer_returns.create')
+  @ApiOperation({ summary: 'Creer un dossier de retour client' })
+  create(@CurrentUser() user: AuthUser, @Body() dto: CreateCustomerReturnDto) {
+    return this.service.create(user, dto);
+  }
+
+  @Get(':id')
+  @RequirePermission('customer_returns.read')
+  @ApiOperation({ summary: 'Consulter un retour client' })
+  findOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.service.findOne(user, id);
+  }
+
+  @Post(':id/items')
+  @RequirePermission('customer_returns.create')
+  @ApiOperation({ summary: 'Ajouter une ligne de retour client' })
+  addItem(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: AddCustomerReturnItemDto) {
+    return this.service.addItem(user, id, dto);
+  }
+
+  @Delete(':id/items/:itemId')
+  @RequirePermission('customer_returns.create')
+  @ApiOperation({ summary: 'Retirer une ligne de retour client' })
+  removeItem(@CurrentUser() user: AuthUser, @Param('id') id: string, @Param('itemId') itemId: string) {
+    return this.service.removeItem(user, id, itemId);
+  }
+
+  @Post(':id/submit-inspection')
+  @RequirePermission('customer_returns.inspect')
+  @ApiOperation({ summary: 'Passer le dossier en inspection' })
+  submitInspection(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.service.submitForInspection(user, id);
+  }
+
+  @Post(':id/inspect')
+  @RequirePermission('customer_returns.inspect')
+  @ApiOperation({ summary: 'Enregistrer la decision d inspection' })
+  inspect(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: InspectCustomerReturnDto) {
+    return this.service.inspect(user, id, dto);
+  }
+
+  @Post(':id/validate')
+  @RequirePermission('customer_returns.validate')
+  @ApiOperation({ summary: 'Valider un retour client' })
+  validate(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.service.validate(user, id);
+  }
+
+  @Post(':id/cancel')
+  @RequirePermission('customer_returns.cancel')
+  @ApiOperation({ summary: 'Annuler un retour client' })
+  cancel(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.service.cancel(user, id);
+  }
+
+  @Get(':id/attachments')
+  @RequirePermission('customer_return_attachments.read')
+  attachments(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.service.findAttachments(user, id);
+  }
+
+  @Post(':id/attachments')
+  @RequirePermission('customer_return_attachments.create')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }))
+  uploadAttachment(@CurrentUser() user: AuthUser, @Param('id') id: string, @UploadedFile() file: any, @Body() dto: UploadPurchaseAttachmentDto) {
+    return this.service.uploadAttachment(user, id, file, dto);
+  }
+
+  @Get(':id/attachments/:attachmentId/url')
+  @RequirePermission('customer_return_attachments.read')
+  attachmentUrl(@CurrentUser() user: AuthUser, @Param('id') id: string, @Param('attachmentId') attachmentId: string) {
+    return this.service.attachmentUrl(user, id, attachmentId);
+  }
+
+  @Delete(':id/attachments/:attachmentId')
+  @RequirePermission('customer_return_attachments.delete')
+  removeAttachment(@CurrentUser() user: AuthUser, @Param('id') id: string, @Param('attachmentId') attachmentId: string) {
+    return this.service.removeAttachment(user, id, attachmentId);
+  }
+}

@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 import { AuthUser } from '../common/types/auth-user';
 import { DatabaseService } from '../database/database.service';
 
-type AttachmentScope = 'PURCHASE' | 'PURCHASE_RETURN';
+type AttachmentScope = 'PURCHASE' | 'PURCHASE_RETURN' | 'CUSTOMER_RETURN';
 
 type AttachmentRow = {
   purchase_attachment_id: string;
@@ -12,6 +12,7 @@ type AttachmentRow = {
   site_id: string | null;
   purchase_id: string | null;
   purchase_return_id: string | null;
+  customer_return_id: string | null;
   attachment_scope: AttachmentScope;
   attachment_type: string;
   file_name: string;
@@ -53,6 +54,11 @@ export class PurchaseAttachmentsRepository {
   async findByReturn(user: AuthUser, purchaseReturnId: string) {
     await this.assertPurchaseReturn(user, purchaseReturnId);
     return this.findAttachments(user, 'PURCHASE_RETURN', purchaseReturnId);
+  }
+
+  async findByCustomerReturn(user: AuthUser, customerReturnId: string) {
+    await this.assertCustomerReturn(user, customerReturnId);
+    return this.findAttachments(user, 'CUSTOMER_RETURN', customerReturnId);
   }
 
   async uploadForPurchase(
@@ -154,6 +160,55 @@ export class PurchaseAttachmentsRepository {
     return this.toAttachment(inserted.rows[0]);
   }
 
+  async uploadForCustomerReturn(
+    user: AuthUser,
+    customerReturnId: string,
+    file: any,
+    dto: { attachmentType?: string; description?: string },
+  ) {
+    const customerReturn = await this.assertCustomerReturn(user, customerReturnId);
+    this.assertFile(file);
+    const objectName = `${randomUUID()}-${this.safeFileName(file.originalname)}`;
+    const storagePath = `tenant/${user.tenantId}/site/${customerReturn.site_id}/sales/${customerReturn.sale_id}/customer-returns/${customerReturnId}/${objectName}`;
+    await this.uploadObject(storagePath, file.buffer, file.mimetype);
+    const inserted = await this.db.query<AttachmentRow>(
+      `
+      INSERT INTO purchase_attachments (
+        tenant_id, site_id, purchase_return_id, customer_return_id, attachment_scope, attachment_type,
+        file_name, original_file_name, storage_bucket, storage_path, mime_type,
+        file_size, description, uploaded_by
+      )
+      VALUES ($1,$2,NULL,$3,'CUSTOMER_RETURN',$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      RETURNING purchase_attachment_id, tenant_id, site_id, purchase_id, purchase_return_id, customer_return_id,
+                attachment_scope, attachment_type, file_name, original_file_name, storage_bucket,
+                storage_path, mime_type, file_size, description, uploaded_by, uploaded_at,
+                deleted_at, deleted_by
+      `,
+      [
+        user.tenantId,
+        customerReturn.site_id,
+        customerReturnId,
+        dto.attachmentType ?? 'OTHER',
+        objectName,
+        file.originalname,
+        this.bucket,
+        storagePath,
+        file.mimetype,
+        file.size,
+        dto.description?.trim() || null,
+        user.userId,
+      ],
+    );
+    await this.insertAudit(user, inserted.rows[0].purchase_attachment_id, 'INSERT', {
+      attachmentScope: 'CUSTOMER_RETURN',
+      customerReturnId,
+      attachmentType: dto.attachmentType ?? 'OTHER',
+      originalFileName: file.originalname,
+      size: file.size,
+    });
+    return this.toAttachment(inserted.rows[0]);
+  }
+
   async createSignedUrlForPurchase(user: AuthUser, purchaseId: string, attachmentId: string) {
     await this.assertPurchase(user, purchaseId);
     const attachment = await this.findOne(user, attachmentId, 'PURCHASE', purchaseId);
@@ -164,6 +219,13 @@ export class PurchaseAttachmentsRepository {
   async createSignedUrlForReturn(user: AuthUser, purchaseReturnId: string, attachmentId: string) {
     await this.assertPurchaseReturn(user, purchaseReturnId);
     const attachment = await this.findOne(user, attachmentId, 'PURCHASE_RETURN', purchaseReturnId);
+    if (!attachment) return null;
+    return { ...attachment, signedUrl: await this.createSignedUrl(attachment.storagePath) };
+  }
+
+  async createSignedUrlForCustomerReturn(user: AuthUser, customerReturnId: string, attachmentId: string) {
+    await this.assertCustomerReturn(user, customerReturnId);
+    const attachment = await this.findOne(user, attachmentId, 'CUSTOMER_RETURN', customerReturnId);
     if (!attachment) return null;
     return { ...attachment, signedUrl: await this.createSignedUrl(attachment.storagePath) };
   }
@@ -184,12 +246,20 @@ export class PurchaseAttachmentsRepository {
     return { deleted: true };
   }
 
+  async removeForCustomerReturn(user: AuthUser, customerReturnId: string, attachmentId: string) {
+    await this.assertCustomerReturn(user, customerReturnId);
+    const attachment = await this.findOne(user, attachmentId, 'CUSTOMER_RETURN', customerReturnId);
+    if (!attachment) return null;
+    await this.softDelete(user, attachmentId);
+    return { deleted: true };
+  }
+
   private async findAttachments(user: AuthUser, scope: AttachmentScope, entityId: string) {
-    const idColumn = scope === 'PURCHASE' ? 'purchase_id' : 'purchase_return_id';
+    const idColumn = scope === 'PURCHASE' ? 'purchase_id' : scope === 'PURCHASE_RETURN' ? 'purchase_return_id' : 'customer_return_id';
     const result = await this.db.query<AttachmentRow>(
       `
       SELECT purchase_attachment_id, tenant_id, site_id, purchase_id, purchase_return_id,
-             attachment_scope, attachment_type, file_name, original_file_name, storage_bucket,
+             customer_return_id, attachment_scope, attachment_type, file_name, original_file_name, storage_bucket,
              storage_path, mime_type, file_size, description, uploaded_by, uploaded_at,
              deleted_at, deleted_by
       FROM purchase_attachments
@@ -205,11 +275,11 @@ export class PurchaseAttachmentsRepository {
   }
 
   private async findOne(user: AuthUser, attachmentId: string, scope: AttachmentScope, entityId: string) {
-    const idColumn = scope === 'PURCHASE' ? 'purchase_id' : 'purchase_return_id';
+    const idColumn = scope === 'PURCHASE' ? 'purchase_id' : scope === 'PURCHASE_RETURN' ? 'purchase_return_id' : 'customer_return_id';
     const result = await this.db.query<AttachmentRow>(
       `
       SELECT purchase_attachment_id, tenant_id, site_id, purchase_id, purchase_return_id,
-             attachment_scope, attachment_type, file_name, original_file_name, storage_bucket,
+             customer_return_id, attachment_scope, attachment_type, file_name, original_file_name, storage_bucket,
              storage_path, mime_type, file_size, description, uploaded_by, uploaded_at,
              deleted_at, deleted_by
       FROM purchase_attachments
@@ -268,6 +338,22 @@ export class PurchaseAttachmentsRepository {
       [user.tenantId, purchaseReturnId, user.siteId ?? null],
     );
     if (!result.rows[0]) throw new Error('PURCHASE_RETURN_NOT_FOUND');
+    return result.rows[0];
+  }
+
+  private async assertCustomerReturn(user: AuthUser, customerReturnId: string) {
+    const result = await this.db.query<{ customer_return_id: string; sale_id: string; site_id: string; status: string }>(
+      `
+      SELECT customer_return_id, sale_id, site_id, status
+      FROM customer_returns
+      WHERE tenant_id = $1
+        AND customer_return_id = $2::uuid
+        AND ($3::uuid IS NULL OR site_id = $3::uuid)
+      LIMIT 1
+      `,
+      [user.tenantId, customerReturnId, user.siteId ?? null],
+    );
+    if (!result.rows[0]) throw new Error('CUSTOMER_RETURN_NOT_FOUND');
     return result.rows[0];
   }
 
@@ -356,6 +442,7 @@ export class PurchaseAttachmentsRepository {
       siteId: row.site_id,
       purchaseId: row.purchase_id,
       purchaseReturnId: row.purchase_return_id,
+      customerReturnId: row.customer_return_id,
       attachmentScope: row.attachment_scope,
       attachmentType: row.attachment_type,
       fileName: row.file_name,

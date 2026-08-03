@@ -27,11 +27,13 @@ export function DashboardLayout() {
       ],
     },
     {
-      title: 'Vente',
+      title: 'Ventes',
       icon: 'VN',
       links: [
         ['/pos', 'POS', 'sales.create'],
-        ['/sales', 'Ventes', 'sales.read'],
+        ['/sales', 'Liste des ventes', 'sales.read'],
+        ['/sales?saleMode=ADVANCE', 'Paiements en avance', 'sales.read'],
+        ['/customer-returns', 'Retours clients', 'customer_returns.read'],
         ['/cash', 'Caisse', 'cash_registers.read'],
       ],
     },

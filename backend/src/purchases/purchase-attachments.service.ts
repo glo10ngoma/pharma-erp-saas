@@ -54,6 +54,30 @@ export class PurchaseAttachmentsService {
     });
   }
 
+  findForCustomerReturn(user: AuthUser, customerReturnId: string) {
+    return this.wrap(() => this.repository.findByCustomerReturn(user, customerReturnId));
+  }
+
+  uploadForCustomerReturn(user: AuthUser, customerReturnId: string, file: any, dto: { attachmentType?: string; description?: string }) {
+    return this.wrap(() => this.repository.uploadForCustomerReturn(user, customerReturnId, file, dto));
+  }
+
+  signedUrlForCustomerReturn(user: AuthUser, customerReturnId: string, attachmentId: string) {
+    return this.wrap(async () => {
+      const found = await this.repository.createSignedUrlForCustomerReturn(user, customerReturnId, attachmentId);
+      if (!found) throw new NotFoundException('PURCHASE_ATTACHMENT_NOT_FOUND');
+      return found;
+    });
+  }
+
+  removeForCustomerReturn(user: AuthUser, customerReturnId: string, attachmentId: string) {
+    return this.wrap(async () => {
+      const removed = await this.repository.removeForCustomerReturn(user, customerReturnId, attachmentId);
+      if (!removed) throw new NotFoundException('PURCHASE_ATTACHMENT_NOT_FOUND');
+      return removed;
+    });
+  }
+
   private async wrap<T>(callback: () => Promise<T>) {
     try {
       return await callback();
@@ -63,6 +87,7 @@ export class PurchaseAttachmentsService {
         const bad = [
           'PURCHASE_NOT_FOUND',
           'PURCHASE_RETURN_NOT_FOUND',
+          'CUSTOMER_RETURN_NOT_FOUND',
           'ATTACHMENT_FILE_REQUIRED',
           'ATTACHMENT_FILE_TOO_LARGE',
           'ATTACHMENT_TYPE_NOT_ALLOWED',

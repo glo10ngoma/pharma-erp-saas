@@ -22,6 +22,7 @@ const ENTITIES: Record<string, EntityConfig> = {
   purchases: { prefix: 'ACH', table: 'purchases', column: 'purchase_number' },
   transfers: { prefix: 'TRF', table: 'stock_transfers', column: 'transfer_number' },
   sales: { prefix: 'VEN', table: 'sales', column: 'sale_number' },
+  customer_returns: { prefix: 'CRT', table: 'customer_returns', column: 'return_number' },
   inventories: { prefix: 'INV', table: 'inventory_sessions', column: 'inventory_number' },
   organizations: { prefix: 'ORG', table: 'organizations', column: 'organization_code' },
   insurance_plans: { prefix: 'PLA', table: 'insurance_plans', column: 'plan_code' },

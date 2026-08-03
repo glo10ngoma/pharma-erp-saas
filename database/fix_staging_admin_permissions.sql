@@ -19,6 +19,9 @@ WITH v1_permissions(permission_code) AS (
     ('customers.read'), ('customers.create'), ('customers.update'), ('customers.delete'),
     ('disposals.read'),
     ('purchases.read'), ('purchases.create'), ('purchases.update_draft'), ('purchases.validate'), ('purchases.pay'), ('purchase_payments.read'),
+    ('purchase_returns.read'), ('purchase_returns.create'), ('purchase_returns.validate'), ('purchase_returns.cancel'),
+    ('customer_returns.read'), ('customer_returns.create'), ('customer_returns.inspect'), ('customer_returns.validate'), ('customer_returns.cancel'),
+    ('customer_return_attachments.read'), ('customer_return_attachments.create'), ('customer_return_attachments.delete'),
     ('lots.read'), ('lots.block'), ('fefo.read'), ('fefo.actions.execute'), ('lots.expired_stock.remove'), ('stocks.read'), ('stock_movements.read'), ('stock_movements.export'),
     ('sales.read'), ('sales.create'), ('sales.update_draft'), ('sales.validate'), ('sales.cancel_draft'),
     ('payments.read'), ('payments.create'),
@@ -102,6 +105,9 @@ v1_permissions(permission_code) AS (
     ('customers.read'), ('customers.create'), ('customers.update'), ('customers.delete'),
     ('disposals.read'),
     ('purchases.read'), ('purchases.create'), ('purchases.update_draft'), ('purchases.validate'), ('purchases.pay'), ('purchase_payments.read'),
+    ('purchase_returns.read'), ('purchase_returns.create'), ('purchase_returns.validate'), ('purchase_returns.cancel'),
+    ('customer_returns.read'), ('customer_returns.create'), ('customer_returns.inspect'), ('customer_returns.validate'), ('customer_returns.cancel'),
+    ('customer_return_attachments.read'), ('customer_return_attachments.create'), ('customer_return_attachments.delete'),
     ('lots.read'), ('lots.block'), ('fefo.read'), ('fefo.actions.execute'), ('lots.expired_stock.remove'), ('stocks.read'), ('stock_movements.read'), ('stock_movements.export'),
     ('sales.read'), ('sales.create'), ('sales.update_draft'), ('sales.validate'), ('sales.cancel_draft'),
     ('payments.read'), ('payments.create'),
@@ -152,7 +158,9 @@ SELECT
   BOOL_OR(p.permission_code = 'reports.dashboard') AS has_reports_dashboard,
   BOOL_OR(p.permission_code = 'reports.top_products') AS has_reports_top_products,
   BOOL_OR(p.permission_code = 'settings.exchange_rate.read') AS has_exchange_rate_read,
-  BOOL_OR(p.permission_code = 'settings.exchange_rate.update') AS has_exchange_rate_update
+  BOOL_OR(p.permission_code = 'settings.exchange_rate.update') AS has_exchange_rate_update,
+  BOOL_OR(p.permission_code = 'customer_returns.read') AS has_customer_returns_read,
+  BOOL_OR(p.permission_code = 'customer_returns.create') AS has_customer_returns_create
 FROM tenants t
 JOIN roles r ON r.tenant_id = t.tenant_id AND r.role_name = 'ADMIN'
 LEFT JOIN users u ON u.tenant_id = t.tenant_id AND lower(u.email) = lower('admin@staging.local')
