@@ -6,8 +6,10 @@ import { SearchBox } from '../../components/SearchBox';
 import { useAuth } from '../../auth/AuthContext';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { apiErrorMessage } from '../../services/apiError';
+import { cashService } from '../../services/cash.service';
 import { Sale, salesService } from '../../services/sales.service';
 import { sitesService } from '../../services/sites.service';
+import { reportsService } from '../../services/reports.service';
 import { formatDate, fileDateStamp } from '../../utils/date';
 import { downloadCsv, downloadJson, downloadXlsx } from '../../utils/export';
 import { formatMoney } from '../../utils/money';
@@ -29,6 +31,55 @@ type FiltersState = {
   preset: DatePreset;
   sortBy: 'saleDate' | 'totalAmount' | 'createdAt';
   sortOrder: 'asc' | 'desc';
+};
+
+type DayReportSnapshot = {
+  label: string;
+  subtitle: string;
+  siteLabel: string;
+  period: { from: string; to: string };
+  summary: {
+    revenueNet: number;
+    saleCount: number;
+    averageBasket: number;
+    itemsSold: number;
+    receivedUsd: number;
+    receivedCdf: number;
+    changeUsd: number;
+    changeCdf: number;
+    settlementDifferenceUsd: number;
+    immediateSaleCount?: number;
+    advanceSaleCount?: number;
+    immediateRevenue?: number;
+    advanceFulfilledRevenue?: number;
+    advancePendingRevenue?: number;
+  };
+  sales: Sale[];
+  topProducts: Array<{
+    articleCode?: string | null;
+    commercialName?: string | null;
+    quantity: number;
+    revenue: number;
+  }>;
+  saleBreakdown: Array<{
+    saleType: string;
+    count: number;
+    totalAmount: number;
+    patientAmount: number;
+    insuranceAmount: number;
+  }>;
+  cashBreakdown: Array<{
+    movementType: string;
+    count: number;
+    amount: number;
+  }>;
+  sessionStats: {
+    openCount: number;
+    closedCount: number;
+    totalCount: number;
+  };
+  exportFilters: Record<string, string | number | undefined>;
+  exportName: string;
 };
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -84,6 +135,43 @@ export function SalesPage() {
     queryKey: ['sale', selectedSaleId],
     enabled: Boolean(selectedSaleId),
     queryFn: async () => (await salesService.getById(selectedSaleId as string)).data,
+  });
+  const yesterdayRange = useMemo(() => dateRangeFromPreset('YESTERDAY'), []);
+  const todayRange = useMemo(() => dateRangeFromPreset('TODAY'), []);
+  const reportSiteId = filters.siteId || undefined;
+  const reportSiteLabel = useMemo(() => {
+    if (!reportSiteId) return 'Tous les sites';
+    return sites.data?.find((site) => site.siteId === reportSiteId)?.siteName ?? 'Site selectionne';
+  }, [reportSiteId, sites.data]);
+  const yesterdayReport = useQuery({
+    queryKey: ['sales-day-report', 'yesterday', reportSiteId],
+    queryFn: async () => loadSalesDaySnapshot({
+      title: 'Rapport ventes d\'hier',
+      subtitle: `Ventes validées du ${formatDate(yesterdayRange.dateFrom)} au ${formatDate(yesterdayRange.dateTo)}`,
+      from: yesterdayRange.dateFrom,
+      to: yesterdayRange.dateTo,
+      siteId: reportSiteId,
+      siteLabel: reportSiteLabel,
+      includeCash: false,
+      exportName: 'rapport_ventes_hier',
+    }),
+    staleTime: 5 * 60 * 1000,
+    placeholderData: (previous) => previous,
+  });
+  const dayEndReport = useQuery({
+    queryKey: ['sales-day-report', 'today', reportSiteId],
+    queryFn: async () => loadSalesDaySnapshot({
+      title: 'Mini rapport fin de journée',
+      subtitle: `Synthèse du ${formatDate(todayRange.dateFrom)}`,
+      from: todayRange.dateFrom,
+      to: todayRange.dateTo,
+      siteId: reportSiteId,
+      siteLabel: reportSiteLabel,
+      includeCash: true,
+      exportName: 'mini_rapport_fin_journee',
+    }),
+    staleTime: 5 * 60 * 1000,
+    placeholderData: (previous) => previous,
   });
 
   useEffect(() => {
@@ -148,18 +236,8 @@ export function SalesPage() {
       <div className="stats-grid sales-kpis">
         <KpiCard label="CA net" value={formatMoney(summary.data?.revenueNet ?? 0, 'USD')} />
         <KpiCard label="Ventes validees" value={String(summary.data?.saleCount ?? 0)} />
-        <KpiCard label="Ventes immediates" value={String(summary.data?.immediateSaleCount ?? 0)} />
-        <KpiCard label="Avances en attente" value={String(summary.data?.advancePendingCount ?? 0)} />
-        <KpiCard label="Avances livrees" value={String(summary.data?.advanceFulfilledCount ?? 0)} />
-        <KpiCard label="CA avances" value={formatMoney((summary.data?.advancePendingRevenue ?? 0) + (summary.data?.advanceFulfilledRevenue ?? 0), 'USD')} />
-        <KpiCard label="Panier moyen" value={formatMoney(summary.data?.averageBasket ?? 0, 'USD')} />
-        <KpiCard label="Articles vendus" value={String(summary.data?.itemsSold ?? 0)} />
         <KpiCard label="Encaisse USD" value={formatMoney(summary.data?.receivedUsd ?? 0, 'USD')} />
         <KpiCard label="Encaisse FC" value={formatMoney(summary.data?.receivedCdf ?? 0, 'CDF', 'FC')} />
-        <KpiCard label="Rendu USD" value={formatMoney(summary.data?.changeUsd ?? 0, 'USD')} />
-        <KpiCard label="Rendu FC" value={formatMoney(summary.data?.changeCdf ?? 0, 'CDF', 'FC')} />
-        <KpiCard label="Ecarts reglement" value={`${formatMoney(summary.data?.settlementDifferenceUsd ?? 0, 'USD')} (${summary.data?.settlementDifferenceCount ?? 0})`} />
-        <KpiCard label="Ventes annulees" value={String(summary.data?.cancelledCount ?? 0)} />
       </div>
 
       <div className="card sales-filters advanced-sales-filters">
@@ -236,6 +314,21 @@ export function SalesPage() {
         </div>
 
         {dateError && <p className="form-error">{dateError}</p>}
+      </div>
+
+      <div className="sales-quick-reports">
+        <SalesDayReportCard
+          snapshot={yesterdayReport.data}
+          loading={yesterdayReport.isLoading}
+          error={yesterdayReport.isError ? apiErrorMessage(yesterdayReport.error) : ''}
+          onRetry={() => yesterdayReport.refetch()}
+        />
+        <SalesDayReportCard
+          snapshot={dayEndReport.data}
+          loading={dayEndReport.isLoading}
+          error={dayEndReport.isError ? apiErrorMessage(dayEndReport.error) : ''}
+          onRetry={() => dayEndReport.refetch()}
+        />
       </div>
 
       <div className="card">
@@ -565,4 +658,429 @@ function saleExportObject(sale: Sale) {
     paiements: sale.paymentModes ?? '-',
     statut: sale.status,
   };
+}
+
+function SalesDayReportCard({
+  snapshot,
+  loading,
+  error,
+  onRetry,
+}: {
+  snapshot?: DayReportSnapshot;
+  loading: boolean;
+  error: string;
+  onRetry: () => void;
+}) {
+  if (loading) {
+    return (
+      <div className="card sales-report-card">
+        <p className="loading-state">Chargement du rapport...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="card sales-report-card">
+        <div className="error-state">
+          <p>{error}</p>
+          <button className="ghost-button compact-button" type="button" onClick={onRetry}>Reessayer</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!snapshot) {
+    return (
+      <div className="card sales-report-card">
+        <p className="empty-state">Aucune donnee de rapport disponible.</p>
+      </div>
+    );
+  }
+
+  const summaryCards = [
+    { label: 'CA net', value: formatMoney(snapshot.summary.revenueNet ?? 0, 'USD') },
+    { label: 'Ventes', value: String(snapshot.summary.saleCount ?? 0) },
+    { label: 'Panier moyen', value: formatMoney(snapshot.summary.averageBasket ?? 0, 'USD') },
+    { label: 'Articles vendus', value: String(snapshot.summary.itemsSold ?? 0) },
+  ];
+  const cashCards = snapshot.cashBreakdown.length > 0 ? [
+    { label: 'Encaisse USD', value: formatMoney(snapshot.summary.receivedUsd ?? 0, 'USD') },
+    { label: 'Encaisse FC', value: formatMoney(snapshot.summary.receivedCdf ?? 0, 'CDF', 'FC') },
+    { label: 'Rendu USD', value: formatMoney(snapshot.summary.changeUsd ?? 0, 'USD') },
+    { label: 'Rendu FC', value: formatMoney(snapshot.summary.changeCdf ?? 0, 'CDF', 'FC') },
+  ] : [];
+
+  return (
+    <section className="card sales-report-card">
+      <div className="sales-report-head">
+        <div>
+          <span className="breadcrumb">Rapport rapide</span>
+          <h2>{snapshot.label}</h2>
+          <p>{snapshot.subtitle}</p>
+        </div>
+        <div className="sales-report-head-meta">
+          <span>{snapshot.siteLabel}</span>
+          <span>{snapshot.period.from ? `Du ${formatDate(snapshot.period.from)}` : 'Toutes dates'}</span>
+          <span>{snapshot.period.to ? `Au ${formatDate(snapshot.period.to)}` : ''}</span>
+          <span>{snapshot.sessionStats.totalCount > 0 ? `${snapshot.sessionStats.openCount} session(s) ouverte(s)` : 'Aucune session caisse incluse'}</span>
+        </div>
+      </div>
+
+      <div className="sales-report-kpis">
+        {summaryCards.map((card) => (
+          <div className="sales-report-metric" key={card.label}>
+            <span>{card.label}</span>
+            <strong>{card.value}</strong>
+          </div>
+        ))}
+      </div>
+
+      {cashCards.length > 0 && (
+        <div className="sales-report-cash">
+          {cashCards.map((card) => (
+            <div className="sales-report-metric" key={card.label}>
+              <span>{card.label}</span>
+              <strong>{card.value}</strong>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="sales-report-chips">
+        {snapshot.saleBreakdown.map((item) => (
+          <span className={`badge ${item.saleType === 'INSURANCE' ? 'badge-info' : 'badge-success'}`} key={item.saleType}>
+            {item.saleType}: {item.count}
+          </span>
+        ))}
+        {snapshot.summary.settlementDifferenceUsd !== undefined && (
+          <span className={`badge ${Math.abs(snapshot.summary.settlementDifferenceUsd) > 0 ? 'badge-warning' : 'badge-success'}`}>
+            Ecart reglement: {formatMoney(snapshot.summary.settlementDifferenceUsd ?? 0, 'USD')}
+          </span>
+        )}
+      </div>
+
+      {snapshot.cashBreakdown.length > 0 && (
+        <div className="sales-report-cash-flow">
+          {snapshot.cashBreakdown.slice(0, 6).map((item) => (
+            <span className="badge badge-muted" key={item.movementType}>
+              {item.movementType}: {item.count} ({formatMoney(item.amount, 'USD')})
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="sales-report-grid">
+        <div>
+          <h3>Top produits</h3>
+          {snapshot.topProducts.length === 0 ? (
+            <p className="empty-state">Aucun produit a afficher.</p>
+          ) : (
+            <div className="table-wrap sales-report-table-wrap">
+              <table className="data-table sales-report-table">
+                <thead>
+                  <tr>
+                    <th>Article</th>
+                    <th className="align-right">Qté</th>
+                    <th className="align-right">CA</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {snapshot.topProducts.slice(0, 5).map((item) => (
+                    <tr key={`${item.articleCode ?? ''}-${item.commercialName ?? ''}`}>
+                      <td>{item.articleCode ? `${item.articleCode} - ` : ''}{item.commercialName ?? '-'}</td>
+                      <td className="align-right">{Number(item.quantity ?? 0)}</td>
+                      <td className="align-right">{formatMoney(Number(item.revenue ?? 0), 'USD')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div>
+          <h3>Ventes recentes</h3>
+          {snapshot.sales.length === 0 ? (
+            <p className="empty-state">Aucune vente validee sur cette periode.</p>
+          ) : (
+            <div className="table-wrap sales-report-table-wrap">
+              <table className="data-table sales-report-table">
+                <thead>
+                  <tr>
+                    <th>N vente</th>
+                    <th>Client</th>
+                    <th>Type</th>
+                    <th>Mode</th>
+                    <th className="align-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {snapshot.sales.slice(0, 5).map((sale) => (
+                    <tr key={sale.saleId}>
+                      <td>{sale.saleNumber}</td>
+                      <td>{sale.customerName || sale.organizationName || 'Comptoir'}</td>
+                      <td><span className={`badge ${badgeForType(sale.saleType)}`}>{sale.saleType}</span></td>
+                      <td><span className={`badge ${badgeForMode(sale.saleMode, sale.fulfillmentStatus)}`}>{sale.saleMode === 'ADVANCE' ? 'AVANCE' : 'IMMEDIATE'}</span></td>
+                      <td className="align-right">{formatMoney(sale.totalAmount, sale.currencyCode ?? 'USD', sale.currencySymbol)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="sales-report-actions">
+        <button className="secondary-button compact-button" type="button" onClick={() => printSalesSnapshot(snapshot)}>
+          Imprimer
+        </button>
+        <button className="secondary-button compact-button" type="button" onClick={() => exportSalesSnapshot(snapshot, 'xlsx')}>
+          Excel
+        </button>
+        <button className="secondary-button compact-button" type="button" onClick={() => exportSalesSnapshot(snapshot, 'csv')}>
+          CSV
+        </button>
+        <button className="secondary-button compact-button" type="button" onClick={() => exportSalesSnapshot(snapshot, 'json')}>
+          JSON
+        </button>
+      </div>
+    </section>
+  );
+}
+
+async function loadSalesDaySnapshot(options: {
+  title: string;
+  subtitle: string;
+  from: string;
+  to: string;
+  siteId?: string;
+  siteLabel: string;
+  includeCash: boolean;
+  exportName: string;
+}): Promise<DayReportSnapshot> {
+  const baseFilters = { from: options.from, to: options.to, siteId: options.siteId };
+  const listFilters = {
+    dateFrom: options.from,
+    dateTo: options.to,
+    siteId: options.siteId,
+    status: 'VALIDATED',
+    sortBy: 'saleDate' as const,
+    sortOrder: 'desc' as const,
+  };
+  const [summaryResp, listResp, topResp, breakdownResp, cashResp, sessionsResp] = await Promise.all([
+    salesService.getSummary(listFilters),
+    salesService.getList({ ...listFilters, page: 1, limit: 5 }),
+    reportsService.topProducts(baseFilters),
+    reportsService.sales(baseFilters),
+    options.includeCash ? reportsService.cash(baseFilters) : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
+    options.includeCash ? cashService.getSessions() : Promise.resolve({ data: [] as Array<{ openedAt?: string; closedAt?: string | null; siteId?: string; status?: string }> }),
+  ]);
+
+  const sessions = (sessionsResp.data ?? []).filter((session) => {
+    if (!session.openedAt) return false;
+    const opened = new Date(session.openedAt);
+    const start = new Date(`${options.from}T00:00:00`);
+    const end = new Date(`${options.to}T23:59:59.999`);
+    if (Number.isNaN(opened.getTime())) return false;
+    if (opened < start || opened > end) return false;
+    if (options.siteId && session.siteId && session.siteId !== options.siteId) return false;
+    return true;
+  });
+
+  return {
+    label: options.title,
+    subtitle: options.subtitle,
+    siteLabel: options.siteLabel,
+    period: { from: options.from, to: options.to },
+    summary: {
+      revenueNet: summaryResp.data?.revenueNet ?? 0,
+      saleCount: summaryResp.data?.saleCount ?? 0,
+      averageBasket: summaryResp.data?.averageBasket ?? 0,
+      itemsSold: summaryResp.data?.itemsSold ?? 0,
+      receivedUsd: summaryResp.data?.receivedUsd ?? 0,
+      receivedCdf: summaryResp.data?.receivedCdf ?? 0,
+      changeUsd: summaryResp.data?.changeUsd ?? 0,
+      changeCdf: summaryResp.data?.changeCdf ?? 0,
+      settlementDifferenceUsd: summaryResp.data?.settlementDifferenceUsd ?? 0,
+      immediateSaleCount: summaryResp.data?.immediateSaleCount ?? 0,
+      advanceSaleCount: summaryResp.data?.advanceSaleCount ?? 0,
+      immediateRevenue: summaryResp.data?.immediateRevenue ?? 0,
+      advanceFulfilledRevenue: summaryResp.data?.advanceFulfilledRevenue ?? 0,
+      advancePendingRevenue: summaryResp.data?.advancePendingRevenue ?? 0,
+    },
+    sales: listResp.data?.items ?? [],
+    topProducts: topResp.data?.map((row) => ({
+      articleCode: String(row.articleCode ?? row.article_code ?? ''),
+      commercialName: String(row.commercialName ?? row.commercial_name ?? ''),
+      quantity: Number(row.quantity ?? 0),
+      revenue: Number(row.revenue ?? 0),
+    })) ?? [],
+    saleBreakdown: breakdownResp.data?.map((row) => ({
+      saleType: String(row.saleType ?? row.sale_type ?? ''),
+      count: Number(row.count ?? 0),
+      totalAmount: Number(row.totalAmount ?? row.total_amount ?? 0),
+      patientAmount: Number(row.patientAmount ?? row.patient_amount ?? 0),
+      insuranceAmount: Number(row.insuranceAmount ?? row.insurance_amount ?? 0),
+    })) ?? [],
+    cashBreakdown: options.includeCash ? ((cashResp.data ?? []).map((row) => ({
+      movementType: String(row.movementType ?? row.movement_type ?? ''),
+      count: Number(row.count ?? 0),
+      amount: Number(row.amount ?? 0),
+    }))) : [],
+    sessionStats: {
+      openCount: sessions.filter((session) => session.status === 'OPEN').length,
+      closedCount: sessions.filter((session) => session.status === 'CLOSED').length,
+      totalCount: sessions.length,
+    },
+    exportFilters: {
+      dateFrom: options.from,
+      dateTo: options.to,
+      siteId: options.siteId,
+      status: 'VALIDATED',
+    },
+    exportName: options.exportName,
+  };
+}
+
+async function exportSalesSnapshot(snapshot: DayReportSnapshot, format: 'xlsx' | 'csv' | 'json') {
+  const items = await fetchAllSalesForExport(snapshot.exportFilters);
+  const stamp = fileDateStamp(new Date(snapshot.period.to || new Date()));
+  const summaryRows = buildSnapshotSummaryRows(snapshot);
+  const salesRows = saleExportRows(items);
+  const topRows = [
+    ['Article', 'Qté', 'CA'],
+    ...snapshot.topProducts.map((item) => [
+      `${item.articleCode ? `${item.articleCode} - ` : ''}${item.commercialName ?? '-'}`,
+      Number(item.quantity ?? 0),
+      formatMoney(Number(item.revenue ?? 0), 'USD'),
+    ]),
+  ];
+  const cashRows = snapshot.cashBreakdown.length === 0 ? [] : [
+    ['Type mouvement', 'Nombre', 'Montant'],
+    ...snapshot.cashBreakdown.map((item) => [item.movementType, item.count, formatMoney(item.amount, 'USD')]),
+  ];
+
+  if (format === 'xlsx') {
+    const sheets = [
+      { name: 'Resume', rows: summaryRows },
+      { name: 'Ventes', rows: salesRows },
+      { name: 'Top produits', rows: topRows },
+    ];
+    if (cashRows.length > 0) sheets.push({ name: 'Caisse', rows: cashRows });
+    downloadXlsx(`${snapshot.exportName}_${stamp}.xlsx`, sheets);
+    return;
+  }
+
+  if (format === 'csv') {
+    downloadCsv(`${snapshot.exportName}_${stamp}.csv`, salesRows);
+    return;
+  }
+
+  downloadJson(`${snapshot.exportName}_${stamp}.json`, {
+    title: snapshot.label,
+    subtitle: snapshot.subtitle,
+    summary: summaryRows.slice(1).map(([label, value]) => ({ label, value })),
+    sales: items.map(saleExportObject),
+    topProducts: snapshot.topProducts,
+    cashBreakdown: snapshot.cashBreakdown,
+  });
+}
+
+function buildSnapshotSummaryRows(snapshot: DayReportSnapshot) {
+  return [
+    ['Metrique', 'Valeur'],
+    ['CA net', formatMoney(snapshot.summary.revenueNet ?? 0, 'USD')],
+    ['Ventes valides', snapshot.summary.saleCount ?? 0],
+    ['Panier moyen', formatMoney(snapshot.summary.averageBasket ?? 0, 'USD')],
+    ['Articles vendus', snapshot.summary.itemsSold ?? 0],
+    ['Encaisse USD', formatMoney(snapshot.summary.receivedUsd ?? 0, 'USD')],
+    ['Encaisse FC', formatMoney(snapshot.summary.receivedCdf ?? 0, 'CDF', 'FC')],
+    ['Rendu USD', formatMoney(snapshot.summary.changeUsd ?? 0, 'USD')],
+    ['Rendu FC', formatMoney(snapshot.summary.changeCdf ?? 0, 'CDF', 'FC')],
+    ['Ecart reglement USD', formatMoney(snapshot.summary.settlementDifferenceUsd ?? 0, 'USD')],
+    ['Sessions ouvertes', snapshot.sessionStats.openCount],
+    ['Sessions fermees', snapshot.sessionStats.closedCount],
+  ];
+}
+
+function printSalesSnapshot(snapshot: DayReportSnapshot) {
+  const title = `${snapshot.label} - ${snapshot.subtitle}`;
+  const summaryRows = buildSnapshotSummaryRows(snapshot).slice(1);
+  const salesRows = snapshot.sales.slice(0, 5);
+  const topProducts = snapshot.topProducts.slice(0, 5);
+  const cashRows = snapshot.cashBreakdown.slice(0, 8);
+  const html = `
+    <!doctype html>
+    <html lang="fr">
+      <head>
+        <meta charset="utf-8" />
+        <title>${escapeHtml(title)}</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
+          h1, h2 { margin: 0 0 8px; }
+          h2 { margin-top: 20px; font-size: 16px; }
+          .meta { display: flex; gap: 16px; flex-wrap: wrap; color: #4b5563; margin-bottom: 16px; }
+          table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+          th, td { border: 1px solid #d1d5db; padding: 6px 8px; text-align: left; font-size: 12px; }
+          th { background: #f3f4f6; }
+          .summary { display: grid; gap: 6px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .summary div { border: 1px solid #d1d5db; padding: 8px; border-radius: 8px; }
+          .summary span { display: block; font-size: 11px; color: #6b7280; text-transform: uppercase; }
+          .summary strong { font-size: 14px; }
+        </style>
+      </head>
+      <body>
+        <h1>${escapeHtml(snapshot.label)}</h1>
+        <div class="meta">
+          <span>${escapeHtml(snapshot.subtitle)}</span>
+          <span>Du ${escapeHtml(formatDate(snapshot.period.from))} au ${escapeHtml(formatDate(snapshot.period.to))}</span>
+        </div>
+        <div class="summary">
+          ${summaryRows.map(([label, value]) => `<div><span>${escapeHtml(String(label))}</span><strong>${escapeHtml(String(value))}</strong></div>`).join('')}
+        </div>
+        <h2>Top produits</h2>
+        <table>
+          <thead><tr><th>Article</th><th>Qté</th><th>CA</th></tr></thead>
+          <tbody>
+            ${topProducts.map((item) => `<tr><td>${escapeHtml(`${item.articleCode ? `${item.articleCode} - ` : ''}${item.commercialName ?? '-'}`)}</td><td>${Number(item.quantity ?? 0)}</td><td>${escapeHtml(formatMoney(Number(item.revenue ?? 0), 'USD'))}</td></tr>`).join('')}
+          </tbody>
+        </table>
+        <h2>Ventes recentes</h2>
+        <table>
+          <thead><tr><th>N vente</th><th>Client</th><th>Type</th><th>Mode</th><th>Total</th></tr></thead>
+          <tbody>
+            ${salesRows.map((sale) => `<tr><td>${escapeHtml(sale.saleNumber)}</td><td>${escapeHtml(sale.customerName || sale.organizationName || 'Comptoir')}</td><td>${escapeHtml(sale.saleType)}</td><td>${escapeHtml(String(sale.saleMode ?? '-'))}</td><td>${escapeHtml(formatMoney(sale.totalAmount, sale.currencyCode ?? 'USD', sale.currencySymbol))}</td></tr>`).join('')}
+          </tbody>
+        </table>
+        ${cashRows.length ? `
+          <h2>Caisse</h2>
+          <table>
+            <thead><tr><th>Type</th><th>Nombre</th><th>Montant</th></tr></thead>
+            <tbody>${cashRows.map((row) => `<tr><td>${escapeHtml(String(row.movementType ?? ''))}</td><td>${Number(row.count ?? 0)}</td><td>${escapeHtml(formatMoney(Number(row.amount ?? 0), 'USD'))}</td></tr>`).join('')}</tbody>
+          </table>
+        ` : ''}
+        <script>window.addEventListener('load', () => { window.print(); setTimeout(() => window.close(), 250); });</script>
+      </body>
+    </html>
+  `;
+  const popup = window.open('', '_blank', 'noopener,noreferrer,width=1200,height=900');
+  if (!popup) {
+    window.alert('Impossible douvrir la fenetre dimpression. Autorisez les fenetres contextuelles.');
+    return;
+  }
+  popup.document.open();
+  popup.document.write(html);
+  popup.document.close();
+  popup.focus();
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
