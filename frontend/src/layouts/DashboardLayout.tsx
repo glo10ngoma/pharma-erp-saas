@@ -31,8 +31,9 @@ export function DashboardLayout() {
       icon: 'VN',
       links: [
         ['/pos', 'POS', 'sales.create'],
-        ['/sales', 'Liste des ventes', 'sales.read'],
-        ['/sales?saleMode=ADVANCE', 'Paiements en avance', 'sales.read'],
+        ['/sales/dashboard', 'Dashboard ventes', 'sales.read'],
+        ['/sales/list', 'Liste des ventes', 'sales.read'],
+        ['/sales/list?saleMode=ADVANCE', 'Paiements en avance', 'sales.read'],
         ['/customer-returns', 'Retours clients', 'customer_returns.read'],
         ['/cash', 'Caisse', 'cash_registers.read'],
       ],

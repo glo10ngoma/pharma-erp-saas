@@ -18,7 +18,7 @@ export function SaleDetailPage() {
 
   return (
     <div className="purchase-page sale-detail-page">
-      <div className="breadcrumb"><Link to="/sales">Ventes</Link><span>&gt;</span><strong>{sale?.saleNumber ?? 'Detail vente'}</strong></div>
+      <div className="breadcrumb"><Link to="/sales/list">Ventes</Link><span>&gt;</span><strong>{sale?.saleNumber ?? 'Detail vente'}</strong></div>
       {!sale ? <div className="card"><p className="loading-state">Chargement du detail vente...</p></div> : <>
         <div className="purchase-sticky-header transfer-sticky-header">
           <div><span>Numero</span><strong>{sale.saleNumber}</strong></div>
@@ -75,7 +75,7 @@ export function SaleDetailPage() {
         </section>
 
       <div className="page-actions">
-        <Link className="ghost-button compact-button" to="/sales">Retour</Link>
+        <Link className="ghost-button compact-button" to="/sales/list">Retour</Link>
         {sale.status === 'DRAFT' && <button className="ghost-button compact-button" type="button" onClick={() => navigate(`/pos?saleId=${sale.saleId}`)}>Continuer dans POS</button>}
         <button className="button compact-button" type="button" onClick={() => window.print()}>Imprimer Facture</button>
       </div>

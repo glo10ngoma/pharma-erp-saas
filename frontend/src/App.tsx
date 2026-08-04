@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider } from './auth/AuthContext';
 import { useAuth } from './auth/AuthContext';
 import { landingPathForUser } from './auth/landing';
@@ -30,9 +30,12 @@ import { StocksPage } from './modules/stocks/StocksPage';
 import { TransferDetailPage } from './modules/transfers/TransferDetailPage';
 import { NewTransferPage } from './modules/transfers/NewTransferPage';
 import { TransfersPage } from './modules/transfers/TransfersPage';
-import { SalesPage } from './modules/sales/SalesPage';
 import { PosPage } from './modules/sales/PosPage';
 import { CustomerDisplayPage } from './modules/sales/CustomerDisplayPage';
+import { SalesModuleLayout } from './modules/sales/SalesModuleLayout';
+import { SalesDashboardPage } from './modules/sales/SalesDashboardPage';
+import { SalesListPage } from './modules/sales/SalesListPage';
+import { YesterdaySalesReportPage, EndOfDaySalesReportPage } from './modules/sales/SalesReportsPages';
 import { SaleDetailPage } from './modules/sales/SaleDetailPage';
 import { CashPage } from './modules/cash/CashPage';
 import { OrganizationsPage } from './modules/insurance/OrganizationsPage';
@@ -127,7 +130,13 @@ export function App() {
                 <Route path="/transfers" element={<TransfersPage />} />
                 <Route path="/transfers/new" element={<NewTransferPage />} />
                 <Route path="/transfers/:id" element={<TransferDetailPage />} />
-                <Route path="/sales" element={<SalesPage />} />
+                <Route path="/sales" element={<SalesModuleLayout />}>
+                  <Route index element={<SalesIndexRedirect />} />
+                  <Route path="dashboard" element={<SalesDashboardPage />} />
+                  <Route path="list" element={<SalesListPage />} />
+                  <Route path="reports/yesterday" element={<YesterdaySalesReportPage />} />
+                  <Route path="reports/end-of-day" element={<EndOfDaySalesReportPage />} />
+                </Route>
                 <Route path="/pos" element={<PosPage />} />
                 <Route path="/sales/:id" element={<SaleDetailPage />} />
                 <Route path="/customer-returns" element={<CustomerReturnsPage />} />
@@ -200,6 +209,12 @@ export function App() {
 function HomeRedirect() {
   const { currentUser } = useAuth();
   return <Navigate to={landingPathForUser(currentUser)} replace />;
+}
+
+function SalesIndexRedirect() {
+  const location = useLocation();
+  const target = location.search ? `/sales/list${location.search}` : '/sales/dashboard';
+  return <Navigate to={target} replace />;
 }
 
 function RouteFallback() {
