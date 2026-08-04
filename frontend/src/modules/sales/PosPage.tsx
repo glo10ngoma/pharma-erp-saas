@@ -1,4 +1,4 @@
-import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
@@ -1049,7 +1049,7 @@ export function PosPage() {
                 Fermer cette session
               </Link>
             ) : (
-              <small className="muted">La fermeture de session nÃ©cessite la permission cash_sessions.close.</small>
+              <small className="muted">La fermeture de session nécessite la permission cash_sessions.close.</small>
             )}
           </div>
         </section>
@@ -1168,44 +1168,25 @@ export function PosPage() {
         <aside className="pos-side-column">
       <section className="card compact-card pos-summary-panel">
         <div className="pos-summary-content">
-        <div className="pos-cash-metrics">
-          <div className="pos-cash-total">
-            <span>Total client</span>
-            <strong>{formatMoney(patientPayableFc, 'CDF')}</strong>
-            <small>{formatMoney(patientPayable, 'USD', currencySymbol)}</small>
-          </div>
-          <div className={`pos-cash-change ${hasChangeDue ? 'positive' : ''}`}>
-            <span>RENDU</span>
-            <strong>{formatMoney(actualChangeDueFc, 'CDF')}</strong>
-            <small>{formatMoney(actualChangeDueUsd, 'USD', currencySymbol)}</small>
-          </div>
-        </div>
-        <div className="pos-summary-grid">
-          <Summary label="Art." title="Articles" value={String(items.length)} />
-          <Summary label="QtÃ©" title="QuantitÃ© totale" value={String(quantityTotal)} />
-          <Summary label="S/total USD" title="Sous-total en dollars amÃ©ricains" value={formatMoney(subtotal, 'USD', currencySymbol)} />
+                <div className="pos-summary-grid">
+          <Summary label="S/total USD" title="Sous-total en dollars américains" value={formatMoney(subtotal, 'USD', currencySymbol)} />
           <Summary label="Total FC" title="Total en francs congolais" value={formatMoney(total * saleExchangeRate, 'CDF')} strong />
-          <Summary label="Patient USD" title="Part patient en dollars amÃ©ricains" value={formatMoney(patientPayable, 'USD', currencySymbol)} />
+          <Summary label="Patient USD" title="Part patient en dollars américains" value={formatMoney(patientPayable, 'USD', currencySymbol)} />
           <Summary label="Patient FC" title="Part patient en francs congolais" value={formatMoney(patientPayableFc, 'CDF')} strong />
-          {showInsuranceSummary ? (
-            <Summary label="Assurance" title="Part assurance" value={`${formatMoney(insuranceAmount, 'USD', currencySymbol)} / ${formatMoney(insuranceAmount * saleExchangeRate, 'CDF')}`} />
-          ) : null}
         </div>
 
         {showSettlementDetails ? (
           <details className="pos-summary-details">
-            <summary>Details</summary>
+            <summary>Détails</summary>
             <div className="pos-summary-grid pos-summary-grid-secondary">
-              <Summary label="Paye FC" title="Montant payÃ© en francs congolais" value={formatMoney(paidEquivalentFc, 'CDF')} />
-              <Summary label="Reste FC" title="Reste Ã  payer en francs congolais" value={formatMoney(Math.max(0, patientPayableFc - paidEquivalentFc), 'CDF')} />
-              <Summary label="Net USD" title="Montant net reÃ§u en dollars amÃ©ricains" value={formatMoney(netReceivedUsd, 'USD', currencySymbol)} />
-              <Summary label="Net CDF" title="Montant net reÃ§u en francs congolais" value={formatMoney(netReceivedCdf, 'CDF')} />
-              <Summary label="Net eq. USD" title="Montant net Ã©quivalent en dollars amÃ©ricains" value={formatMoney(netTotalEquivalentUsd, 'USD', currencySymbol)} strong />
-              <Summary label="Ecart USD" title="Ã‰cart en dollars amÃ©ricains" value={formatMoney(settlementDifferenceUsd, 'USD', currencySymbol)} strong />
-              <Summary label="Ecart FC" title="Ã‰cart en francs congolais" value={formatMoney(settlementDifferenceFc, 'CDF')} />
-              <Summary label="Type ecart" title="Type d'Ã©cart" value={settlementStatusLabel} />
-              <Summary label="Rendu sugg. FC" title="Rendu suggÃ©rÃ© en francs congolais" value={formatMoney(suggestedChangeFc, 'CDF')} />
-              <Summary label="Rendu sugg. USD" title="Rendu suggÃ©rÃ© en dollars amÃ©ricains" value={formatMoney(suggestedChangeUsd, 'USD', currencySymbol)} />
+              <Summary label="Paye FC" title="Montant payé en francs congolais" value={formatMoney(paidEquivalentFc, 'CDF')} />
+              <Summary label="Reste FC" title="Reste à payer en francs congolais" value={formatMoney(Math.max(0, patientPayableFc - paidEquivalentFc), 'CDF')} />
+              <Summary label="Net USD" title="Montant net reçu en dollars américains" value={formatMoney(netReceivedUsd, 'USD', currencySymbol)} />
+              <Summary label="Net CDF" title="Montant net reçu en francs congolais" value={formatMoney(netReceivedCdf, 'CDF')} />
+              <Summary label="Net eq. USD" title="Montant net équivalent en dollars américains" value={formatMoney(netTotalEquivalentUsd, 'USD', currencySymbol)} strong />
+              <Summary label="Ecart USD" title="Écart en dollars américains" value={formatMoney(settlementDifferenceUsd, 'USD', currencySymbol)} strong />
+              <Summary label="Ecart FC" title="Écart en francs congolais" value={formatMoney(settlementDifferenceFc, 'CDF')} />
+              <Summary label="Type ecart" title="Type d'écart" value={settlementStatusLabel} />
             </div>
           </details>
         ) : null}
@@ -1213,11 +1194,25 @@ export function PosPage() {
         <div className="pos-payment-grid">
           <label className="pos-paid-field pos-paid-fc"><span>PAYE FC</span><input ref={paymentInputRef} className="input compact-input numeric-cell" type="number" min="0" step="1" value={paidFc} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); quickCheckout(); } }} onChange={(event) => { setPaidFc(event.target.value); setExactPayment(false); }} /></label>
           <label className="pos-paid-field"><span>PAYE USD</span><input className="input compact-input numeric-cell" type="number" min="0" step="0.01" value={paidUsd} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); quickCheckout(); } }} onChange={(event) => { setPaidUsd(event.target.value); setExactPayment(false); }} /></label>
+        </div>
+
+        <div className="pos-payment-grid">
+          <label className="pos-paid-field pos-paid-readonly" title="Rendu proposé en francs congolais" aria-label="Rendu proposé en francs congolais">
+            <span>Rendu prop. FC</span>
+            <input className="input compact-input numeric-cell" type="text" value={formatMoney(suggestedChangeFc, 'CDF')} readOnly tabIndex={-1} />
+          </label>
+          <label className="pos-paid-field pos-paid-readonly" title="Rendu proposé en dollars américains" aria-label="Rendu proposé en dollars américains">
+            <span>Rendu prop. USD</span>
+            <input className="input compact-input numeric-cell" type="text" value={formatMoney(suggestedChangeUsd, 'USD', currencySymbol)} readOnly tabIndex={-1} />
+          </label>
+        </div>
+
+        <div className="pos-payment-grid">
           <label className="pos-paid-field"><span>RENDU FC</span><input className="input compact-input numeric-cell" type="number" min="0" step="1" value={returnedFc} onChange={(event) => setReturnedFc(event.target.value)} /></label>
           <label className="pos-paid-field"><span>RENDU USD</span><input className="input compact-input numeric-cell" type="number" min="0" step="0.01" value={returnedUsd} onChange={(event) => setReturnedUsd(event.target.value)} /></label>
-          <label className="pos-paid-field pos-paid-wide"><span>MOTIF</span><input className="input compact-input" placeholder="Arrondi, surplus, conversion..." value={settlementReason} onChange={(event) => setSettlementReason(event.target.value)} /></label>
-          <label className="pos-paid-field pos-paid-wide"><span>NOTE</span><input className="input compact-input" placeholder="Observation" value={settlementNote} onChange={(event) => setSettlementNote(event.target.value)} /></label>
         </div>
+
+        <label className="pos-paid-field pos-paid-wide pos-paid-note"><span>NOTE</span><input className="input compact-input" placeholder="Observation" value={settlementNote} onChange={(event) => setSettlementNote(event.target.value)} /></label>
 
         <div className="page-actions pos-checkout-actions">
           <button className="ghost-button compact-button pos-secondary-action pos-danger-action" type="button" disabled={!sale || sale.status !== 'DRAFT'} onClick={() => cancel.mutate()}>Vider</button>
