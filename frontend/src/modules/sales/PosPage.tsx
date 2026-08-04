@@ -1101,18 +1101,15 @@ export function PosPage() {
 
         <div className="table-wrap pos-grid-wrap">
           <table className="data-table pos-lines-table">
-            <thead><tr><th>Article</th><th>Lot FEFO</th><th>Exp</th><th>Unite vente</th><th>Conditionnement</th><th>Qte</th><th>Prix</th><th>Total</th><th>Actions</th></tr></thead>
-            <tbody>{items.length === 0 ? <tr><td colSpan={9}><p className="empty-state">Aucun article. Utilisez F2, scannez ou recherchez un produit.</p></td></tr> : items.map((item: any) => {
+            <thead><tr><th>Article</th><th>Lot FEFO</th><th>Conditionnement</th><th>Qte</th><th>Prix</th><th>Total</th><th>Actions</th></tr></thead>
+            <tbody>{items.length === 0 ? <tr><td colSpan={7}><p className="empty-state">Aucun article. Utilisez F2, scannez ou recherchez un produit.</p></td></tr> : items.map((item: any) => {
               const article = articleById.get(item.articleId);
-              const salesUnitLabel = unitLabelById.get(article?.salesUnitId ?? '') ?? article?.packaging ?? '-';
               const packagingLabel = unitLabelById.get(article?.packagingUnitId ?? '') ?? article?.packaging ?? '-';
               const quantityDraft = itemQuantityDrafts[item.saleItemId] ?? String(item.quantity ?? '');
               return (
               <tr className={selectedLineId === item.saleItemId ? 'selected-row' : ''} key={item.saleItemId} onClick={() => setSelectedLineId(item.saleItemId)}>
                 <td><strong>{item.commercialName ?? article?.commercialName ?? 'Article'}</strong><small>{item.articleCode ?? article?.articleCode ?? ''}</small></td>
                 <td>{item.lotNumber ?? '-'}</td>
-                <td>{item.expiryDate ? formatDate(item.expiryDate) : '-'}</td>
-                <td>{salesUnitLabel}</td>
                 <td>{packagingLabel}{article?.unitsPerPackage ? ` x${article.unitsPerPackage}` : ''}</td>
                 <td className="quantity-cell">
                   <input
@@ -1170,6 +1167,7 @@ export function PosPage() {
         </div>
         <aside className="pos-side-column">
       <section className="card compact-card pos-summary-panel">
+        <div className="pos-summary-content">
         <div className="pos-cash-metrics">
           <div className="pos-cash-total">
             <span>Total client</span>
@@ -1195,7 +1193,7 @@ export function PosPage() {
         </div>
 
         {showSettlementDetails ? (
-          <details className="pos-summary-details" open={exactPayment || hasChangeDue || showInsuranceSummary}>
+          <details className="pos-summary-details">
             <summary>Details</summary>
             <div className="pos-summary-grid pos-summary-grid-secondary">
               <Summary label="Paye FC" title="Montant payÃ© en francs congolais" value={formatMoney(paidEquivalentFc, 'CDF')} />
@@ -1227,12 +1225,24 @@ export function PosPage() {
           <button className="ghost-button compact-button pos-secondary-action pos-exact-action" type="button" disabled={!sale || sale.status !== 'DRAFT' || items.length === 0} onClick={applyExactPayment}>Paiement exact</button>
           <button className="ghost-button compact-button pos-secondary-action" type="button" disabled={!form.siteId || updateDraft.isPending || createDraft.isPending} onClick={saveDraft}>Enregistrer</button>
           <button className="ghost-button compact-button pos-secondary-action" type="button" onClick={prepareNextSale}>Nouvelle vente</button>
+        </div>
+        </div>
+        <div className="pos-checkout-footer">
           <div className="pos-checkout-total">
             <span>A encaisser</span>
             <strong>{formatMoney(patientPayableFc, 'CDF')}</strong>
             <small>{formatMoney(patientPayable, 'USD', currencySymbol)}</small>
           </div>
-          <button className="button pos-checkout-button" type="button" disabled={!sale?.saleId || sale.status !== 'DRAFT' || items.length === 0 || validate.isPending || Boolean((paidUsd || paidFc || exactPayment) && !canValidate())} onClick={quickCheckout}>{validate.isPending ? 'ENCAISSEMENT...' : checkoutActionLabel}</button>
+          <button
+            className="button pos-checkout-button"
+            type="button"
+            aria-label={checkoutActionLabel}
+            title={checkoutActionLabel}
+            disabled={!sale?.saleId || sale.status !== 'DRAFT' || items.length === 0 || validate.isPending || Boolean((paidUsd || paidFc || exactPayment) && !canValidate())}
+            onClick={quickCheckout}
+          >
+            {validate.isPending ? 'ENCAISSEMENT...' : 'ENCAISSER'}
+          </button>
         </div>
       </section>
         </aside>

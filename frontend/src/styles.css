@@ -3214,13 +3214,16 @@ details.nav-group .nav-link {
   border: 1px solid var(--line);
   border-radius: 8px;
   max-height: calc(100vh - 460px);
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   max-width: 100%;
   min-width: 0;
 }
 
 .pos-lines-table {
-  min-width: 1160px;
+  min-width: 0;
+  table-layout: fixed;
+  width: 100%;
 }
 
 .pos-lines-table th,
@@ -3246,23 +3249,44 @@ details.nav-group .nav-link {
 }
 
 .pos-lines-table th:nth-child(4),
-.pos-lines-table td:nth-child(4),
-.pos-lines-table th:nth-child(5),
-.pos-lines-table td:nth-child(5) {
+.pos-lines-table td:nth-child(4) {
   text-align: center;
+  width: 8%;
 }
 
+.pos-lines-table th:nth-child(5),
+.pos-lines-table td:nth-child(5),
 .pos-lines-table th:nth-child(6),
 .pos-lines-table td:nth-child(6) {
-  text-align: center;
-  width: 96px;
+  text-align: right;
+}
+
+.pos-lines-table th:nth-child(1),
+.pos-lines-table td:nth-child(1) {
+  width: 26%;
+}
+
+.pos-lines-table th:nth-child(2),
+.pos-lines-table td:nth-child(2) {
+  width: 14%;
+}
+
+.pos-lines-table th:nth-child(3),
+.pos-lines-table td:nth-child(3) {
+  width: 20%;
+}
+
+.pos-lines-table th:nth-child(5),
+.pos-lines-table td:nth-child(5),
+.pos-lines-table th:nth-child(6),
+.pos-lines-table td:nth-child(6) {
+  width: 11%;
 }
 
 .pos-lines-table th:nth-child(7),
-.pos-lines-table td:nth-child(7),
-.pos-lines-table th:nth-child(8),
-.pos-lines-table td:nth-child(8) {
-  text-align: right;
+.pos-lines-table td:nth-child(7) {
+  text-align: center;
+  width: 6%;
 }
 
 .pos-line-quantity {
@@ -3294,10 +3318,23 @@ details.nav-group .nav-link {
   position: sticky;
   top: 12px;
   z-index: 15;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: calc(100vh - 24px);
   overflow: hidden;
   max-width: 100%;
   min-width: 0;
-  padding: 10px;
+  padding: 8px;
+}
+
+.pos-summary-content {
+  flex: 1 1 auto;
+  display: grid;
+  gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
 }
 
 .pos-summary-grid {
@@ -3310,9 +3347,9 @@ details.nav-group .nav-link {
 
 .pos-summary-item {
   margin: 0;
-  min-height: 42px;
+  min-height: 38px;
   min-width: 0;
-  padding: 6px 8px;
+  padding: 5px 8px;
 }
 
 .pos-summary-item span {
@@ -3344,7 +3381,7 @@ details.nav-group .nav-link {
   display: grid;
   gap: 6px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-bottom: 8px;
+  margin-bottom: 4px;
   min-width: 0;
 }
 
@@ -3376,6 +3413,20 @@ details.nav-group .nav-link {
   grid-auto-flow: row dense;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   min-width: 0;
+}
+
+.pos-checkout-footer {
+  align-items: end;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  bottom: 0;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 1fr);
+  margin-top: auto;
+  padding-top: 8px;
+  position: sticky;
+  z-index: 4;
 }
 
 .pos-status-strip {
@@ -3530,11 +3581,11 @@ details.nav-group .nav-link {
 }
 
 .pos-checkout-button {
-  font-size: .98rem;
+  font-size: .94rem;
   font-weight: 900;
-  min-height: 50px;
+  min-height: 52px;
   min-width: 0;
-  padding: 9px 16px;
+  padding: 9px 14px;
   width: 100%;
 }
 
@@ -3550,6 +3601,10 @@ details.nav-group .nav-link {
   }
 
   .pos-checkout-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .pos-checkout-footer {
     grid-template-columns: 1fr;
   }
 
@@ -3608,20 +3663,20 @@ details.nav-group .nav-link {
   align-items: center;
   cursor: pointer;
   display: flex;
-  gap: 8px;
+  gap: 6px;
   justify-content: space-between;
 }
 
 .pos-insurance-details summary span {
   color: var(--text);
-  font-size: .72rem;
+  font-size: .7rem;
   font-weight: 900;
   text-transform: uppercase;
 }
 
 .pos-insurance-details summary small {
   color: var(--muted);
-  font-size: .7rem;
+  font-size: .68rem;
 }
 
 .pos-insurance-grid {
@@ -4044,6 +4099,15 @@ details.nav-group .nav-link {
   background: rgba(45, 212, 191, .12);
   border-color: #2dd4bf;
   color: #ccfbf1;
+}
+
+[data-theme='dark'] .pos-checkout-footer {
+  background: #111827;
+  border-top-color: #334155;
+}
+
+[data-theme='dark'] .pos-summary-content {
+  scrollbar-color: #334155 #111827;
 }
 
 [data-theme='dark'] .pos-status-strip,
