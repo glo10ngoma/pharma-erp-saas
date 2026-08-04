@@ -20,7 +20,15 @@ import { apiErrorMessage } from '../../services/apiError';
 import { sitesService } from '../../services/sites.service';
 import { formatDate } from '../../utils/date';
 import { formatMoney } from '../../utils/money';
-import { exportSalesSnapshot, loadSalesSnapshot, salesPeriodRange, type PeriodPreset, type SalesDaySnapshot } from './sales-module-utils';
+import {
+  buildEndOfDayReportParams,
+  buildYesterdayReportParams,
+  exportSalesSnapshot,
+  loadSalesSnapshot,
+  salesPeriodRange,
+  type PeriodPreset,
+  type SalesDaySnapshot,
+} from './sales-module-utils';
 
 const COLORS = ['#0f766e', '#2563eb', '#f59e0b', '#ef4444', '#8b5cf6', '#10b981'];
 
@@ -29,7 +37,7 @@ export function YesterdaySalesReportPage() {
   const siteId = searchParams.get('siteId') || '';
   const [currencyView, setCurrencyView] = useState<'USD' | 'CDF'>((searchParams.get('currency') as 'USD' | 'CDF') || 'USD');
   const sites = useQuery({ queryKey: ['sales-report-sites', 'yesterday'], queryFn: async () => (await sitesService.getAll()).data, staleTime: 5 * 60 * 1000 });
-  const range = salesPeriodRange('yesterday');
+  const range = buildYesterdayReportParams(siteId || undefined);
   const selectedSite = sites.data?.find((site) => site.siteId === siteId);
   const report = useQuery({
     queryKey: ['sales-report-yesterday', range.from, range.to, siteId],
@@ -44,6 +52,7 @@ export function YesterdaySalesReportPage() {
       includeCash: true,
       exportName: 'rapport-ventes-hier',
     }),
+    retry: false,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -70,19 +79,21 @@ export function EndOfDaySalesReportPage() {
   const [siteId, setSiteId] = useState(searchParams.get('siteId') || '');
   const sites = useQuery({ queryKey: ['sales-report-sites', 'end-of-day'], queryFn: async () => (await sitesService.getAll()).data, staleTime: 5 * 60 * 1000 });
   const selectedSite = sites.data?.find((site) => site.siteId === siteId);
+  const reportParams = buildEndOfDayReportParams(from, to, siteId || undefined);
   const report = useQuery({
-    queryKey: ['sales-report-end-of-day', from, to, siteId],
+    queryKey: ['sales-report-end-of-day', reportParams.from, reportParams.to, reportParams.siteId],
     queryFn: async () => loadSalesSnapshot({
       title: 'Rapport fin de journee',
       subtitle: `Synthese ${formatDate(from || new Date())}`,
       period,
-      from: from || salesPeriodRange('today').from,
-      to: to || salesPeriodRange('today').to,
-      siteId: siteId || undefined,
+      from: reportParams.from || salesPeriodRange('today').from,
+      to: reportParams.to || salesPeriodRange('today').to,
+      siteId: reportParams.siteId || undefined,
       siteLabel: selectedSite?.siteName ?? 'Tous les sites',
       includeCash: true,
       exportName: 'mini-rapport-fin-journee',
     }),
+    retry: false,
     staleTime: 5 * 60 * 1000,
   });
 

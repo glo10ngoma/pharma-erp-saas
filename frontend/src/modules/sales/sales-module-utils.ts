@@ -22,6 +22,34 @@ export type SalesModuleFilters = {
   period?: PeriodPreset;
 };
 
+type SalesListQueryParams = {
+  saleNumber?: string;
+  customer?: string;
+  seller?: string;
+  siteId?: string;
+  status?: string;
+  saleType?: string;
+  saleMode?: string;
+  fulfillmentStatus?: string;
+  paymentMode?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  sortBy?: 'saleDate' | 'totalAmount' | 'createdAt';
+  sortOrder?: 'asc' | 'desc';
+};
+
+type SalesReportQueryParams = {
+  from?: string;
+  to?: string;
+  siteId?: string;
+};
+
+type SalesReportWindow = {
+  from: string;
+  to: string;
+  siteId?: string;
+};
+
 export type SalesDaySnapshot = {
   title: string;
   subtitle: string;
@@ -95,7 +123,7 @@ export function salesPeriodLabel(period?: PeriodPreset, from?: string, to?: stri
   return 'Periode libre';
 }
 
-export function salesFiltersToQuery(filters: SalesModuleFilters) {
+export function buildSalesListParams(filters: SalesModuleFilters): SalesListQueryParams {
   return {
     siteId: filters.siteId || undefined,
     seller: filters.seller || undefined,
@@ -105,6 +133,7 @@ export function salesFiltersToQuery(filters: SalesModuleFilters) {
     customer: filters.customer || undefined,
     saleNumber: filters.saleNumber || undefined,
     paymentMode: filters.paymentMode || undefined,
+    fulfillmentStatus: undefined,
     dateFrom: filters.from || undefined,
     dateTo: filters.to || undefined,
     sortBy: 'saleDate' as const,
@@ -112,8 +141,33 @@ export function salesFiltersToQuery(filters: SalesModuleFilters) {
   };
 }
 
+export function buildSalesDashboardParams(filters: SalesModuleFilters) {
+  return {
+    sales: buildSalesListParams(filters),
+    reports: buildSalesReportParams(filters),
+  };
+}
+
+export function buildYesterdayReportParams(siteId?: string): SalesReportWindow {
+  const range = salesPeriodRange('yesterday');
+  return { from: range.from, to: range.to, siteId };
+}
+
+export function buildEndOfDayReportParams(from?: string, to?: string, siteId?: string): SalesReportWindow {
+  const today = salesPeriodRange('today');
+  return { from: from || today.from, to: to || today.to, siteId };
+}
+
+function buildSalesReportParams(filters: Pick<SalesModuleFilters, 'from' | 'to' | 'siteId'>): SalesReportQueryParams {
+  return {
+    from: filters.from || undefined,
+    to: filters.to || undefined,
+    siteId: filters.siteId || undefined,
+  };
+}
+
 export async function fetchAllSales(filters: SalesModuleFilters) {
-  const query = salesFiltersToQuery(filters);
+  const query = buildSalesListParams(filters);
   return fetchAllPages(
     async ({ page, limit }) => (await salesService.getList({ ...query, page, limit })).data,
     { getKey: (sale) => sale.saleId },
@@ -139,29 +193,35 @@ export async function loadSalesSnapshot(options: {
     status: 'VALIDATED',
     ...options.filters,
   };
+  const dashboardParams = buildSalesDashboardParams(filters);
   const [summaryResp, saleRows, topProductsResp, salesBreakdownResp, cashBreakdownResp, sessionsResp] = await Promise.all([
-    salesService.getSummary(salesFiltersToQuery(filters)),
+    salesService.getSummary(dashboardParams.sales),
     fetchAllSales(filters),
-    reportsService.topProducts(salesFiltersToQuery(filters)),
-    reportsService.sales(salesFiltersToQuery(filters)),
-    options.includeCash ? reportsService.cash(salesFiltersToQuery(filters)) : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
-    options.includeCash ? cashService.getSessions() : Promise.resolve({ data: [] as Array<{ openedAt?: string; closedAt?: string | null; siteId?: string; status?: string }> }),
+    safeReport(reportsService.topProducts(dashboardParams.reports)),
+    safeReport(reportsService.sales(dashboardParams.reports)),
+    options.includeCash
+      ? safeReport(reportsService.cash(dashboardParams.reports))
+      : Promise.resolve(null),
+    options.includeCash
+      ? safeReport(cashService.getSessions())
+      : Promise.resolve(null),
   ]);
 
   const saleSummary = summaryResp.data;
-  const topProducts = (topProductsResp.data ?? []).slice(0, 10).map((row) => ({
+
+  const topProducts = (topProductsResp?.data ?? []).slice(0, 10).map((row) => ({
     name: String(row.commercialName ?? row.articleCode ?? row.name ?? '-'),
     quantity: Number(row.quantity ?? 0),
     revenue: Number(row.revenue ?? 0),
   }));
-  const saleBreakdown = (salesBreakdownResp.data ?? []).map((row) => ({
+  const saleBreakdown = (salesBreakdownResp?.data ?? []).map((row) => ({
     saleType: String(row.saleType ?? row.sale_type ?? '-'),
     count: Number(row.count ?? 0),
     totalAmount: Number(row.totalAmount ?? row.total_amount ?? 0),
     patientAmount: Number(row.patientAmount ?? row.patient_amount ?? 0),
     insuranceAmount: Number(row.insuranceAmount ?? row.insurance_amount ?? 0),
   }));
-  const cashBreakdown = (cashBreakdownResp.data ?? []).map((row) => ({
+  const cashBreakdown = (cashBreakdownResp?.data ?? []).map((row) => ({
     movementType: String(row.movementType ?? row.movement_type ?? '-'),
     count: Number(row.count ?? 0),
     amount: Number(row.amount ?? 0),
@@ -170,7 +230,7 @@ export async function loadSalesSnapshot(options: {
   const modeData = buildSaleModeData(saleSummary);
   const paymentData = buildPaymentData(cashBreakdown);
   const cashTotal = cashBreakdown.reduce((sum, item) => sum + Number(item.amount ?? 0), 0);
-  const sessions = (sessionsResp.data ?? []).filter((session) => {
+  const sessions = (sessionsResp?.data ?? []).filter((session) => {
     if (!session.openedAt) return false;
     const opened = new Date(session.openedAt);
     if (Number.isNaN(opened.getTime())) return false;
@@ -213,7 +273,7 @@ export async function loadSalesSnapshot(options: {
     cashBreakdown,
     cashTotal,
     exportName: options.exportName,
-    exportFilters: salesFiltersToQuery(filters),
+    exportFilters: buildSalesListParams(filters),
   };
 }
 
@@ -338,6 +398,14 @@ function buildSaleModeData(summary: Partial<SalesSummary>) {
     { name: 'Immed. / CASH', value: Number(summary.immediateSaleCount ?? 0) },
     { name: 'Avances', value: Number(summary.advanceSaleCount ?? 0) },
   ];
+}
+
+async function safeReport<T>(promise: Promise<T>): Promise<T | null> {
+  try {
+    return await promise;
+  } catch {
+    return null;
+  }
 }
 
 function buildPaymentData(cashBreakdown: Array<{ movementType: string; count: number; amount: number }>) {

@@ -8,9 +8,9 @@ import { formatDateTime } from '../../utils/date';
 import { formatMoney } from '../../utils/money';
 import {
   fetchAllSales,
+  buildSalesListParams,
   salesExportObjects,
   salesExportRows,
-  salesFiltersToQuery,
   salesPeriodRange,
   type PeriodPreset,
   type SalesModuleFilters,
@@ -54,7 +54,7 @@ export function SalesListPage() {
   }));
 
   const sites = useQuery({ queryKey: ['sales-list-sites'], queryFn: async () => (await sitesService.getAll()).data, staleTime: 5 * 60 * 1000 });
-  const query = useMemo(() => salesFiltersToQuery(filters), [filters]);
+  const query = useMemo(() => buildSalesListParams(filters), [filters]);
   const sales = useQuery({
     queryKey: ['sales-list', query, page],
     queryFn: async () => (await salesService.getList({ ...query, page, limit: PAGE_SIZE })).data,
