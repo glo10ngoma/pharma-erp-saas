@@ -67,6 +67,7 @@ async function bootstrap() {
     .addTag('accounting')
     .addTag('reports')
     .addTag('settings')
+    .addTag('pos-sync')
     .addBearerAuth()
     .build();
 

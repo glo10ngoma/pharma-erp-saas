@@ -34,6 +34,7 @@ export function DashboardLayout() {
         ['/sales/dashboard', 'Dashboard ventes', 'sales.read'],
         ['/sales/list', 'Liste des ventes', 'sales.read'],
         ['/sales/list?saleMode=ADVANCE', 'Paiements en avance', 'sales.read'],
+        ['/offline/synchronisation', 'Synchronisation offline', 'pos_sync.read'],
         ['/customer-returns', 'Retours clients', 'customer_returns.read'],
         ['/cash', 'Caisse', 'cash_registers.read'],
       ],

@@ -43,6 +43,7 @@ import { InternalChatModule } from './internal-chat/internal-chat.module';
 import { ActivityModule } from './activity/activity.module';
 import { PurchaseReturnsModule } from './purchase-returns/purchase-returns.module';
 import { CustomerReturnsModule } from './customer-returns/customer-returns.module';
+import { PosSyncModule } from './pos-sync/pos-sync.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { CustomerReturnsModule } from './customer-returns/customer-returns.modul
     PurchasesModule,
     PurchaseReturnsModule,
     CustomerReturnsModule,
+    PosSyncModule,
     LotsModule,
     StocksModule,
     StockMovementsModule,

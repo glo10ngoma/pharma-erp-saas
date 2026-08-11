@@ -262,6 +262,9 @@ VALUES
   ('lots.expired_stock.remove', 'Retirer lot expire du stock', 'Lots', 'Sortir du stock les quantites expirees', TRUE),
   ('sessions.multiple', 'Ouvrir plusieurs sessions', 'Cash', 'Autoriser plusieurs sessions ouvertes pour un meme utilisateur', TRUE),
   ('workstations.manage', 'Gerer postes de travail', 'Cash', 'Creer et modifier les postes de travail POS et back office', TRUE)
+  ,('pos_sync.read', 'Consulter synchronisation POS offline', 'Offline', 'Lire le bootstrap et les changements descendants POS offline', TRUE)
+  ,('pos_sync.execute', 'Executer synchronisation POS offline', 'Offline', 'Enregistrer un poste POS offline et executer le bootstrap', TRUE)
+  ,('offline_allocations.read', 'Consulter allocations offline', 'Offline', 'Lire les allocations offline affectees a un poste', TRUE)
 ON CONFLICT (permission_code) DO UPDATE
 SET permission_name = EXCLUDED.permission_name,
     module_name = EXCLUDED.module_name,
