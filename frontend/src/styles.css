@@ -6684,6 +6684,161 @@ details.nav-group .nav-link {
   padding-left: 18px;
 }
 
+.offline-panel-heading,
+.offline-pos-context-actions,
+.offline-search-help,
+.offline-inline-results,
+.offline-summary-grid,
+.offline-pos-grid,
+.offline-pos-context-grid,
+.offline-action-cell {
+  display: grid;
+  gap: 10px;
+}
+
+.offline-pos-grid {
+  align-items: start;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.75fr);
+}
+
+.offline-pos-left,
+.offline-pos-right,
+.offline-pos-context {
+  display: grid;
+  gap: 14px;
+}
+
+.offline-pos-context-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.offline-caption {
+  color: var(--muted);
+  display: block;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.offline-pos-context-actions {
+  grid-template-columns: repeat(2, max-content);
+}
+
+.offline-warning-list,
+.offline-warning-text {
+  color: var(--danger);
+  margin: 0;
+}
+
+.offline-warning-list p {
+  margin: 0;
+}
+
+.offline-search-help {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.offline-inline-results {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.offline-result-chip {
+  align-items: start;
+  background: color-mix(in srgb, var(--card) 92%, var(--primary) 8%);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.offline-result-chip:hover {
+  border-color: color-mix(in srgb, var(--primary) 36%, var(--border));
+}
+
+.offline-result-chip.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.offline-cart-panel .table-wrap,
+.offline-drafts-table,
+.offline-cart-table-wrap {
+  overflow-x: auto;
+}
+
+.offline-cart-table th,
+.offline-cart-table td,
+.offline-drafts-table th,
+.offline-drafts-table td {
+  padding-bottom: 8px;
+  padding-top: 8px;
+  vertical-align: top;
+}
+
+.quantity-stepper {
+  align-items: center;
+  display: inline-grid;
+  gap: 6px;
+  grid-template-columns: auto minmax(66px, 72px) auto;
+}
+
+.quantity-input {
+  text-align: center;
+}
+
+.offline-summary-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.offline-summary-grid > div {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.offline-summary-grid span {
+  color: var(--muted);
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.offline-summary-grid strong {
+  color: var(--text);
+  display: block;
+  margin-top: 4px;
+}
+
+.offline-note-input {
+  min-height: 104px;
+  resize: vertical;
+}
+
+.offline-json-preview {
+  background: color-mix(in srgb, var(--surface) 85%, #000 15%);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 0.78rem;
+  margin: 0;
+  max-height: 280px;
+  overflow: auto;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.offline-action-cell {
+  grid-template-columns: repeat(2, max-content);
+}
+
 [data-theme='dark'] .offline-kpi {
   border-left-color: var(--primary);
 }
@@ -6703,6 +6858,15 @@ details.nav-group .nav-link {
 
 [data-theme='dark'] .offline-panel {
   background: var(--surface);
+}
+
+[data-theme='dark'] .offline-result-chip {
+  background: color-mix(in srgb, var(--surface) 88%, var(--primary) 12%);
+}
+
+[data-theme='dark'] .offline-summary-grid > div,
+[data-theme='dark'] .offline-json-preview {
+  background: #0b1220;
 }
 
 @media (max-width: 1180px) {
@@ -6744,6 +6908,12 @@ details.nav-group .nav-link {
     grid-template-columns: 1fr;
   }
 
+  .offline-pos-grid,
+  .offline-pos-context-grid,
+  .offline-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
   .offline-main-card-header,
   .offline-main-card-actions {
     align-items: stretch;
@@ -6753,6 +6923,11 @@ details.nav-group .nav-link {
   .offline-inline-field {
     min-width: 0;
     width: 100%;
+  }
+
+  .offline-pos-context-actions,
+  .offline-action-cell {
+    grid-template-columns: 1fr;
   }
 
   .inventory-progress-inline {

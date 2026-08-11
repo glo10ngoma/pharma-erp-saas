@@ -2,6 +2,32 @@ export type OfflineAllocationStatus = 'ACTIVE' | 'EXHAUSTED' | 'SUSPENDED' | 'RE
 export type OfflineNetworkStatus = 'ONLINE' | 'DEGRADED' | 'OFFLINE';
 export type OfflineSnapshotStatus = 'FRESH' | 'STALE' | 'EXPIRED' | 'REVOKED' | 'UNKNOWN';
 export type OfflineAuthorizationState = 'VALID' | 'EXPIRING' | 'EXPIRED';
+export type OfflineCartStatus = 'DRAFT' | 'READY' | 'BLOCKED' | 'CANCELLED';
+export type OfflineCartSaveState = 'IDLE' | 'SAVING' | 'SAVED' | 'ERROR';
+export type OfflinePriceSource = 'ARTICLE_DEFAULT' | 'LOT_FEFO';
+export type OfflineActivityType =
+  | 'cart.created'
+  | 'cart.item_added'
+  | 'cart.item_removed'
+  | 'cart.quantity_changed'
+  | 'cart.blocked'
+  | 'cart.cancelled'
+  | 'fefo.recalculated'
+  | 'reservation.created'
+  | 'reservation.released';
+export type OfflineCartErrorCode =
+  | 'CATALOG_EMPTY'
+  | 'ARTICLE_NOT_FOUND'
+  | 'ARTICLE_INACTIVE'
+  | 'PRICE_MISSING'
+  | 'OFFLINE_ALLOCATION_INSUFFICIENT'
+  | 'ALLOCATION_REVOKED'
+  | 'ALLOCATION_SUSPENDED'
+  | 'LOT_BLOCKED'
+  | 'LOT_EXPIRED'
+  | 'LOT_EXPIRY_DATE_INVALID'
+  | 'CART_BLOCKED'
+  | 'LOCAL_STORAGE_ERROR';
 
 export type OfflineAllocationConflictCode =
   | 'ALLOCATION_EXHAUSTED'
@@ -214,6 +240,119 @@ export interface OfflineAllocationConflict {
   workstationId?: string;
   requestedQuantity?: number;
   availableQuantity?: number;
+}
+
+export interface OfflineCartLotAllocation {
+  allocationId: string;
+  lotId: string;
+  lotNumber: string;
+  expiryDate: string;
+  quantity: number;
+  allocationServerVersion: number;
+}
+
+export interface OfflineCartItem {
+  localItemId: string;
+  articleId: string;
+  articleCode: string;
+  articleName: string;
+  barcode: string | null;
+  quantity: number;
+  unitPriceSnapshot: number;
+  priceSource: OfflinePriceSource;
+  priceVersion: string | null;
+  lineTotal: number;
+  salesUnit: string | null;
+  packaging: string | null;
+  packagingQuantity: number | null;
+  lotAllocations: OfflineCartLotAllocation[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OfflineCart {
+  cartId: string;
+  offlineReference: string;
+  tenantId: string;
+  siteId: string;
+  workstationId: string;
+  deviceId: string;
+  userId: string;
+  customerId: string | null;
+  customerNameSnapshot: string | null;
+  currency: string;
+  exchangeRateSnapshot: number | null;
+  status: OfflineCartStatus;
+  saveState: OfflineCartSaveState;
+  note: string | null;
+  subtotal: number;
+  total: number;
+  itemCount: number;
+  quantityTotal: number;
+  items: OfflineCartItem[];
+  blockedReasons: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OfflineDraftReservation {
+  reservationId: string;
+  cartId: string;
+  allocationId: string;
+  lotId: string;
+  quantity: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OfflineActivityLogEntry {
+  localId: string;
+  cartId: string | null;
+  type: OfflineActivityType;
+  message: string;
+  createdAt: string;
+}
+
+export interface OfflineCartQuotaBreakdown {
+  allocationId: string;
+  articleId: string;
+  lotId: string;
+  lotNumber: string;
+  expiryDate: string;
+  serverAllocatedQuantity: number;
+  serverConsumedQuantity: number;
+  localPendingConsumption: number;
+  reservedInOtherDrafts: number;
+  availableForCart: number;
+  status: OfflineAllocationStatus;
+  isBlocked: boolean;
+}
+
+export interface OfflineSaleDraftOperation {
+  operationType: 'SALE_DRAFT_CREATE';
+  operationId: string;
+  cartId: string;
+  offlineReference: string;
+  tenantId: string;
+  siteId: string;
+  workstationId: string;
+  deviceId: string;
+  userId: string;
+  customerId: string | null;
+  currency: string;
+  exchangeRateSnapshot: number | null;
+  createdAt: string;
+  items: Array<{
+    articleId: string;
+    quantity: number;
+    unitPriceSnapshot: number;
+    allocations: Array<{
+      allocationId: string;
+      lotId: string;
+      quantity: number;
+      allocationServerVersion: number;
+    }>;
+  }>;
 }
 
 export interface PosSyncWorkstation {

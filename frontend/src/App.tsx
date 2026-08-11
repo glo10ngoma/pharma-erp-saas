@@ -88,6 +88,10 @@ const InsurancePaymentsPage = lazy(() => import('./modules/insurance-v2/Insuranc
 const InsuranceDisputesPage = lazy(() => import('./modules/insurance-v2/InsuranceV2Pages').then((module) => ({ default: module.InsuranceDisputesPage })));
 const InsuranceRemindersPage = lazy(() => import('./modules/insurance-v2/InsuranceV2Pages').then((module) => ({ default: module.InsuranceRemindersPage })));
 const InsuranceHistoryPage = lazy(() => import('./modules/insurance-v2/InsuranceV2Pages').then((module) => ({ default: module.InsuranceHistoryPage })));
+const OfflinePosPage = lazy(() => import('./modules/offline/OfflinePosPage').then((module) => ({ default: module.OfflinePosPage })));
+const OfflineDraftsPage = lazy(() => import('./modules/offline/OfflineDraftsPage').then((module) => ({ default: module.OfflineDraftsPage })));
+const OfflineSynchronizationPage = lazy(() => import('./modules/offline/OfflineSynchronizationPage').then((module) => ({ default: module.OfflineSynchronizationPage })));
+const OfflineWorkstationPage = lazy(() => import('./modules/offline/OfflineWorkstationPage').then((module) => ({ default: module.OfflineWorkstationPage })));
 
 const CashRegistersAdminPage = lazy(() => import('./modules/administration/CashRegistersAdminPage').then((module) => ({ default: module.CashRegistersAdminPage })));
 const GeneralSettingsPage = lazy(() => import('./modules/administration/GeneralSettingsPage').then((module) => ({ default: module.GeneralSettingsPage })));
@@ -138,6 +142,10 @@ export function App() {
                   <Route path="reports/end-of-day" element={<EndOfDaySalesReportPage />} />
                 </Route>
                 <Route path="/pos" element={<PosPage />} />
+                <Route path="/offline/pos" element={<OfflinePosPage />} />
+                <Route path="/offline/drafts" element={<OfflineDraftsPage />} />
+                <Route path="/offline/synchronisation" element={<OfflineSynchronizationPage />} />
+                <Route path="/offline/poste" element={<OfflineWorkstationPage />} />
                 <Route path="/sales/:id" element={<SaleDetailPage />} />
                 <Route path="/customer-returns" element={<CustomerReturnsPage />} />
                 <Route path="/customer-returns/new" element={<Navigate to="/customer-returns/new/linked" replace />} />

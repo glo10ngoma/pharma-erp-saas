@@ -1,5 +1,8 @@
 import {
+  type OfflineActivityLogEntry,
   type OfflineAuthSnapshot,
+  type OfflineCart,
+  type OfflineDraftReservation,
   type OfflineLocalSnapshot,
   type OfflinePosArticle,
   type OfflinePosCustomer,
@@ -18,7 +21,7 @@ import {
 import { normalizeAllocationStatus } from './offline-fefo';
 
 const DB_NAME = 'PharmaErpPosDb';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const ARTICLES_STORE = 'offline_articles';
 const LOTS_STORE = 'offline_lots';
 const ALLOCATIONS_STORE = 'offline_allocations';
@@ -30,6 +33,9 @@ const SYNC_STATE_STORE = 'sync_state';
 const SYNC_QUEUE_STORE = 'sync_queue';
 const SYNC_LOG_STORE = 'sync_log';
 const SYNC_CONFLICTS_STORE = 'sync_conflicts';
+const CARTS_STORE = 'offline_carts';
+const DRAFT_RESERVATIONS_STORE = 'offline_draft_reservations';
+const ACTIVITY_LOG_STORE = 'offline_activity_log';
 
 export async function readOfflineArticles() {
   const db = await openOfflineDatabase();
@@ -89,6 +95,33 @@ export async function readOfflineSyncLog() {
 export async function readOfflineConflicts() {
   const db = await openOfflineDatabase();
   return readAll<OfflineSyncConflictEntry>(db, SYNC_CONFLICTS_STORE);
+}
+
+export async function readOfflineCarts() {
+  const db = await openOfflineDatabase();
+  return readAll<OfflineCart>(db, CARTS_STORE);
+}
+
+export async function readOfflineCart(cartId: string) {
+  const carts = await readOfflineCarts();
+  return carts.find((cart) => cart.cartId === cartId) ?? null;
+}
+
+export async function readOfflineDraftReservations() {
+  const db = await openOfflineDatabase();
+  return readAll<OfflineDraftReservation>(db, DRAFT_RESERVATIONS_STORE);
+}
+
+export async function readOfflineActivityLog() {
+  const db = await openOfflineDatabase();
+  return readAll<OfflineActivityLogEntry>(db, ACTIVITY_LOG_STORE);
+}
+
+export async function writeOfflineDraftReservations(rows: OfflineDraftReservation[]) {
+  const db = await openOfflineDatabase();
+  const tx = db.transaction(DRAFT_RESERVATIONS_STORE, 'readwrite');
+  await replaceAll(tx.objectStore(DRAFT_RESERVATIONS_STORE), rows);
+  await txDone(tx);
 }
 
 export async function writeOfflineSyncState(syncState: OfflineSyncState) {
@@ -165,6 +198,49 @@ export async function clearOfflineSyncQueue() {
   const db = await openOfflineDatabase();
   const tx = db.transaction(SYNC_QUEUE_STORE, 'readwrite');
   await clearStore(tx.objectStore(SYNC_QUEUE_STORE));
+  await txDone(tx);
+}
+
+export async function saveOfflineCart(cart: OfflineCart, reservations: OfflineDraftReservation[], activityEntries: OfflineActivityLogEntry[] = []) {
+  const db = await openOfflineDatabase();
+  const tx = db.transaction([CARTS_STORE, DRAFT_RESERVATIONS_STORE, ACTIVITY_LOG_STORE], 'readwrite');
+  const cartStore = tx.objectStore(CARTS_STORE);
+  const reservationStore = tx.objectStore(DRAFT_RESERVATIONS_STORE);
+  const activityStore = tx.objectStore(ACTIVITY_LOG_STORE);
+
+  await putStore(cartStore, cart);
+
+  const allReservations = await readAllFromTransaction<OfflineDraftReservation>(reservationStore);
+  await clearStore(reservationStore);
+  for (const row of allReservations.filter((entry) => entry.cartId !== cart.cartId)) {
+    await putStore(reservationStore, row);
+  }
+  for (const reservation of reservations) {
+    await putStore(reservationStore, reservation);
+  }
+
+  for (const entry of activityEntries) {
+    await putStore(activityStore, entry);
+  }
+
+  await txDone(tx);
+}
+
+export async function saveOfflineCarts(carts: OfflineCart[]) {
+  const db = await openOfflineDatabase();
+  const tx = db.transaction(CARTS_STORE, 'readwrite');
+  await replaceAll(tx.objectStore(CARTS_STORE), carts);
+  await txDone(tx);
+}
+
+export async function appendOfflineActivityLog(entry: Omit<OfflineActivityLogEntry, 'localId' | 'createdAt'>) {
+  const db = await openOfflineDatabase();
+  const tx = db.transaction(ACTIVITY_LOG_STORE, 'readwrite');
+  await putStore(tx.objectStore(ACTIVITY_LOG_STORE), {
+    ...entry,
+    localId: crypto.randomUUID(),
+    createdAt: new Date().toISOString(),
+  } satisfies OfflineActivityLogEntry);
   await txDone(tx);
 }
 
@@ -470,6 +546,9 @@ async function openOfflineDatabase() {
       ensureObjectStore(db, upgradeTransaction, SYNC_QUEUE_STORE, 'localId', [['byOperation', 'operationId'], ['byStatus', 'status'], ['byWorkstation', 'workstationId']]);
       ensureObjectStore(db, upgradeTransaction, SYNC_LOG_STORE, 'localId', [['byType', 'type'], ['byStatus', 'status']]);
       ensureObjectStore(db, upgradeTransaction, SYNC_CONFLICTS_STORE, 'localId', [['byCode', 'code'], ['byLot', 'lotId']]);
+      ensureObjectStore(db, upgradeTransaction, CARTS_STORE, 'cartId', [['byStatus', 'status'], ['byWorkstation', 'workstationId'], ['byUpdatedAt', 'updatedAt']]);
+      ensureObjectStore(db, upgradeTransaction, DRAFT_RESERVATIONS_STORE, 'reservationId', [['byCart', 'cartId'], ['byAllocation', 'allocationId'], ['byLot', 'lotId']]);
+      ensureObjectStore(db, upgradeTransaction, ACTIVITY_LOG_STORE, 'localId', [['byCart', 'cartId'], ['byType', 'type'], ['byCreatedAt', 'createdAt']]);
     };
     request.onsuccess = () => resolve(request.result);
   });

@@ -34,9 +34,18 @@ export function DashboardLayout() {
         ['/sales/dashboard', 'Dashboard ventes', 'sales.read'],
         ['/sales/list', 'Liste des ventes', 'sales.read'],
         ['/sales/list?saleMode=ADVANCE', 'Paiements en avance', 'sales.read'],
-        ['/offline/synchronisation', 'Synchronisation offline', 'pos_sync.read'],
         ['/customer-returns', 'Retours clients', 'customer_returns.read'],
         ['/cash', 'Caisse', 'cash_registers.read'],
+      ],
+    },
+    {
+      title: 'Offline',
+      icon: 'OF',
+      links: [
+        ['/offline/pos', 'POS Offline', 'pos_sync.read'],
+        ['/offline/drafts', 'Brouillons', 'pos_sync.read'],
+        ['/offline/synchronisation', 'Synchronisation', 'pos_sync.read'],
+        ['/offline/poste', 'Poste', 'pos_sync.read'],
       ],
     },
     {
