@@ -55,6 +55,7 @@ export class TransfersService {
           'TRANSFER_NOT_DRAFT',
           'TRANSFER_EMPTY',
           'STOCK_INSUFFICIENT',
+          'OFFLINE_RESERVED_STOCK_IN_USE',
           'SITE_NOT_ALLOWED',
           'SITE_NOT_IN_TENANT',
           'ARTICLE_NOT_IN_TENANT',

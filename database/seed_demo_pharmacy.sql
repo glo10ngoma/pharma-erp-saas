@@ -265,6 +265,14 @@ VALUES
   ,('pos_sync.read', 'Consulter synchronisation POS offline', 'Offline', 'Lire le bootstrap et les changements descendants POS offline', TRUE)
   ,('pos_sync.execute', 'Executer synchronisation POS offline', 'Offline', 'Enregistrer un poste POS offline et executer le bootstrap', TRUE)
   ,('offline_allocations.read', 'Consulter allocations offline', 'Offline', 'Lire les allocations offline affectees a un poste', TRUE)
+  ,('pos_offline.admin.read', 'Consulter supervision offline', 'Offline', 'Voir le dashboard de supervision des postes offline', TRUE)
+  ,('pos_offline.workstations.read', 'Consulter postes offline', 'Offline', 'Voir les postes POS offline et leur etat', TRUE)
+  ,('offline_allocations.manage', 'Gerer allocations offline', 'Offline', 'Creer, modifier, suspendre et liberer les allocations offline', TRUE)
+  ,('offline_allocations.transfer', 'Transferer allocations offline', 'Offline', 'Transferer un quota offline entre postes d un meme site', TRUE)
+  ,('offline_allocations.rebalance', 'Reequilibrer allocations offline', 'Offline', 'Repartir automatiquement les quotas offline entre postes', TRUE)
+  ,('pos_sync.conflicts.read', 'Consulter conflits offline', 'Offline', 'Voir les conflits de synchronisation offline', TRUE)
+  ,('pos_sync.conflicts.resolve', 'Resoudre conflits offline', 'Offline', 'Resoudre administrativement les conflits de synchronisation offline', TRUE)
+  ,('pos_sync.logs.read', 'Consulter journal offline', 'Offline', 'Voir le journal de supervision POS offline', TRUE)
 ON CONFLICT (permission_code) DO UPDATE
 SET permission_name = EXCLUDED.permission_name,
     module_name = EXCLUDED.module_name,

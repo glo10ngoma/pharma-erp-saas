@@ -20,6 +20,7 @@ const emptyViewModel: OfflineSnapshotViewModel = {
     settings: null,
     auth: null,
     workstation: null,
+    cashSession: null,
     syncState: null,
   },
   queue: [],

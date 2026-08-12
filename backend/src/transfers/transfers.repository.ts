@@ -35,7 +35,6 @@ type TransferItemRow = {
   quantity_sent: string | null;
   quantity_received: string | null;
   notes: string | null;
-  created_at: Date;
 };
 
 @Injectable()
@@ -156,13 +155,12 @@ export class TransfersRepository {
         SELECT ti.transfer_item_id, ti.transfer_id, ti.tenant_id, ti.article_id,
                NULL::text AS article_code, NULL::text AS commercial_name,
                ti.lot_id, NULL::text AS lot_number, NULL::date AS expiry_date,
-               ti.quantity_requested, ti.quantity_sent, ti.quantity_received, ti.notes,
-               ti.created_at
+               ti.quantity_requested, ti.quantity_sent, ti.quantity_received, ti.notes
         FROM stock_transfer_items ti
         JOIN articles a ON a.article_id = ti.article_id AND a.tenant_id = ti.tenant_id
         JOIN lots l ON l.lot_id = ti.lot_id AND l.tenant_id = ti.tenant_id AND l.article_id = ti.article_id
         WHERE ti.tenant_id=$1 AND ti.transfer_id=$2
-        ORDER BY ti.created_at ASC, ti.transfer_item_id ASC
+        ORDER BY ti.transfer_item_id ASC
         `,
         [user.tenantId, transferId],
       );
@@ -182,7 +180,21 @@ export class TransfersRepository {
           [user.tenantId, transfer.from_site_id, item.lot_id],
         );
         const sourceStock = stockResult.rows[0];
-        if (!sourceStock || Number(sourceStock.quantity_available) < quantity) throw new Error('STOCK_INSUFFICIENT');
+        const reservedOfflineQuantity = await this.getOfflineReservedQuantity(
+          client,
+          user.tenantId,
+          transfer.from_site_id,
+          item.lot_id,
+        );
+        const transferableQuantity = Math.max(
+          0,
+          Number(sourceStock?.quantity_available ?? 0) - reservedOfflineQuantity,
+        );
+        if (!sourceStock || transferableQuantity < quantity) {
+          throw new Error(
+            reservedOfflineQuantity > 0 ? 'OFFLINE_RESERVED_STOCK_IN_USE' : 'STOCK_INSUFFICIENT',
+          );
+        }
 
         await client.query(
           `
@@ -268,13 +280,12 @@ export class TransfersRepository {
       `
       SELECT ti.transfer_item_id, ti.transfer_id, ti.tenant_id, ti.article_id,
              a.article_code, a.commercial_name, ti.lot_id, l.lot_number, l.expiry_date,
-             ti.quantity_requested, ti.quantity_sent, ti.quantity_received, ti.notes,
-             ti.created_at
+             ti.quantity_requested, ti.quantity_sent, ti.quantity_received, ti.notes
       FROM stock_transfer_items ti
       JOIN articles a ON a.article_id = ti.article_id AND a.tenant_id = ti.tenant_id
       JOIN lots l ON l.lot_id = ti.lot_id AND l.tenant_id = ti.tenant_id
       WHERE ti.tenant_id=$1 AND ti.transfer_id=$2
-      ORDER BY ti.created_at ASC, ti.transfer_item_id ASC
+      ORDER BY ti.transfer_item_id ASC
       `,
       [user.tenantId, transferId],
     );
@@ -306,6 +317,24 @@ export class TransfersRepository {
     );
     if (Number(result.rows[0]?.articles_count ?? 0) !== 1) throw new Error('ARTICLE_NOT_IN_TENANT');
     if (Number(result.rows[0]?.lots_count ?? 0) !== 1) throw new Error('LOT_NOT_IN_TENANT');
+  }
+
+  private async getOfflineReservedQuantity(
+    client: { query: <T = Record<string, unknown>>(sql: string, params?: unknown[]) => Promise<{ rows: T[] }> },
+    tenantId: string,
+    siteId: string,
+    lotId: string,
+  ) {
+    const result = await client.query<{ reserved_quantity: string }>(
+      `SELECT COALESCE(SUM(GREATEST(allocated_quantity - consumed_quantity, 0)), 0)::numeric AS reserved_quantity
+       FROM offline_stock_allocations
+       WHERE tenant_id=$1
+         AND site_id=$2
+         AND lot_id=$3
+         AND status='ACTIVE'`,
+      [tenantId, siteId, lotId],
+    );
+    return Number(result.rows[0]?.reserved_quantity ?? 0);
   }
 
   private toTransfer(row: TransferRow) {

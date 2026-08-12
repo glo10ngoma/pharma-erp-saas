@@ -24,6 +24,8 @@ import {
   seedOfflineAllocationFixtures,
 } from './offline-storage';
 import { type OfflineAllocationStatus, type OfflineStockAllocation } from './offline-types';
+import { runSync } from './sync-engine';
+import { useSyncEngine } from './useSyncEngine';
 
 const statusOrder: Array<'ALL' | OfflineAllocationStatus> = ['ALL', 'ACTIVE', 'EXHAUSTED', 'SUSPENDED', 'REVOKED'];
 
@@ -36,6 +38,7 @@ const emptyViewModel: OfflineSnapshotViewModel = {
     settings: null,
     auth: null,
     workstation: null,
+    cashSession: null,
     syncState: null,
   },
   queue: [],
@@ -57,6 +60,7 @@ export function OfflineSynchronizationPage() {
   const [requestedQuantity, setRequestedQuantity] = useState('1');
   const [message, setMessage] = useState('Le snapshot local est pret pour la lecture seule.');
   const [serverPingLabel, setServerPingLabel] = useState('-');
+  const syncEngine = useSyncEngine();
 
   const canReadPosSync = permissions.includes('pos_sync.read');
   const canExecutePosSync = permissions.includes('pos_sync.execute');
@@ -248,6 +252,9 @@ export function OfflineSynchronizationPage() {
           <button className="ghost-button compact-button" type="button" onClick={() => void handlePing()} disabled={busyAction !== null || !canReadPosSync}>
             Ping
           </button>
+          <button className="button compact-button" type="button" onClick={() => void runSync('manual')} disabled={busyAction !== null || !canExecutePosSync}>
+            Synchroniser maintenant
+          </button>
           <button className="button compact-button" type="button" onClick={() => void handleBootstrap()} disabled={busyAction !== null || !canExecutePosSync}>
             Bootstrap serveur
           </button>
@@ -272,6 +279,9 @@ export function OfflineSynchronizationPage() {
         <div className="card offline-kpi"><span>Allocations</span><strong>{viewModel.snapshot.allocations.length}</strong></div>
         <div className="card offline-kpi"><span>Clients</span><strong>{viewModel.snapshot.customers.length}</strong></div>
         <div className="card offline-kpi"><span>Queue locale</span><strong>{viewModel.queue.length}</strong></div>
+        <div className="card offline-kpi"><span>Etat moteur</span><strong>{syncEngine.currentStatus}</strong></div>
+        <div className="card offline-kpi"><span>Pending</span><strong>{syncEngine.pendingCount}</strong></div>
+        <div className="card offline-kpi"><span>Conflits</span><strong>{syncEngine.conflictCount}</strong></div>
       </section>
 
       <section className="offline-metadata-grid">
@@ -296,6 +306,8 @@ export function OfflineSynchronizationPage() {
             <div><span>Curseur</span><strong>{truncateCursor(viewModel.snapshot.syncState?.syncCursor)}</strong></div>
             <div><span>Ping serveur</span><strong>{serverPingLabel}</strong></div>
             <div><span>Taux courant</span><strong>{exchangeRateLabel(viewModel.snapshot.settings?.exchangeRate?.rate)}</strong></div>
+            <div><span>Etat auto-sync</span><strong>{syncEngine.currentStatus}</strong></div>
+            <div><span>Prochaine reprise</span><strong>{formatDateTime(syncEngine.nextRetryAt)}</strong></div>
           </div>
         </div>
       </section>
@@ -340,7 +352,7 @@ export function OfflineSynchronizationPage() {
             <div>
               <h3>Allocations locales par poste et par lot</h3>
               <p className="muted">
-                Lecture seule Sprint 1. Les ventes offline, paiements offline et sessions offline restent desactives.
+                Snapshot offline reel du poste, avec file locale et pending consumption avant replay serveur.
               </p>
             </div>
             <div className="offline-main-card-actions">
@@ -448,8 +460,8 @@ export function OfflineSynchronizationPage() {
               </ul>
             )}
             <ul className="offline-policy-list">
-              <li>Pas de validation de vente offline dans ce sprint.</li>
-              <li>Pas de paiement offline ni de session caisse offline.</li>
+              <li>Les ventes offline locales sont maintenant possibles uniquement en CASH / IMMEDIATE.</li>
+              <li>La session caisse doit avoir ete synchronisee avant la coupure reseau.</li>
               <li>Le backend central reste la source de verite.</li>
               <li>localPendingConsumption ne doit jamais etre ecrase par un bootstrap.</li>
             </ul>

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { AuthUser } from '../common/types/auth-user';
 import { AccountingRepository } from '../accounting/accounting.repository';
 import { DatabaseService } from '../database/database.service';
+import { SubmitPosSaleValidateOperation } from '../pos-sync/dto/submit-pos-operations.dto';
 import { AddSaleItemFefoDto } from './dto/add-sale-item-fefo.dto';
 import { ApplyInsuranceDto } from './dto/apply-insurance.dto';
 import { ConfirmPickupDto } from './dto/confirm-pickup.dto';
@@ -31,6 +32,41 @@ type SaleListRow = SaleRow & {
   created_by_name: string | null;
   payment_modes: string | null;
   total_count: string;
+};
+
+type Queryable = {
+  query: DatabaseService['query'];
+};
+
+type OfflineAllocationLockRow = {
+  allocation_id: string;
+  workstation_id: string;
+  site_id: string;
+  article_id: string;
+  lot_id: string;
+  allocated_quantity: string;
+  consumed_quantity: string;
+  status: string;
+  server_version: string;
+};
+
+type FinalizeSaleOptions = {
+  effectiveValidationDate?: string | null;
+  enforceOfflineReservations?: boolean;
+  lotExpiredErrorCode?: string;
+  lotBlockedErrorCode?: string;
+  cashSessionMissingErrorCode?: string;
+  validatedAt?: string | null;
+};
+
+type OfflineReplayAllocationAck = {
+  allocationId: string;
+  lotId: string;
+  acknowledgedQuantity: number;
+  serverConsumedQuantity: number;
+  availableQuantity: number;
+  serverVersion: number;
+  status: string;
 };
 
 @Injectable()
@@ -409,6 +445,7 @@ export class SalesRepository {
     let remaining = dto.quantity;
     for (const lot of available.rows) {
       if (remaining <= 0) break;
+      const reservedQuantity = await this.getOfflineReservedQuantity(this.db as unknown as Queryable, user.tenantId, sale.siteId, lot.lot_id);
       const existing = await this.db.query<{ sale_item_id: string; quantity: string }>(
         `SELECT sale_item_id, quantity
          FROM sale_items
@@ -417,7 +454,7 @@ export class SalesRepository {
         [user.tenantId, saleId, dto.articleId, lot.lot_id],
       );
       const existingQuantity = existing.rows.reduce((sum, item) => sum + Number(item.quantity ?? 0), 0);
-      const stillAvailable = Number(lot.quantity_available) - existingQuantity;
+      const stillAvailable = Math.max(0, Number(lot.quantity_available) - reservedQuantity) - existingQuantity;
       if (stillAvailable <= 0) continue;
 
       const take = Math.min(remaining, stillAvailable);
@@ -636,210 +673,210 @@ export class SalesRepository {
 
   async validate(user: AuthUser, saleId: string, dto: ValidateSaleDto) {
     await this.db.transaction(async (client) => {
-      const saleResult = await client.query<SaleRow>(
-        `SELECT sale_id, tenant_id, sale_number, sale_date, customer_id, NULL::text AS customer_name,
-                organization_id, membership_id, site_id, NULL::text AS site_name, currency_id, NULL::text AS currency_code, NULL::text AS currency_symbol, exchange_rate, subtotal,
-                insurance_covered_amount, customer_payable_amount, credit_amount, total_amount,
-                amount_paid_usd, amount_paid_cdf, amount_returned_usd, amount_returned_cdf,
-                net_received_usd, net_received_cdf, settlement_difference_usd,
-                settlement_difference_type, settlement_difference_reason, settlement_difference_note,
-                sale_type, sale_mode, fulfillment_status, fulfilled_at, pickup_token, pickup_number,
-                pickup_site_id, expected_pickup_date, last_fulfillment_at,
-                status, created_by, created_at, validated_at
-         FROM sales WHERE tenant_id=$1 AND sale_id=$2
-           AND ($3::uuid IS NULL OR site_id=$3::uuid)
-         FOR UPDATE`,
-        [user.tenantId, saleId, user.siteId ?? null],
-      );
-      const sale = saleResult.rows[0];
-      if (!sale) throw new Error('SALE_NOT_FOUND');
-      if (sale.status !== 'DRAFT') throw new Error('SALE_NOT_DRAFT');
-      const total = Number(sale.total_amount);
-      const patientPayable = sale.sale_type === 'INSURANCE' ? Number(sale.customer_payable_amount ?? 0) : total;
-      const insuranceCovered = Number(sale.insurance_covered_amount ?? 0);
-      const resolvedSaleMode = dto.saleMode ?? sale.sale_mode ?? 'IMMEDIATE';
-      const isAdvanceSale = resolvedSaleMode === 'ADVANCE';
-      if (total <= 0) throw new Error('SALE_HAS_NO_ITEMS');
-      if (sale.sale_type === 'INSURANCE' && (!sale.customer_id || !sale.organization_id || !sale.membership_id || insuranceCovered <= 0)) throw new Error('MEMBERSHIP_NOT_ACTIVE');
-      const settlement = this.buildSettlementSnapshot(sale, dto, patientPayable);
-      if (settlement.settlementDifferenceUsd < -SETTLEMENT_TOLERANCE_USD) throw new Error('PAYMENT_INSUFFICIENT');
-      if (settlement.settlementDifferenceUsd > SETTLEMENT_TOLERANCE_USD && !settlement.settlementDifferenceReason) {
-        throw new Error('SETTLEMENT_REASON_REQUIRED');
-      }
-
-      const items = await client.query<ItemRow>(
-        `SELECT si.sale_item_id, si.tenant_id, si.sale_id, si.article_id, NULL::text AS article_code,
-                NULL::text AS commercial_name, si.lot_id, NULL::text AS lot_number, NULL::date AS expiry_date,
-                si.quantity, si.ordered_quantity, si.fulfilled_quantity, si.unit_price, si.line_total,
-                si.sales_unit_snapshot, si.packaging_snapshot
-         FROM sale_items si WHERE si.tenant_id=$1 AND si.sale_id=$2`,
-        [user.tenantId, saleId],
-      );
-      if (!items.rows.length) throw new Error('SALE_HAS_NO_ITEMS');
-
-      if (!isAdvanceSale) {
-        for (const item of items.rows) {
-          const stock = await client.query<{ stock_id: string; quantity_available: string; expiry_date: string | Date; is_expired: boolean; is_blocked: boolean }>(
-            `SELECT st.stock_id, st.quantity_available, l.expiry_date, (l.expiry_date <= CURRENT_DATE) AS is_expired, l.is_blocked
-             FROM stocks st
-             JOIN lots l ON l.lot_id=st.lot_id AND l.tenant_id=st.tenant_id
-             WHERE st.tenant_id=$1 AND st.site_id=$2 AND st.lot_id=$3
-             FOR UPDATE`,
-            [user.tenantId, sale.site_id, item.lot_id],
-          );
-          const row = stock.rows[0];
-          if (!row || Number(row.quantity_available) < Number(item.quantity)) throw new Error('STOCK_INSUFFICIENT');
-          const expiryDate = this.toCivilDateString(row.expiry_date);
-          if (!expiryDate) throw new Error('LOT_EXPIRY_DATE_INVALID');
-          if (row.is_expired || expiryDate <= this.todayCivilDate()) throw new Error('LOT_EXPIRED');
-          if (row.is_blocked) throw new Error('LOT_BLOCKED');
-          await client.query(`UPDATE stocks SET quantity_available=quantity_available-$4, updated_at=CURRENT_TIMESTAMP WHERE tenant_id=$1 AND site_id=$2 AND lot_id=$3`, [user.tenantId, sale.site_id, item.lot_id, item.quantity]);
-          await client.query(
-            `INSERT INTO stock_movements (tenant_id, site_id, article_id, lot_id, movement_type, quantity, reference_type, reference_id, notes, user_id)
-             VALUES ($1,$2,$3,$4,'SALE_OUT',$5,'SALE',$6,$7,$8)`,
-            [user.tenantId, sale.site_id, item.article_id, item.lot_id, item.quantity, sale.sale_id, `Validation vente ${sale.sale_number}`, user.userId],
-          );
-        }
-      }
-
-      const method = dto.paymentMethodId
-        ? await this.paymentMethodInfo(client, dto.paymentMethodId)
-        : await this.defaultPaymentMethodInfo(client);
-      if ((settlement.amountReturnedUsd > 0 || settlement.amountReturnedCdf > 0) && method.method_code !== 'CASH') {
-        throw new Error('CHANGE_NOT_ALLOWED_FOR_NON_CASH');
-      }
-      if (patientPayable > 0) {
-        await client.query(
-          `INSERT INTO payments (tenant_id, sale_id, payment_method_id, currency_id, amount, reference_payment, received_by)
-           VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-          [user.tenantId, saleId, method.payment_method_id, sale.currency_id, patientPayable, dto.referencePayment ?? null, user.userId],
-        );
-      }
-      let activeCashSession: { cash_session_id: string; workstation_id: string | null; workstation_name: string | null; device_uuid: string | null } | null = null;
-      if ((sale.sale_type === 'CASH' || sale.sale_type === 'INSURANCE') && (settlement.amountPaidUsd > 0 || settlement.amountPaidCdf > 0)) {
-        const session = await client.query<{ cash_session_id: string; workstation_id: string | null; workstation_name: string | null; device_uuid: string | null }>(
-          `SELECT cash_session_id, workstation_id, workstation_name, device_uuid
-           FROM cash_sessions
-           WHERE tenant_id=$1 AND site_id=$2 AND user_id=$3 AND status='OPEN'
-             AND ($4::uuid IS NULL OR cash_session_id=$4::uuid)
-           ORDER BY opened_at DESC
-           LIMIT 1`,
-          [user.tenantId, sale.site_id, user.userId, dto.cashSessionId ?? null],
-        );
-        if (session.rows[0]) {
-          activeCashSession = session.rows[0];
-          const currencies = await this.currencyIdsByCode(client);
-          const movementRows = [
-            settlement.amountPaidUsd > 0 ? { movementType: 'SALE_PAYMENT', amount: settlement.amountPaidUsd, currencyId: currencies.USD, description: `Paiement brut USD vente ${sale.sale_number}` } : null,
-            settlement.amountPaidCdf > 0 ? { movementType: 'SALE_PAYMENT', amount: settlement.amountPaidCdf, currencyId: currencies.CDF, description: `Paiement brut CDF vente ${sale.sale_number}` } : null,
-            settlement.amountReturnedUsd > 0 ? { movementType: 'SALE_CHANGE', amount: settlement.amountReturnedUsd, currencyId: currencies.USD, description: `Monnaie rendue USD vente ${sale.sale_number}` } : null,
-            settlement.amountReturnedCdf > 0 ? { movementType: 'SALE_CHANGE', amount: settlement.amountReturnedCdf, currencyId: currencies.CDF, description: `Monnaie rendue CDF vente ${sale.sale_number}` } : null,
-          ].filter(Boolean) as Array<{ movementType: string; amount: number; currencyId: string; description: string }>;
-
-          for (const movement of movementRows) {
-            await client.query(
-              `INSERT INTO cash_movements (
-                 tenant_id, cash_session_id, movement_type, amount, currency_id,
-                 reference_type, reference_id, description, created_by
-               )
-               VALUES ($1,$2,$3,$4,$5,'SALE',$6,$7,$8)`,
-              [
-                user.tenantId,
-                activeCashSession.cash_session_id,
-                movement.movementType,
-                movement.amount,
-                movement.currencyId,
-                sale.sale_id,
-                movement.description,
-                user.userId,
-              ],
-            );
-          }
-        }
-      }
-      if (sale.sale_type === 'INSURANCE' && insuranceCovered > 0) {
-        await client.query(
-          `INSERT INTO accounts_receivable (
-             tenant_id, sale_id, customer_id, organization_id, currency_id, receivable_type,
-             invoice_number, due_date, amount_due, amount_paid, balance, status, notes, created_by
-           )
-           VALUES ($1,$2,$3,$4,$5,'INSURANCE_CLAIM',$6,CURRENT_DATE + INTERVAL '30 days',$7,0,$7,'OPEN',$8,$9)`,
-          [user.tenantId, saleId, sale.customer_id, sale.organization_id, sale.currency_id, `AR-${sale.sale_number}`, insuranceCovered, `Creance assurance vente ${sale.sale_number}`, user.userId],
-        );
-      }
-      const accountingLines = [
-        ...(patientPayable > 0 ? [{ accountCode: '57', debit: patientPayable, description: `Encaissement vente ${sale.sale_number}` }] : []),
-        ...(sale.sale_type === 'INSURANCE' && insuranceCovered > 0 ? [{ accountCode: '41', debit: insuranceCovered, description: `Creance assurance vente ${sale.sale_number}` }] : []),
-        { accountCode: '70', credit: total, description: `Vente marchandises ${sale.sale_number}` },
-      ];
-      await this.accounting.createAutomaticEntry(client, user, {
-        journalCode: 'VEN',
-        referenceType: 'SALE',
-        referenceId: sale.sale_id,
-        description: `Validation vente ${sale.sale_number}`,
-        lines: accountingLines,
+      const sale = await this.getSaleForValidation(client, user, saleId);
+      await this.finalizePreparedSale(client, user, sale, dto, {
+        effectiveValidationDate: this.todayCivilDate(),
+        enforceOfflineReservations: true,
       });
-      await client.query(
-        `UPDATE sales
-         SET status='VALIDATED',
-             validated_at=CURRENT_TIMESTAMP,
-             sale_mode=$17,
-             fulfillment_status=$18,
-             fulfilled_at=$19,
-             pickup_token=$20,
-             pickup_number=$21,
-             pickup_site_id=$22,
-             expected_pickup_date=$23,
-             last_fulfillment_at=$24,
-             amount_paid_usd=$3,
-             amount_paid_cdf=$4,
-             amount_returned_usd=$5,
-             amount_returned_cdf=$6,
-             net_received_usd=$7,
-             net_received_cdf=$8,
-             settlement_difference_usd=$9,
-             settlement_difference_type=$10,
-             settlement_difference_reason=$11,
-             settlement_difference_note=$12,
-             cash_session_id=$13,
-             workstation_id=$14,
-             workstation_name=$15,
-             device_uuid=$16
-         WHERE tenant_id=$1 AND sale_id=$2`,
-        [
-          user.tenantId,
-          saleId,
-          settlement.amountPaidUsd,
-          settlement.amountPaidCdf,
-          settlement.amountReturnedUsd,
-          settlement.amountReturnedCdf,
-          settlement.netReceivedUsd,
-          settlement.netReceivedCdf,
-          settlement.settlementDifferenceUsd,
-          settlement.settlementDifferenceType,
-          settlement.settlementDifferenceReason,
-          settlement.settlementDifferenceNote,
-          activeCashSession?.cash_session_id ?? null,
-          activeCashSession?.workstation_id ?? null,
-          activeCashSession?.workstation_name ?? null,
-          activeCashSession?.device_uuid ?? null,
-          resolvedSaleMode,
-          isAdvanceSale ? 'NOT_FULFILLED' : 'FULFILLED',
-          isAdvanceSale ? null : new Date(),
-          isAdvanceSale ? this.buildPickupToken(sale.sale_number) : null,
-          isAdvanceSale ? this.buildPickupNumber(sale.sale_number) : null,
-          isAdvanceSale ? sale.site_id : null,
-          isAdvanceSale ? new Date().toISOString().slice(0, 10) : null,
-          isAdvanceSale ? null : new Date(),
-        ],
-      );
-      await client.query(
-        `INSERT INTO audit_logs (tenant_id, user_id, table_name, record_id, action_type, new_value)
-         VALUES ($1,$2,'sales',$3,'VALIDATE',$4::jsonb)`,
-        [user.tenantId, user.userId, saleId, JSON.stringify({ status: 'VALIDATED', saleNumber: sale.sale_number, settlement })],
-      );
     });
     return this.findOne(user, saleId);
+  }
+
+  async replayOfflineValidatedSale(user: AuthUser, operation: SubmitPosSaleValidateOperation): Promise<{
+    saleId: string;
+    saleNumber: string | null;
+    allocations: OfflineReplayAllocationAck[];
+  }> {
+    let result: { saleId: string; saleNumber: string | null; allocations: OfflineReplayAllocationAck[] } | null = null;
+
+    await this.db.transaction(async (client) => {
+      if (operation.tenantId !== user.tenantId) throw new Error('SITE_NOT_ALLOWED');
+      if (user.siteId && user.siteId !== operation.siteId) throw new Error('SITE_NOT_ALLOWED');
+
+      const currencyId = await this.defaultCurrencyId();
+      await this.assertRelations(
+        user,
+        operation.siteId,
+        currencyId,
+        operation.customerId ?? undefined,
+        operation.exchangeRateSnapshot ?? undefined,
+      );
+
+      const saleNumber = `SAL-${Date.now()}`;
+      const created = await client.query<{ sale_id: string }>(
+        `INSERT INTO sales (
+           tenant_id, sale_number, site_id, customer_id, currency_id, exchange_rate,
+           sale_type, sale_mode, fulfillment_status, created_by
+         )
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'FULFILLED',$9)
+         RETURNING sale_id`,
+        [
+          user.tenantId,
+          saleNumber,
+          operation.siteId,
+          operation.customerId ?? null,
+          currencyId,
+          operation.exchangeRateSnapshot ?? 1,
+          operation.saleType,
+          operation.saleMode,
+          user.userId,
+        ],
+      );
+      const saleId = created.rows[0]?.sale_id;
+      if (!saleId) throw new Error('POS_SYNC_CREATE_FAILED');
+
+      const saleCoveragePercent = 0;
+      const effectiveValidationDate = this.toCivilDateString(operation.validatedAt);
+      if (!effectiveValidationDate) throw new Error('LOT_EXPIRY_DATE_INVALID');
+
+      const allocations: OfflineReplayAllocationAck[] = [];
+
+      for (const item of operation.items) {
+        await this.assertArticle(user, item.articleId);
+        for (const allocation of item.lotAllocations) {
+          const lockedAllocation = await client.query<OfflineAllocationLockRow>(
+            `SELECT allocation_id, workstation_id, site_id, article_id, lot_id,
+                    allocated_quantity, consumed_quantity, status, server_version
+             FROM offline_stock_allocations
+             WHERE tenant_id=$1 AND allocation_id=$2
+             FOR UPDATE`,
+            [user.tenantId, allocation.allocationId],
+          );
+          const allocationRow = lockedAllocation.rows[0];
+          if (!allocationRow) throw new Error('ALLOCATION_MISMATCH');
+          if (
+            allocationRow.site_id !== operation.siteId
+            || allocationRow.workstation_id !== operation.workstationId
+            || allocationRow.article_id !== item.articleId
+            || allocationRow.lot_id !== allocation.lotId
+          ) {
+            throw new Error('ALLOCATION_MISMATCH');
+          }
+
+          const remainingQuantity =
+            Number(allocationRow.allocated_quantity ?? 0) - Number(allocationRow.consumed_quantity ?? 0);
+          if (allocationRow.status !== 'ACTIVE' && remainingQuantity <= 0) {
+            throw new Error('ALLOCATION_EXHAUSTED');
+          }
+          if (allocationRow.status !== 'ACTIVE') {
+            throw new Error('ALLOCATION_REVOKED');
+          }
+          if (remainingQuantity < allocation.quantity) {
+            throw new Error('ALLOCATION_EXHAUSTED');
+          }
+
+          const lotResult = await client.query<{
+            lot_id: string;
+            article_id: string;
+            lot_number: string;
+            expiry_date: string | Date;
+            is_blocked: boolean;
+          }>(
+            `SELECT lot_id, article_id, lot_number, expiry_date, is_blocked
+             FROM lots
+             WHERE tenant_id=$1 AND lot_id=$2
+             FOR UPDATE`,
+            [user.tenantId, allocation.lotId],
+          );
+          const lotRow = lotResult.rows[0];
+          if (!lotRow || lotRow.article_id !== item.articleId) throw new Error('ALLOCATION_MISMATCH');
+          const lotExpiryDate = this.toCivilDateString(lotRow.expiry_date);
+          if (!lotExpiryDate) throw new Error('LOT_EXPIRY_DATE_INVALID');
+          if (lotExpiryDate <= effectiveValidationDate) throw new Error('LOT_EXPIRED_AT_OFFLINE_SALE');
+          if (lotRow.is_blocked) throw new Error('LOT_BLOCKED_AFTER_OFFLINE_SALE');
+
+          const lineTotal = this.roundMoney(allocation.quantity * Number(item.unitPriceSnapshot ?? 0));
+          await client.query(
+            `INSERT INTO sale_items (
+               tenant_id, sale_id, article_id, lot_id, quantity, ordered_quantity, fulfilled_quantity,
+               unit_price, coverage_percent, covered_amount, patient_amount, line_total
+             )
+             VALUES ($1,$2,$3,$4,$5,$5,$5,$6,$7,0,$8,$9)`,
+            [
+              user.tenantId,
+              saleId,
+              item.articleId,
+              allocation.lotId,
+              allocation.quantity,
+              item.unitPriceSnapshot,
+              saleCoveragePercent,
+              lineTotal,
+              lineTotal,
+            ],
+          );
+
+          const nextConsumedQuantity = this.roundMoney(
+            Number(allocationRow.consumed_quantity ?? 0) + allocation.quantity,
+          );
+          const nextAvailableQuantity = this.roundMoney(
+            Math.max(0, Number(allocationRow.allocated_quantity ?? 0) - nextConsumedQuantity),
+          );
+          const nextStatus = nextAvailableQuantity <= 0 ? 'EXHAUSTED' : 'ACTIVE';
+          const nextServerVersion = Number(allocationRow.server_version ?? 0) + 1;
+
+          await client.query(
+            `UPDATE offline_stock_allocations
+             SET consumed_quantity=$3,
+                 status=$4,
+                 server_version=$5,
+                 updated_at=CURRENT_TIMESTAMP
+             WHERE tenant_id=$1 AND allocation_id=$2`,
+            [
+              user.tenantId,
+              allocation.allocationId,
+              nextConsumedQuantity,
+              nextStatus,
+              nextServerVersion,
+            ],
+          );
+
+          allocations.push({
+            allocationId: allocation.allocationId,
+            lotId: allocation.lotId,
+            acknowledgedQuantity: allocation.quantity,
+            serverConsumedQuantity: nextConsumedQuantity,
+            availableQuantity: nextAvailableQuantity,
+            serverVersion: nextServerVersion,
+            status: nextStatus,
+          });
+        }
+      }
+
+      await this.recalculateTotal(user, saleId, operation.saleType, client);
+      const sale = await this.getSaleForValidation(client, user, saleId, operation.siteId);
+      await this.finalizePreparedSale(
+        client,
+        user,
+        sale,
+        {
+          amountPaid: operation.payment.amountPaidUsd,
+          amountPaidUsd: operation.payment.amountPaidUsd,
+          amountPaidCdf: operation.payment.amountPaidCdf,
+          amountReturnedUsd: operation.payment.amountReturnedUsd,
+          amountReturnedCdf: operation.payment.amountReturnedCdf,
+          cashSessionId: operation.cashSessionId,
+          saleMode: operation.saleMode,
+          settlementDifferenceNote: operation.note ?? undefined,
+        },
+        {
+          effectiveValidationDate,
+          enforceOfflineReservations: false,
+          lotExpiredErrorCode: 'LOT_EXPIRED_AT_OFFLINE_SALE',
+          lotBlockedErrorCode: 'LOT_BLOCKED_AFTER_OFFLINE_SALE',
+          cashSessionMissingErrorCode: 'CASH_SESSION_CLOSED_AFTER_OFFLINE_SALE',
+          validatedAt: operation.validatedAt,
+        },
+      );
+
+      result = {
+        saleId,
+        saleNumber,
+        allocations,
+      };
+    });
+
+    if (!result) throw new Error('POS_SYNC_REPLAY_FAILED');
+    return result;
   }
 
   async confirmPickup(user: AuthUser, saleId: string, dto: ConfirmPickupDto) {
@@ -1051,13 +1088,13 @@ export class SalesRepository {
   }
 
   private async allocateLotsForPickup(
-    client: { query: (sql: string, params?: unknown[]) => Promise<{ rows: Array<{ lot_id: string; lot_number: string; expiry_date: string | Date; quantity_available: string }> }> },
+    client: Queryable,
     tenantId: string,
     siteId: string,
     articleId: string,
     quantity: number,
   ) {
-    const available = await client.query(
+    const available = await client.query<{ lot_id: string; lot_number: string; expiry_date: string | Date; quantity_available: string }>(
       `SELECT l.lot_id, l.lot_number, l.expiry_date, st.quantity_available
        FROM stocks st
        JOIN lots l ON l.lot_id=st.lot_id AND l.tenant_id=st.tenant_id
@@ -1076,7 +1113,8 @@ export class SalesRepository {
     const allocations: Array<{ lotId: string; lotNumber: string; expiryDate: string | Date; quantity: number }> = [];
     for (const lot of available.rows) {
       if (remaining <= 0) break;
-      const availableQuantity = Number(lot.quantity_available ?? 0);
+      const reservedQuantity = await this.getOfflineReservedQuantity(client, tenantId, siteId, lot.lot_id);
+      const availableQuantity = Math.max(0, Number(lot.quantity_available ?? 0) - reservedQuantity);
       if (availableQuantity <= 0) continue;
       const take = Math.min(remaining, availableQuantity);
       allocations.push({ lotId: lot.lot_id, lotNumber: lot.lot_number, expiryDate: lot.expiry_date, quantity: take });
@@ -1146,6 +1184,307 @@ export class SalesRepository {
     return Math.round((value + Number.EPSILON) * 100) / 100;
   }
 
+  private async getSaleForValidation(client: Queryable, user: AuthUser, saleId: string, siteIdOverride?: string | null) {
+    const saleResult = await client.query<SaleRow>(
+      `SELECT sale_id, tenant_id, sale_number, sale_date, customer_id, NULL::text AS customer_name,
+              organization_id, membership_id, site_id, NULL::text AS site_name, currency_id, NULL::text AS currency_code, NULL::text AS currency_symbol, exchange_rate, subtotal,
+              insurance_covered_amount, customer_payable_amount, credit_amount, total_amount,
+              amount_paid_usd, amount_paid_cdf, amount_returned_usd, amount_returned_cdf,
+              net_received_usd, net_received_cdf, settlement_difference_usd,
+              settlement_difference_type, settlement_difference_reason, settlement_difference_note,
+              sale_type, sale_mode, fulfillment_status, fulfilled_at, pickup_token, pickup_number,
+              pickup_site_id, expected_pickup_date, last_fulfillment_at,
+              status, created_by, created_at, validated_at
+       FROM sales
+       WHERE tenant_id=$1 AND sale_id=$2
+         AND ($3::uuid IS NULL OR site_id=$3::uuid)
+       FOR UPDATE`,
+      [user.tenantId, saleId, siteIdOverride ?? user.siteId ?? null],
+    );
+    const sale = saleResult.rows[0];
+    if (!sale) throw new Error('SALE_NOT_FOUND');
+    if (sale.status !== 'DRAFT') throw new Error('SALE_NOT_DRAFT');
+    return sale;
+  }
+
+  private async finalizePreparedSale(
+    client: Queryable,
+    user: AuthUser,
+    sale: SaleRow,
+    dto: ValidateSaleDto,
+    options: FinalizeSaleOptions = {},
+  ) {
+    const total = Number(sale.total_amount);
+    const patientPayable = sale.sale_type === 'INSURANCE' ? Number(sale.customer_payable_amount ?? 0) : total;
+    const insuranceCovered = Number(sale.insurance_covered_amount ?? 0);
+    const resolvedSaleMode = dto.saleMode ?? sale.sale_mode ?? 'IMMEDIATE';
+    const isAdvanceSale = resolvedSaleMode === 'ADVANCE';
+    if (total <= 0) throw new Error('SALE_HAS_NO_ITEMS');
+    if (
+      sale.sale_type === 'INSURANCE'
+      && (!sale.customer_id || !sale.organization_id || !sale.membership_id || insuranceCovered <= 0)
+    ) {
+      throw new Error('MEMBERSHIP_NOT_ACTIVE');
+    }
+
+    const settlement = this.buildSettlementSnapshot(sale, dto, patientPayable);
+    if (settlement.settlementDifferenceUsd < -SETTLEMENT_TOLERANCE_USD) throw new Error('PAYMENT_INSUFFICIENT');
+    if (settlement.settlementDifferenceUsd > SETTLEMENT_TOLERANCE_USD && !settlement.settlementDifferenceReason) {
+      throw new Error('SETTLEMENT_REASON_REQUIRED');
+    }
+
+    const items = await client.query<ItemRow>(
+      `SELECT si.sale_item_id, si.tenant_id, si.sale_id, si.article_id, NULL::text AS article_code,
+              NULL::text AS commercial_name, si.lot_id, NULL::text AS lot_number, NULL::date AS expiry_date,
+              si.quantity, si.ordered_quantity, si.fulfilled_quantity, si.unit_price, si.line_total,
+              si.sales_unit_snapshot, si.packaging_snapshot
+       FROM sale_items si
+       WHERE si.tenant_id=$1 AND si.sale_id=$2`,
+      [user.tenantId, sale.sale_id],
+    );
+    if (!items.rows.length) throw new Error('SALE_HAS_NO_ITEMS');
+
+    const effectiveValidationDate = options.effectiveValidationDate ?? this.todayCivilDate();
+    const enforceOfflineReservations = options.enforceOfflineReservations ?? true;
+
+    if (!isAdvanceSale) {
+      for (const item of items.rows) {
+        const stock = await client.query<{
+          stock_id: string;
+          quantity_available: string;
+          expiry_date: string | Date;
+          is_blocked: boolean;
+        }>(
+          `SELECT st.stock_id, st.quantity_available, l.expiry_date, l.is_blocked
+           FROM stocks st
+           JOIN lots l ON l.lot_id=st.lot_id AND l.tenant_id=st.tenant_id
+           WHERE st.tenant_id=$1 AND st.site_id=$2 AND st.lot_id=$3
+           FOR UPDATE`,
+          [user.tenantId, sale.site_id, item.lot_id],
+        );
+        const row = stock.rows[0];
+        const reservedQuantity = enforceOfflineReservations && item.lot_id
+          ? await this.getOfflineReservedQuantity(client, user.tenantId, sale.site_id, item.lot_id)
+          : 0;
+        const availableQuantity = row
+          ? Math.max(0, Number(row.quantity_available ?? 0) - reservedQuantity)
+          : 0;
+
+        if (!row || availableQuantity < Number(item.quantity)) throw new Error('STOCK_INSUFFICIENT');
+        const expiryDate = this.toCivilDateString(row.expiry_date);
+        if (!expiryDate) throw new Error('LOT_EXPIRY_DATE_INVALID');
+        if (expiryDate <= effectiveValidationDate) {
+          throw new Error(options.lotExpiredErrorCode ?? 'LOT_EXPIRED');
+        }
+        if (row.is_blocked) {
+          throw new Error(options.lotBlockedErrorCode ?? 'LOT_BLOCKED');
+        }
+
+        await client.query(
+          `UPDATE stocks
+           SET quantity_available=quantity_available-$4,
+               updated_at=CURRENT_TIMESTAMP
+           WHERE tenant_id=$1 AND site_id=$2 AND lot_id=$3`,
+          [user.tenantId, sale.site_id, item.lot_id, item.quantity],
+        );
+        await client.query(
+          `INSERT INTO stock_movements (
+             tenant_id, site_id, article_id, lot_id, movement_type, quantity,
+             reference_type, reference_id, notes, user_id
+           )
+           VALUES ($1,$2,$3,$4,'SALE_OUT',$5,'SALE',$6,$7,$8)`,
+          [
+            user.tenantId,
+            sale.site_id,
+            item.article_id,
+            item.lot_id,
+            item.quantity,
+            sale.sale_id,
+            `Validation vente ${sale.sale_number}`,
+            user.userId,
+          ],
+        );
+      }
+    }
+
+    const method = dto.paymentMethodId
+      ? await this.paymentMethodInfo(client, dto.paymentMethodId)
+      : await this.defaultPaymentMethodInfo(client);
+    if ((settlement.amountReturnedUsd > 0 || settlement.amountReturnedCdf > 0) && method.method_code !== 'CASH') {
+      throw new Error('CHANGE_NOT_ALLOWED_FOR_NON_CASH');
+    }
+    if (patientPayable > 0) {
+      await client.query(
+        `INSERT INTO payments (tenant_id, sale_id, payment_method_id, currency_id, amount, reference_payment, received_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [user.tenantId, sale.sale_id, method.payment_method_id, sale.currency_id, patientPayable, dto.referencePayment ?? null, user.userId],
+      );
+    }
+
+    let activeCashSession:
+      | { cash_session_id: string; workstation_id: string | null; workstation_name: string | null; device_uuid: string | null }
+      | null = null;
+    if ((sale.sale_type === 'CASH' || sale.sale_type === 'INSURANCE') && (settlement.amountPaidUsd > 0 || settlement.amountPaidCdf > 0)) {
+      const session = await client.query<{ cash_session_id: string; workstation_id: string | null; workstation_name: string | null; device_uuid: string | null }>(
+        `SELECT cash_session_id, workstation_id, workstation_name, device_uuid
+         FROM cash_sessions
+         WHERE tenant_id=$1 AND site_id=$2 AND user_id=$3 AND status='OPEN'
+           AND ($4::uuid IS NULL OR cash_session_id=$4::uuid)
+         ORDER BY opened_at DESC
+         LIMIT 1`,
+        [user.tenantId, sale.site_id, user.userId, dto.cashSessionId ?? null],
+      );
+      if (dto.cashSessionId && !session.rows[0]) {
+        throw new Error(options.cashSessionMissingErrorCode ?? 'CASH_SESSION_CLOSED_AFTER_OFFLINE_SALE');
+      }
+      if (session.rows[0]) {
+        activeCashSession = session.rows[0];
+        const currencies = await this.currencyIdsByCode(client);
+        const movementRows = [
+          settlement.amountPaidUsd > 0 ? { movementType: 'SALE_PAYMENT', amount: settlement.amountPaidUsd, currencyId: currencies.USD, description: `Paiement brut USD vente ${sale.sale_number}` } : null,
+          settlement.amountPaidCdf > 0 ? { movementType: 'SALE_PAYMENT', amount: settlement.amountPaidCdf, currencyId: currencies.CDF, description: `Paiement brut CDF vente ${sale.sale_number}` } : null,
+          settlement.amountReturnedUsd > 0 ? { movementType: 'SALE_CHANGE', amount: settlement.amountReturnedUsd, currencyId: currencies.USD, description: `Monnaie rendue USD vente ${sale.sale_number}` } : null,
+          settlement.amountReturnedCdf > 0 ? { movementType: 'SALE_CHANGE', amount: settlement.amountReturnedCdf, currencyId: currencies.CDF, description: `Monnaie rendue CDF vente ${sale.sale_number}` } : null,
+        ].filter(Boolean) as Array<{ movementType: string; amount: number; currencyId: string; description: string }>;
+
+        for (const movement of movementRows) {
+          await client.query(
+            `INSERT INTO cash_movements (
+               tenant_id, cash_session_id, movement_type, amount, currency_id,
+               reference_type, reference_id, description, created_by
+             )
+             VALUES ($1,$2,$3,$4,$5,'SALE',$6,$7,$8)`,
+            [
+              user.tenantId,
+              activeCashSession.cash_session_id,
+              movement.movementType,
+              movement.amount,
+              movement.currencyId,
+              sale.sale_id,
+              movement.description,
+              user.userId,
+            ],
+          );
+        }
+      }
+    }
+
+    if (sale.sale_type === 'INSURANCE' && insuranceCovered > 0) {
+      await client.query(
+        `INSERT INTO accounts_receivable (
+           tenant_id, sale_id, customer_id, organization_id, currency_id, receivable_type,
+           invoice_number, due_date, amount_due, amount_paid, balance, status, notes, created_by
+         )
+         VALUES ($1,$2,$3,$4,$5,'INSURANCE_CLAIM',$6,CURRENT_DATE + INTERVAL '30 days',$7,0,$7,'OPEN',$8,$9)`,
+        [user.tenantId, sale.sale_id, sale.customer_id, sale.organization_id, sale.currency_id, `AR-${sale.sale_number}`, insuranceCovered, `Creance assurance vente ${sale.sale_number}`, user.userId],
+      );
+    }
+
+    const accountingLines = [
+      ...(patientPayable > 0 ? [{ accountCode: '57', debit: patientPayable, description: `Encaissement vente ${sale.sale_number}` }] : []),
+      ...(sale.sale_type === 'INSURANCE' && insuranceCovered > 0 ? [{ accountCode: '41', debit: insuranceCovered, description: `Creance assurance vente ${sale.sale_number}` }] : []),
+      { accountCode: '70', credit: total, description: `Vente marchandises ${sale.sale_number}` },
+    ];
+    await this.accounting.createAutomaticEntry(client as any, user, {
+      journalCode: 'VEN',
+      referenceType: 'SALE',
+      referenceId: sale.sale_id,
+      description: `Validation vente ${sale.sale_number}`,
+      lines: accountingLines,
+    });
+
+    const validationTimestamp = options.validatedAt ? new Date(options.validatedAt) : new Date();
+    const fulfilledTimestamp = isAdvanceSale ? null : validationTimestamp;
+    await client.query(
+      `UPDATE sales
+       SET status='VALIDATED',
+           validated_at=$25,
+           sale_mode=$17,
+           fulfillment_status=$18,
+           fulfilled_at=$19,
+           pickup_token=$20,
+           pickup_number=$21,
+           pickup_site_id=$22,
+           expected_pickup_date=$23,
+           last_fulfillment_at=$24,
+           amount_paid_usd=$3,
+           amount_paid_cdf=$4,
+           amount_returned_usd=$5,
+           amount_returned_cdf=$6,
+           net_received_usd=$7,
+           net_received_cdf=$8,
+           settlement_difference_usd=$9,
+           settlement_difference_type=$10,
+           settlement_difference_reason=$11,
+           settlement_difference_note=$12,
+           cash_session_id=$13,
+           workstation_id=$14,
+           workstation_name=$15,
+           device_uuid=$16
+       WHERE tenant_id=$1 AND sale_id=$2`,
+      [
+        user.tenantId,
+        sale.sale_id,
+        settlement.amountPaidUsd,
+        settlement.amountPaidCdf,
+        settlement.amountReturnedUsd,
+        settlement.amountReturnedCdf,
+        settlement.netReceivedUsd,
+        settlement.netReceivedCdf,
+        settlement.settlementDifferenceUsd,
+        settlement.settlementDifferenceType,
+        settlement.settlementDifferenceReason,
+        settlement.settlementDifferenceNote,
+        activeCashSession?.cash_session_id ?? null,
+        activeCashSession?.workstation_id ?? null,
+        activeCashSession?.workstation_name ?? null,
+        activeCashSession?.device_uuid ?? null,
+        resolvedSaleMode,
+        isAdvanceSale ? 'NOT_FULFILLED' : 'FULFILLED',
+        fulfilledTimestamp,
+        isAdvanceSale ? this.buildPickupToken(sale.sale_number) : null,
+        isAdvanceSale ? this.buildPickupNumber(sale.sale_number) : null,
+        isAdvanceSale ? sale.site_id : null,
+        isAdvanceSale ? validationTimestamp.toISOString().slice(0, 10) : null,
+        isAdvanceSale ? null : validationTimestamp,
+        validationTimestamp,
+      ],
+    );
+    await client.query(
+      `INSERT INTO audit_logs (tenant_id, user_id, table_name, record_id, action_type, new_value)
+       VALUES ($1,$2,'sales',$3,'VALIDATE',$4::jsonb)`,
+      [
+        user.tenantId,
+        user.userId,
+        sale.sale_id,
+        JSON.stringify({
+          status: 'VALIDATED',
+          saleNumber: sale.sale_number,
+          settlement,
+          offlineReplay: options.enforceOfflineReservations === false,
+        }),
+      ],
+    );
+  }
+
+  private async getOfflineReservedQuantity(
+    client: Queryable,
+    tenantId: string,
+    siteId: string,
+    lotId: string,
+  ) {
+    const reserved = await client.query<{ reserved_quantity: string }>(
+      `SELECT COALESCE(SUM(GREATEST(allocated_quantity - consumed_quantity, 0)), 0)::numeric AS reserved_quantity
+       FROM offline_stock_allocations
+       WHERE tenant_id=$1
+         AND site_id=$2
+         AND lot_id=$3
+         AND status='ACTIVE'`,
+      [tenantId, siteId, lotId],
+    );
+    return Number(reserved.rows[0]?.reserved_quantity ?? 0);
+  }
+
   private async findItems(user: AuthUser, saleId: string) {
     const r = await this.db.query<ItemRow>(
       `SELECT si.sale_item_id, si.tenant_id, si.sale_id, si.article_id, a.article_code, a.commercial_name,
@@ -1174,8 +1513,14 @@ export class SalesRepository {
     return r.rows.map((row) => ({ paymentId: row.payment_id, saleId: row.sale_id, paymentDate: row.payment_date, paymentMethodId: row.payment_method_id, methodName: row.method_name, currencyId: row.currency_id, currencyCode: row.currency_code, currencySymbol: row.currency_symbol, amount: Number(row.amount), referencePayment: row.reference_payment, receivedBy: row.received_by, receivedByName: row.received_by_name }));
   }
 
-  private async recalculateTotal(user: AuthUser, saleId: string, saleType?: string) {
-    await this.db.query(
+  private async recalculateTotal(
+    user: AuthUser,
+    saleId: string,
+    saleType?: string,
+    queryable?: Queryable,
+  ) {
+    const db = queryable ?? (this.db as unknown as Queryable);
+    await db.query(
       `UPDATE sales SET subtotal=COALESCE((SELECT SUM(line_total) FROM sale_items WHERE tenant_id=$1 AND sale_id=$2),0),
                         total_amount=COALESCE((SELECT SUM(line_total) FROM sale_items WHERE tenant_id=$1 AND sale_id=$2),0),
                         insurance_covered_amount=CASE WHEN COALESCE($3, sale_type)='INSURANCE' THEN COALESCE((SELECT SUM(covered_amount) FROM sale_items WHERE tenant_id=$1 AND sale_id=$2),0) ELSE 0 END,

@@ -371,6 +371,10 @@ export function mapOfflineError(error: unknown) {
     LOT_EXPIRED: 'Le lot est expire dans le snapshot local.',
     LOT_EXPIRY_DATE_INVALID: 'La date d expiration du lot est invalide.',
     CART_BLOCKED: 'Le brouillon est bloque et doit etre corrige.',
+    CASH_SESSION_REQUIRED: 'Aucune session caisse synchronisee n est disponible pour ce poste.',
+    PAYMENT_REQUIRED: 'Saisissez un montant USD ou CDF avant de valider hors ligne.',
+    PAYMENT_INSUFFICIENT: 'Le paiement saisi est insuffisant pour finaliser la vente offline.',
+    EXCHANGE_RATE_REQUIRED: 'Un taux local valide est requis pour accepter un paiement en CDF hors ligne.',
     LOCAL_STORAGE_ERROR: 'Impossible d enregistrer localement ce brouillon.',
   };
   return messages[code as OfflineCartErrorCode] ?? code;

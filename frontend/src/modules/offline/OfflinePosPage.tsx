@@ -5,7 +5,6 @@ import { formatDate, formatDateTime } from '../../utils/date';
 import { formatMoney } from '../../utils/money';
 import {
   addOrIncrementOfflineCartItem,
-  buildOfflineSaleDraftOperation,
   createNewOfflineCart,
   findCounterCustomer,
   formatOfflineCartStatus,
@@ -19,12 +18,18 @@ import {
   type LocalCatalogSearchResult,
 } from './offline-cart';
 import {
+  buildOfflineCashSettlement,
+  finalizeOfflineCashSale,
+} from './offline-sale';
+import { notifyOfflineSaleQueued, runSync } from './sync-engine';
+import {
   calculateAuthorizationState,
   calculateSnapshotFreshness,
   loadLocalSnapshot,
   type OfflineSnapshotViewModel,
 } from './offline-bootstrap';
 import { type OfflineCart, type OfflinePosCustomer } from './offline-types';
+import { useSyncEngine } from './useSyncEngine';
 
 type OfflinePageModel = Awaited<ReturnType<typeof getOfflineCartPageModel>>;
 
@@ -37,6 +42,7 @@ const emptyViewModel: OfflineSnapshotViewModel = {
     settings: null,
     auth: null,
     workstation: null,
+    cashSession: null,
     syncState: null,
   },
   queue: [],
@@ -60,9 +66,13 @@ export function OfflinePosPage() {
   const [saveLabel, setSaveLabel] = useState<'SAVED' | 'SAVING' | 'ERROR'>('SAVED');
   const [busyAction, setBusyAction] = useState<'NEW' | 'ITEM' | 'CUSTOMER' | 'NOTE' | null>(null);
   const [noteDraft, setNoteDraft] = useState('');
+  const [amountPaidUsd, setAmountPaidUsd] = useState('');
+  const [amountPaidCdf, setAmountPaidCdf] = useState('');
+  const [lastReceiptId, setLastReceiptId] = useState<string | null>(null);
   const articleInputRef = useRef<HTMLInputElement | null>(null);
   const customerInputRef = useRef<HTMLInputElement | null>(null);
   const noteSaveTimer = useRef<number | null>(null);
+  const syncEngine = useSyncEngine();
 
   async function refresh(cartId?: string | null) {
     const [localView, cartView] = await Promise.all([
@@ -72,6 +82,7 @@ export function OfflinePosPage() {
     setViewModel(localView);
     setPageModel(cartView);
     setNoteDraft(cartView.cart.note ?? '');
+    setLastReceiptId(null);
     setSaveLabel('SAVED');
     const nextCartId = cartView.cart.cartId;
     if (nextCartId !== selectedCartId) {
@@ -121,7 +132,22 @@ export function OfflinePosPage() {
   const snapshotStatus = calculateSnapshotFreshness(snapshot.syncState, snapshot.auth, snapshot.workstation);
   const authorizationState = calculateAuthorizationState(snapshot.auth);
   const quotaAlert = formatQuotaAlert(quotaSummary.totalAvailable);
-  const draftPayloadPreview = cart ? buildOfflineSaleDraftOperation(cart) : null;
+  const cartTotal = cart?.total ?? 0;
+  const cartExchangeRate = settings?.exchangeRate?.rate ?? cart?.exchangeRateSnapshot ?? null;
+  const settlementPreview = buildOfflineCashSettlement({
+    totalUsd: cartTotal,
+    exchangeRate: cartExchangeRate,
+    amountPaidUsd: Number(amountPaidUsd || 0),
+    amountPaidCdf: Number(amountPaidCdf || 0),
+  });
+  const canFinalizeOfflineSale =
+    !!cart
+    && cart.items.length > 0
+    && cart.status !== 'BLOCKED'
+    && !!snapshot.cashSession
+    && snapshot.cashSession.status === 'OPEN'
+    && (settlementPreview.amountPaidUsd > 0 || settlementPreview.amountPaidCdf > 0)
+    && settlementPreview.settlementDifferenceUsd >= -0.02;
 
   async function handleSelectArticle(result: LocalCatalogSearchResult, quantityDelta = 1) {
     if (!cart) return;
@@ -230,6 +256,33 @@ export function OfflinePosPage() {
     }
   }
 
+  async function handleFinalizeOfflineSale() {
+    if (!cart) return;
+    setBusyAction('NOTE');
+    try {
+      const result = await finalizeOfflineCashSale(cart.cartId, {
+        amountPaidUsd: Number(amountPaidUsd || 0),
+        amountPaidCdf: Number(amountPaidCdf || 0),
+        note: noteDraft,
+      });
+      await notifyOfflineSaleQueued();
+      setAmountPaidUsd('');
+      setAmountPaidCdf('');
+      setLastReceiptId(result.sale.localSaleId);
+      setMessage(`Vente offline ${result.sale.offlineReference} validee localement. Ticket pret a imprimer.`);
+      await refresh(null);
+    } catch (error) {
+      setMessage(mapOfflineError(error));
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  function handlePrintReceipt() {
+    if (!lastReceiptId) return;
+    window.print();
+  }
+
   if (!pageModel || !cart) {
     return (
       <section className="offline-page">
@@ -257,12 +310,15 @@ export function OfflinePosPage() {
           <button className="ghost-button compact-button" type="button" onClick={() => void handleNewDraft()} disabled={busyAction !== null}>
             Nouvelle vente
           </button>
+          <button className="ghost-button compact-button" type="button" onClick={() => void runSync('manual')}>
+            Synchroniser
+          </button>
           <Link className="ghost-button compact-button" to="/offline/drafts">
             Voir brouillons
           </Link>
-          <button className="button compact-button" type="button" disabled title="L encaissement offline sera active dans un prochain sprint.">
-            Encaisser bientot
-          </button>
+          <Link className="ghost-button compact-button" to="/offline/sales">
+            Ventes offline
+          </Link>
         </div>
       </header>
 
@@ -271,6 +327,9 @@ export function OfflinePosPage() {
         <div className="card offline-kpi"><span>Snapshot</span><strong>{snapshotLabel(snapshotStatus)}</strong></div>
         <div className="card offline-kpi"><span>Autorisation</span><strong>{authorizationLabel(authorizationState)}</strong></div>
         <div className="card offline-kpi"><span>Derniere synchro</span><strong>{formatDateTime(snapshot.syncState?.lastSuccessfulSyncAt)}</strong></div>
+        <div className="card offline-kpi"><span>Etat sync</span><strong>{formatSyncEngineStatus(syncEngine.currentStatus)}</strong></div>
+        <div className="card offline-kpi"><span>En attente</span><strong>{syncEngine.pendingCount}</strong></div>
+        <div className="card offline-kpi"><span>Conflits</span><strong>{syncEngine.conflictCount}</strong></div>
       </section>
 
       <section className="offline-pos-grid">
@@ -491,6 +550,47 @@ export function OfflinePosPage() {
           </section>
 
           <section className="card offline-panel">
+            <h3>Caisse offline</h3>
+            <div className="detail-grid compact-detail-grid">
+              <div><span>Session</span><strong>{snapshot.cashSession?.status === 'OPEN' ? 'Ouverte' : 'Indisponible'}</strong></div>
+              <div><span>Session ID</span><strong>{snapshot.cashSession?.cashSessionId ?? '-'}</strong></div>
+              <div><span>Ouverte le</span><strong>{formatDateTime(snapshot.cashSession?.openedAt)}</strong></div>
+              <div><span>Solde USD</span><strong>{snapshot.cashSession ? formatMoney(snapshot.cashSession.openingBalanceUsd, 'USD') : '-'}</strong></div>
+            </div>
+            {!snapshot.cashSession ? (
+              <p className="offline-warning-text">Aucune session caisse synchronisee n est disponible pour ce poste. Reconnectez le poste avant d encaisser hors ligne.</p>
+            ) : null}
+          </section>
+
+          <section className="card offline-panel">
+            <h3>Paiement cash local</h3>
+            <div className="detail-grid compact-detail-grid">
+              <label>
+                <span>Paye USD</span>
+                <input className="input compact-input" type="number" min="0" step="0.01" value={amountPaidUsd} onChange={(event) => setAmountPaidUsd(event.target.value)} />
+              </label>
+              <label>
+                <span>Paye CDF</span>
+                <input className="input compact-input" type="number" min="0" step="1" value={amountPaidCdf} onChange={(event) => setAmountPaidCdf(event.target.value)} />
+              </label>
+            </div>
+            <div className="offline-summary-grid">
+              <div><span>Total USD</span><strong>{formatMoney(cart.total, 'USD')}</strong></div>
+              <div><span>Total CDF</span><strong>{settings?.exchangeRate?.rate ? `${Math.round(cart.total * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong></div>
+              <div><span>Rendu prop. USD</span><strong>{formatMoney(settlementPreview.suggestedChangeUsd, 'USD')}</strong></div>
+              <div><span>Rendu prop. CDF</span><strong>{`${Math.round(settlementPreview.suggestedChangeCdf).toLocaleString('fr-FR')} FC`}</strong></div>
+            </div>
+            <div className="offline-panel-actions">
+              <button className="button compact-button" type="button" onClick={() => void handleFinalizeOfflineSale()} disabled={busyAction !== null || !canFinalizeOfflineSale}>
+                Encaisser hors ligne
+              </button>
+              <button className="ghost-button compact-button" type="button" onClick={handlePrintReceipt} disabled={!lastReceiptId}>
+                Imprimer ticket
+              </button>
+            </div>
+          </section>
+
+          <section className="card offline-panel">
             <h3>Note locale</h3>
             <textarea
               className="input offline-note-input"
@@ -510,16 +610,7 @@ export function OfflinePosPage() {
               <div><span>Autorisation</span><strong>{authorizationLabel(authorizationState)}</strong></div>
             </div>
             <p className="offline-preview">{message}</p>
-          </section>
-
-          <section className="card offline-panel">
-            <h3>Payload futur</h3>
-            <p className="offline-row-meta">
-              Operation preparee localement, non envoyee. {draftPayloadPreview?.items.length ?? 0} ligne(s), aucune consommation serveur.
-            </p>
-            <pre className="offline-json-preview">
-              {JSON.stringify(draftPayloadPreview, null, 2)}
-            </pre>
+            <p className="offline-preview muted">{renderSyncSummary(syncEngine)}</p>
           </section>
         </aside>
       </section>
@@ -545,4 +636,46 @@ function authorizationLabel(status: ReturnType<typeof calculateAuthorizationStat
   if (status === 'VALID') return 'Valide';
   if (status === 'EXPIRING') return 'Expire bientot';
   return 'Expiree';
+}
+
+function formatSyncEngineStatus(status: ReturnType<typeof useSyncEngine>['currentStatus']) {
+  switch (status) {
+    case 'CHECKING':
+      return 'Verification';
+    case 'SYNCING':
+      return 'Synchronisation';
+    case 'BACKOFF':
+      return 'Reprise differee';
+    case 'OFFLINE':
+      return 'Hors ligne';
+    case 'DEGRADED':
+      return 'Degrade';
+    case 'CONFLICT':
+      return 'Conflit';
+    case 'ERROR':
+      return 'Erreur';
+    default:
+      return 'Pret';
+  }
+}
+
+function renderSyncSummary(syncEngine: ReturnType<typeof useSyncEngine>) {
+  if (syncEngine.currentStatus === 'SYNCING') {
+    return `Synchronisation en cours. ${syncEngine.pendingCount} operation(s) encore en attente.`;
+  }
+  if (syncEngine.currentStatus === 'OFFLINE') {
+    return `Hors ligne - ${syncEngine.pendingCount} operation(s) en attente.`;
+  }
+  if (syncEngine.currentStatus === 'DEGRADED' || syncEngine.currentStatus === 'BACKOFF') {
+    return syncEngine.nextRetryAt
+      ? `Backend indisponible, reprise automatique prevue vers ${formatDateTime(syncEngine.nextRetryAt)}.`
+      : 'Backend indisponible, reprise automatique active.';
+  }
+  if (syncEngine.conflictCount > 0) {
+    return `${syncEngine.conflictCount} conflit(s) necessitent une verification responsable.`;
+  }
+  if (syncEngine.pendingCount > 0) {
+    return `${syncEngine.pendingCount} operation(s) restent a synchroniser.`;
+  }
+  return 'Tout est synchronise ou pret a etre synchronise automatiquement.';
 }

@@ -2,12 +2,17 @@ import {
   type OfflineActivityLogEntry,
   type OfflineAuthSnapshot,
   type OfflineCart,
+  type OfflineCashSessionSnapshot,
   type OfflineDraftReservation,
   type OfflineLocalSnapshot,
+  type OfflinePayment,
   type OfflinePosArticle,
   type OfflinePosCustomer,
   type OfflinePosLot,
   type OfflinePosSettings,
+  type OfflinePendingConsumption,
+  type OfflineSale,
+  type OfflineSaleValidateOperation,
   type OfflineSnapshotStatus,
   type OfflineStockAllocation,
   type OfflineSyncConflictEntry,
@@ -19,9 +24,10 @@ import {
   type PosSyncChangesPayload,
 } from './offline-types';
 import { normalizeAllocationStatus } from './offline-fefo';
+import { type PosSyncOperationAllocationAck } from '../../services/posSync.service';
 
 const DB_NAME = 'PharmaErpPosDb';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const ARTICLES_STORE = 'offline_articles';
 const LOTS_STORE = 'offline_lots';
 const ALLOCATIONS_STORE = 'offline_allocations';
@@ -29,6 +35,7 @@ const CUSTOMERS_STORE = 'offline_customers';
 const SETTINGS_STORE = 'offline_settings';
 const AUTH_STORE = 'auth_snapshot';
 const WORKSTATION_STORE = 'workstation';
+const CASH_SESSION_STORE = 'offline_cash_sessions';
 const SYNC_STATE_STORE = 'sync_state';
 const SYNC_QUEUE_STORE = 'sync_queue';
 const SYNC_LOG_STORE = 'sync_log';
@@ -36,6 +43,9 @@ const SYNC_CONFLICTS_STORE = 'sync_conflicts';
 const CARTS_STORE = 'offline_carts';
 const DRAFT_RESERVATIONS_STORE = 'offline_draft_reservations';
 const ACTIVITY_LOG_STORE = 'offline_activity_log';
+const OFFLINE_SALES_STORE = 'offline_sales';
+const OFFLINE_PAYMENTS_STORE = 'offline_payments';
+const OFFLINE_PENDING_CONSUMPTIONS_STORE = 'offline_pending_consumptions';
 
 export async function readOfflineArticles() {
   const db = await openOfflineDatabase();
@@ -73,6 +83,12 @@ export async function readAuthSnapshot() {
 export async function readWorkstationSnapshot() {
   const db = await openOfflineDatabase();
   const rows = await readAll<OfflineWorkstationSnapshot>(db, WORKSTATION_STORE);
+  return rows[0] ?? null;
+}
+
+export async function readOfflineCashSession() {
+  const db = await openOfflineDatabase();
+  const rows = await readAll<OfflineCashSessionSnapshot>(db, CASH_SESSION_STORE);
   return rows[0] ?? null;
 }
 
@@ -117,6 +133,21 @@ export async function readOfflineActivityLog() {
   return readAll<OfflineActivityLogEntry>(db, ACTIVITY_LOG_STORE);
 }
 
+export async function readOfflineSales() {
+  const db = await openOfflineDatabase();
+  return readAll<OfflineSale>(db, OFFLINE_SALES_STORE);
+}
+
+export async function readOfflinePayments() {
+  const db = await openOfflineDatabase();
+  return readAll<OfflinePayment>(db, OFFLINE_PAYMENTS_STORE);
+}
+
+export async function readOfflinePendingConsumptions() {
+  const db = await openOfflineDatabase();
+  return readAll<OfflinePendingConsumption>(db, OFFLINE_PENDING_CONSUMPTIONS_STORE);
+}
+
 export async function writeOfflineDraftReservations(rows: OfflineDraftReservation[]) {
   const db = await openOfflineDatabase();
   const tx = db.transaction(DRAFT_RESERVATIONS_STORE, 'readwrite');
@@ -140,6 +171,7 @@ export async function readOfflineSnapshot(): Promise<OfflineLocalSnapshot> {
     settings,
     auth,
     workstation,
+    cashSession,
     syncState,
   ] = await Promise.all([
     readOfflineArticles(),
@@ -149,10 +181,11 @@ export async function readOfflineSnapshot(): Promise<OfflineLocalSnapshot> {
     readOfflineSettings(),
     readAuthSnapshot(),
     readWorkstationSnapshot(),
+    readOfflineCashSession(),
     readSyncState(),
   ]);
 
-  return { articles, lots, allocations, customers, settings, auth, workstation, syncState };
+  return { articles, lots, allocations, customers, settings, auth, workstation, cashSession, syncState };
 }
 
 export async function writeOfflineAllocations(rows: OfflineStockAllocation[]) {
@@ -184,11 +217,12 @@ export async function clearOfflineSnapshot() {
       SETTINGS_STORE,
       AUTH_STORE,
       WORKSTATION_STORE,
+      CASH_SESSION_STORE,
       SYNC_STATE_STORE,
     ],
     'readwrite',
   );
-  for (const storeName of [ARTICLES_STORE, LOTS_STORE, ALLOCATIONS_STORE, CUSTOMERS_STORE, SETTINGS_STORE, AUTH_STORE, WORKSTATION_STORE, SYNC_STATE_STORE]) {
+  for (const storeName of [ARTICLES_STORE, LOTS_STORE, ALLOCATIONS_STORE, CUSTOMERS_STORE, SETTINGS_STORE, AUTH_STORE, WORKSTATION_STORE, CASH_SESSION_STORE, SYNC_STATE_STORE]) {
     await clearStore(tx.objectStore(storeName));
   }
   await txDone(tx);
@@ -199,6 +233,32 @@ export async function clearOfflineSyncQueue() {
   const tx = db.transaction(SYNC_QUEUE_STORE, 'readwrite');
   await clearStore(tx.objectStore(SYNC_QUEUE_STORE));
   await txDone(tx);
+}
+
+export async function saveOfflineSyncQueue(rows: OfflineSyncQueueEntry[]) {
+  const db = await openOfflineDatabase();
+  const tx = db.transaction(SYNC_QUEUE_STORE, 'readwrite');
+  await replaceAll(tx.objectStore(SYNC_QUEUE_STORE), rows);
+  await txDone(tx);
+}
+
+export async function resetStaleSyncingQueueEntries(maxAgeMs = 5 * 60 * 1000) {
+  const rows = await readOfflineSyncQueue();
+  const now = Date.now();
+  const nextRows = rows.map((row) => {
+    if (row.status !== 'SYNCING') return row;
+    const updatedAtMs = new Date(row.updatedAt).getTime();
+    if (Number.isNaN(updatedAtMs) || now - updatedAtMs < maxAgeMs) return row;
+    return {
+      ...row,
+      status: 'PENDING' as const,
+      updatedAt: new Date().toISOString(),
+      lastErrorCode: row.lastErrorCode ?? 'SYNC_RECOVERED_AFTER_RELOAD',
+      lastErrorMessage: row.lastErrorMessage ?? 'Operation remise en attente apres reprise locale.',
+    };
+  });
+  await saveOfflineSyncQueue(nextRows);
+  return nextRows;
 }
 
 export async function saveOfflineCart(cart: OfflineCart, reservations: OfflineDraftReservation[], activityEntries: OfflineActivityLogEntry[] = []) {
@@ -230,6 +290,195 @@ export async function saveOfflineCarts(carts: OfflineCart[]) {
   const db = await openOfflineDatabase();
   const tx = db.transaction(CARTS_STORE, 'readwrite');
   await replaceAll(tx.objectStore(CARTS_STORE), carts);
+  await txDone(tx);
+}
+
+export async function saveOfflineSales(rows: OfflineSale[]) {
+  const db = await openOfflineDatabase();
+  const tx = db.transaction(OFFLINE_SALES_STORE, 'readwrite');
+  await replaceAll(tx.objectStore(OFFLINE_SALES_STORE), rows);
+  await txDone(tx);
+}
+
+export async function saveOfflinePayments(rows: OfflinePayment[]) {
+  const db = await openOfflineDatabase();
+  const tx = db.transaction(OFFLINE_PAYMENTS_STORE, 'readwrite');
+  await replaceAll(tx.objectStore(OFFLINE_PAYMENTS_STORE), rows);
+  await txDone(tx);
+}
+
+export async function saveOfflinePendingConsumptions(rows: OfflinePendingConsumption[]) {
+  const db = await openOfflineDatabase();
+  const tx = db.transaction(OFFLINE_PENDING_CONSUMPTIONS_STORE, 'readwrite');
+  await replaceAll(tx.objectStore(OFFLINE_PENDING_CONSUMPTIONS_STORE), rows);
+  await txDone(tx);
+}
+
+export async function persistValidatedOfflineSale(params: {
+  sale: OfflineSale;
+  payment: OfflinePayment;
+  pendingConsumptions: OfflinePendingConsumption[];
+  queueEntry: Omit<OfflineSyncQueueEntry, 'localId' | 'createdAt' | 'updatedAt'>;
+  cartId: string;
+  activityEntries?: OfflineActivityLogEntry[];
+}) {
+  const db = await openOfflineDatabase();
+  const tx = db.transaction(
+    [
+      CARTS_STORE,
+      DRAFT_RESERVATIONS_STORE,
+      ALLOCATIONS_STORE,
+      OFFLINE_SALES_STORE,
+      OFFLINE_PAYMENTS_STORE,
+      OFFLINE_PENDING_CONSUMPTIONS_STORE,
+      SYNC_QUEUE_STORE,
+      ACTIVITY_LOG_STORE,
+    ],
+    'readwrite',
+  );
+
+  const cartsStore = tx.objectStore(CARTS_STORE);
+  const reservationsStore = tx.objectStore(DRAFT_RESERVATIONS_STORE);
+  const allocationsStore = tx.objectStore(ALLOCATIONS_STORE);
+  const salesStore = tx.objectStore(OFFLINE_SALES_STORE);
+  const paymentsStore = tx.objectStore(OFFLINE_PAYMENTS_STORE);
+  const pendingStore = tx.objectStore(OFFLINE_PENDING_CONSUMPTIONS_STORE);
+  const queueStore = tx.objectStore(SYNC_QUEUE_STORE);
+  const activityStore = tx.objectStore(ACTIVITY_LOG_STORE);
+
+  const [carts, reservations, allocations, sales, payments, pendingRows] = await Promise.all([
+    readAllFromTransaction<OfflineCart>(cartsStore),
+    readAllFromTransaction<OfflineDraftReservation>(reservationsStore),
+    readAllFromTransaction<OfflineStockAllocation>(allocationsStore),
+    readAllFromTransaction<OfflineSale>(salesStore),
+    readAllFromTransaction<OfflinePayment>(paymentsStore),
+    readAllFromTransaction<OfflinePendingConsumption>(pendingStore),
+  ]);
+
+  const nextCarts = carts.map((cart) => cart.cartId === params.cartId
+    ? { ...cart, status: 'CANCELLED', saveState: 'SAVED', updatedAt: params.sale.validatedAt, blockedReasons: [] }
+    : cart);
+  const nextReservations = reservations.filter((entry) => entry.cartId !== params.cartId);
+  const pendingByAllocation = new Map<string, number>();
+  for (const row of params.pendingConsumptions) {
+    pendingByAllocation.set(row.allocationId, (pendingByAllocation.get(row.allocationId) ?? 0) + row.quantity);
+  }
+  const nextAllocations = allocations.map((row) => {
+    const extra = pendingByAllocation.get(row.allocationId) ?? 0;
+    if (extra <= 0) return normalizeAllocation(row);
+    return normalizeAllocation({
+      ...row,
+      localPendingConsumption: Number(row.localPendingConsumption ?? 0) + extra,
+    });
+  });
+  const nextSales = [...sales.filter((row) => row.localSaleId !== params.sale.localSaleId), params.sale];
+  const nextPayments = [...payments.filter((row) => row.offlinePaymentId !== params.payment.offlinePaymentId), params.payment];
+  const nextPendingRows = [
+    ...pendingRows.filter((row) => row.localSaleId !== params.sale.localSaleId),
+    ...params.pendingConsumptions,
+  ];
+
+  await replaceAll(cartsStore, nextCarts);
+  await replaceAll(reservationsStore, nextReservations);
+  await replaceAll(allocationsStore, nextAllocations);
+  await replaceAll(salesStore, nextSales);
+  await replaceAll(paymentsStore, nextPayments);
+  await replaceAll(pendingStore, nextPendingRows);
+
+  const now = params.sale.validatedAt;
+  await putStore(queueStore, {
+    ...params.queueEntry,
+    localId: crypto.randomUUID(),
+    createdAt: now,
+    updatedAt: now,
+  } satisfies OfflineSyncQueueEntry);
+
+  for (const entry of params.activityEntries ?? []) {
+    await putStore(activityStore, entry);
+  }
+
+  await txDone(tx);
+}
+
+export async function updateOfflineSyncReplayResult(params: {
+  operationId: string;
+  localSaleId: string;
+  nextStatus: OfflineSyncQueueEntry['status'];
+  serverSaleId?: string | null;
+  serverSaleNumber?: string | null;
+  allocations?: PosSyncOperationAllocationAck[];
+  errorCode?: string | null;
+  errorMessage?: string | null;
+}) {
+  const db = await openOfflineDatabase();
+  const tx = db.transaction(
+    [SYNC_QUEUE_STORE, OFFLINE_SALES_STORE, OFFLINE_PENDING_CONSUMPTIONS_STORE, ALLOCATIONS_STORE, ACTIVITY_LOG_STORE],
+    'readwrite',
+  );
+  const queueStore = tx.objectStore(SYNC_QUEUE_STORE);
+  const salesStore = tx.objectStore(OFFLINE_SALES_STORE);
+  const pendingStore = tx.objectStore(OFFLINE_PENDING_CONSUMPTIONS_STORE);
+  const allocationsStore = tx.objectStore(ALLOCATIONS_STORE);
+  const activityStore = tx.objectStore(ACTIVITY_LOG_STORE);
+
+  const [queueEntries, sales, pendingRows, allocations] = await Promise.all([
+    readAllFromTransaction<OfflineSyncQueueEntry>(queueStore),
+    readAllFromTransaction<OfflineSale>(salesStore),
+    readAllFromTransaction<OfflinePendingConsumption>(pendingStore),
+    readAllFromTransaction<OfflineStockAllocation>(allocationsStore),
+  ]);
+
+  const now = new Date().toISOString();
+  await replaceAll(queueStore, queueEntries.map((row) => row.operationId === params.operationId ? {
+    ...row,
+    status: params.nextStatus,
+    updatedAt: now,
+    lastErrorCode: params.errorCode ?? null,
+    lastErrorMessage: params.errorMessage ?? null,
+  } : row));
+
+  await replaceAll(salesStore, sales.map((row) => row.localSaleId === params.localSaleId ? {
+    ...row,
+    status: params.nextStatus === 'SYNCED' ? 'SYNCED' : params.nextStatus === 'CONFLICT' ? 'CONFLICT' : row.status,
+    syncStatus: params.nextStatus,
+    serverSaleId: params.serverSaleId ?? row.serverSaleId,
+    serverSaleNumber: params.serverSaleNumber ?? row.serverSaleNumber,
+    syncedAt: params.nextStatus === 'SYNCED' ? now : row.syncedAt,
+  } : row));
+
+  if (params.nextStatus === 'SYNCED') {
+    const allocationAcks = new Map((params.allocations ?? []).map((entry) => [entry.allocationId, entry]));
+    await replaceAll(allocationsStore, allocations.map((row) => {
+      const ack = allocationAcks.get(row.allocationId);
+      if (!ack) return normalizeAllocation(row);
+      return normalizeAllocation({
+        ...row,
+        serverConsumedQuantity: Math.max(Number(row.serverConsumedQuantity ?? 0), Number(ack.serverConsumedQuantity ?? 0)),
+        localPendingConsumption: Math.max(0, Number(row.localPendingConsumption ?? 0) - Number(ack.acknowledgedQuantity ?? 0)),
+        allocationStatus: normalizeAllocationStatus(ack.status),
+        serverVersion: Math.max(Number(row.serverVersion ?? 0), Number(ack.serverVersion ?? 0)),
+        updatedAt: now,
+        lastSyncedAt: now,
+      });
+    }));
+    await replaceAll(pendingStore, pendingRows.map((row) => row.localSaleId === params.localSaleId ? {
+      ...row,
+      status: 'SYNCED',
+      syncedAt: now,
+    } : row));
+  }
+
+  await putStore(activityStore, {
+    localId: crypto.randomUUID(),
+    cartId: null,
+    saleId: params.localSaleId,
+    type: params.nextStatus === 'SYNCED' ? 'sale.synced' : 'sale.sync_conflict',
+    message: params.nextStatus === 'SYNCED'
+      ? `Vente offline ${params.localSaleId} synchronisee sur le serveur.`
+      : `Conflit de synchronisation offline ${params.localSaleId}: ${params.errorMessage ?? params.errorCode ?? 'inconnu'}.`,
+    createdAt: now,
+  } satisfies OfflineActivityLogEntry);
+
   await txDone(tx);
 }
 
@@ -295,6 +544,7 @@ export async function persistBootstrapSnapshot(
       SETTINGS_STORE,
       AUTH_STORE,
       WORKSTATION_STORE,
+      CASH_SESSION_STORE,
       SYNC_STATE_STORE,
     ],
     'readwrite',
@@ -379,6 +629,25 @@ export async function persistBootstrapSnapshot(
 
   await replaceAll(tx.objectStore(AUTH_STORE), [auth]);
   await replaceAll(tx.objectStore(WORKSTATION_STORE), [workstation]);
+  await replaceAll(
+    tx.objectStore(CASH_SESSION_STORE),
+    payload.cashSession
+      ? [{
+          cashSessionId: payload.cashSession.cashSessionId,
+          tenantId: payload.tenant.tenantId,
+          siteId: payload.cashSession.siteId,
+          workstationId: payload.cashSession.workstationId,
+          userId: payload.cashSession.userId,
+          status: payload.cashSession.status,
+          openedAt: payload.cashSession.openedAt,
+          openingBalanceUsd: payload.cashSession.openingBalanceUsd,
+          openingBalanceCdf: payload.cashSession.openingBalanceCdf,
+          serverVersion: payload.cashSession.serverVersion,
+          updatedAt: payload.cashSession.updatedAt,
+          lastSyncedAt: payload.serverTime,
+        } satisfies OfflineCashSessionSnapshot]
+      : [],
+  );
   await replaceAll(tx.objectStore(SYNC_STATE_STORE), [syncState]);
 
   await txDone(tx);
@@ -395,7 +664,7 @@ export async function applyPosChanges(
 ) {
   const db = await openOfflineDatabase();
   const tx = db.transaction(
-    [ARTICLES_STORE, LOTS_STORE, ALLOCATIONS_STORE, CUSTOMERS_STORE, SETTINGS_STORE, SYNC_STATE_STORE],
+    [ARTICLES_STORE, LOTS_STORE, ALLOCATIONS_STORE, CUSTOMERS_STORE, SETTINGS_STORE, CASH_SESSION_STORE, SYNC_STATE_STORE],
     'readwrite',
   );
 
@@ -404,12 +673,15 @@ export async function applyPosChanges(
   const allocationStore = tx.objectStore(ALLOCATIONS_STORE);
   const customerStore = tx.objectStore(CUSTOMERS_STORE);
   const settingsStore = tx.objectStore(SETTINGS_STORE);
+  const cashSessionStore = tx.objectStore(CASH_SESSION_STORE);
+  const conflictsStore = tx.objectStore(SYNC_CONFLICTS_STORE);
 
   const currentArticles = new Map((await readAllFromTransaction<OfflinePosArticle>(articleStore)).map((row) => [row.articleId, row]));
   const currentLots = new Map((await readAllFromTransaction<OfflinePosLot>(lotStore)).map((row) => [row.lotId, row]));
   const currentAllocations = new Map((await readAllFromTransaction<OfflineStockAllocation>(allocationStore)).map((row) => [row.allocationId, row]));
   const currentCustomers = new Map((await readAllFromTransaction<OfflinePosCustomer>(customerStore)).map((row) => [row.customerId, row]));
   const currentSettings = (await readAllFromTransaction<OfflinePosSettings>(settingsStore))[0] ?? null;
+  const currentConflicts = new Map((await readAllFromTransaction<OfflineSyncConflictEntry>(conflictsStore)).map((row) => [row.conflictId ?? row.localId, row]));
 
   for (const row of changesPayload.changes.articles) {
     currentArticles.set(row.articleId, {
@@ -484,6 +756,30 @@ export async function applyPosChanges(
     });
   }
 
+  for (const row of changesPayload.changes.conflicts ?? []) {
+    const conflictKey = row.conflictId;
+    if (row.operation === 'RESOLVE') {
+      currentConflicts.delete(conflictKey);
+      continue;
+    }
+    const existing = currentConflicts.get(conflictKey);
+    currentConflicts.set(conflictKey, {
+      localId: existing?.localId ?? crypto.randomUUID(),
+      conflictId: row.conflictId,
+      operationId: row.operationId,
+      localSaleId: row.localSaleId,
+      offlineReference: row.offlineReference,
+      code: row.conflictCode as OfflineSyncConflictEntry['code'],
+      message: row.message,
+      status: row.status,
+      severity: row.severity,
+      resolutionType: row.resolutionType,
+      workstationId: row.workstationId ?? undefined,
+      createdAt: existing?.createdAt ?? row.updatedAt,
+      updatedAt: row.updatedAt,
+    });
+  }
+
   if (changesPayload.changes.settings.length > 0) {
     const last = changesPayload.changes.settings[changesPayload.changes.settings.length - 1];
     await replaceAll(settingsStore, [{
@@ -505,10 +801,34 @@ export async function applyPosChanges(
     } satisfies OfflinePosSettings]);
   }
 
+  if ('cashSession' in changesPayload.changes) {
+    const row = changesPayload.changes.cashSession;
+    await replaceAll(
+      cashSessionStore,
+      row
+        ? [{
+            cashSessionId: row.cashSessionId,
+            tenantId: context.tenantId,
+            siteId: row.siteId,
+            workstationId: row.workstationId,
+            userId: row.userId,
+            status: row.status,
+            openedAt: row.openedAt,
+            openingBalanceUsd: row.openingBalanceUsd,
+            openingBalanceCdf: row.openingBalanceCdf,
+            serverVersion: row.serverVersion,
+            updatedAt: row.updatedAt,
+            lastSyncedAt: changesPayload.serverTime,
+          } satisfies OfflineCashSessionSnapshot]
+        : [],
+    );
+  }
+
   await replaceAll(articleStore, Array.from(currentArticles.values()));
   await replaceAll(lotStore, Array.from(currentLots.values()));
   await replaceAll(allocationStore, Array.from(currentAllocations.values()).map(normalizeAllocation));
   await replaceAll(customerStore, Array.from(currentCustomers.values()));
+  await replaceAll(conflictsStore, Array.from(currentConflicts.values()));
   await replaceAll(tx.objectStore(SYNC_STATE_STORE), [{
     ...context.syncState,
     syncCursor: changesPayload.nextCursor,
@@ -542,6 +862,7 @@ async function openOfflineDatabase() {
       ensureObjectStore(db, upgradeTransaction, SETTINGS_STORE, 'key');
       ensureObjectStore(db, upgradeTransaction, AUTH_STORE, 'id');
       ensureObjectStore(db, upgradeTransaction, WORKSTATION_STORE, 'id');
+      ensureObjectStore(db, upgradeTransaction, CASH_SESSION_STORE, 'cashSessionId', [['byWorkstation', 'workstationId'], ['byUser', 'userId'], ['byStatus', 'status']]);
       ensureObjectStore(db, upgradeTransaction, SYNC_STATE_STORE, 'id');
       ensureObjectStore(db, upgradeTransaction, SYNC_QUEUE_STORE, 'localId', [['byOperation', 'operationId'], ['byStatus', 'status'], ['byWorkstation', 'workstationId']]);
       ensureObjectStore(db, upgradeTransaction, SYNC_LOG_STORE, 'localId', [['byType', 'type'], ['byStatus', 'status']]);
@@ -549,6 +870,9 @@ async function openOfflineDatabase() {
       ensureObjectStore(db, upgradeTransaction, CARTS_STORE, 'cartId', [['byStatus', 'status'], ['byWorkstation', 'workstationId'], ['byUpdatedAt', 'updatedAt']]);
       ensureObjectStore(db, upgradeTransaction, DRAFT_RESERVATIONS_STORE, 'reservationId', [['byCart', 'cartId'], ['byAllocation', 'allocationId'], ['byLot', 'lotId']]);
       ensureObjectStore(db, upgradeTransaction, ACTIVITY_LOG_STORE, 'localId', [['byCart', 'cartId'], ['byType', 'type'], ['byCreatedAt', 'createdAt']]);
+      ensureObjectStore(db, upgradeTransaction, OFFLINE_SALES_STORE, 'localSaleId', [['byStatus', 'status'], ['bySyncStatus', 'syncStatus'], ['byValidatedAt', 'validatedAt']]);
+      ensureObjectStore(db, upgradeTransaction, OFFLINE_PAYMENTS_STORE, 'offlinePaymentId', [['bySale', 'localSaleId'], ['byStatus', 'status']]);
+      ensureObjectStore(db, upgradeTransaction, OFFLINE_PENDING_CONSUMPTIONS_STORE, 'pendingConsumptionId', [['bySale', 'localSaleId'], ['byOperation', 'operationId'], ['byAllocation', 'allocationId'], ['byStatus', 'status']]);
     };
     request.onsuccess = () => resolve(request.result);
   });

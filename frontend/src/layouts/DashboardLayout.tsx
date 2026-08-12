@@ -44,8 +44,14 @@ export function DashboardLayout() {
       links: [
         ['/offline/pos', 'POS Offline', 'pos_sync.read'],
         ['/offline/drafts', 'Brouillons', 'pos_sync.read'],
+        ['/offline/sales', 'Ventes offline', 'pos_sync.read'],
         ['/offline/synchronisation', 'Synchronisation', 'pos_sync.read'],
         ['/offline/poste', 'Poste', 'pos_sync.read'],
+        ['/offline-admin/dashboard', 'Dashboard offline', 'pos_offline.admin.read'],
+        ['/offline-admin/workstations', 'Postes offline', 'pos_offline.workstations.read'],
+        ['/offline-admin/allocations', 'Allocations offline', 'offline_allocations.read'],
+        ['/offline-admin/conflicts', 'Conflits offline', 'pos_sync.conflicts.read'],
+        ['/offline-admin/logs', 'Journal offline', 'pos_sync.logs.read'],
       ],
     },
     {

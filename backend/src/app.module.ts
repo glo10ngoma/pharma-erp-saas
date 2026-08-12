@@ -44,6 +44,7 @@ import { ActivityModule } from './activity/activity.module';
 import { PurchaseReturnsModule } from './purchase-returns/purchase-returns.module';
 import { CustomerReturnsModule } from './customer-returns/customer-returns.module';
 import { PosSyncModule } from './pos-sync/pos-sync.module';
+import { OfflineAllocationsModule } from './offline-allocations/offline-allocations.module';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { PosSyncModule } from './pos-sync/pos-sync.module';
     PurchaseReturnsModule,
     CustomerReturnsModule,
     PosSyncModule,
+    OfflineAllocationsModule,
     LotsModule,
     StocksModule,
     StockMovementsModule,

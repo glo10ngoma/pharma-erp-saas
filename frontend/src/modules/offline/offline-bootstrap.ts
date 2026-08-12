@@ -300,6 +300,7 @@ export function validateBootstrapPayload(payload: PosSyncBootstrapPayload) {
 export function validateChangesPayload(payload: PosSyncChangesPayload) {
   if (!payload?.nextCursor) throw new Error('INVALID_POS_CHANGES_CURSOR');
   if (!payload?.changes) throw new Error('INVALID_POS_CHANGES_PAYLOAD');
+  if (!Array.isArray(payload.changes.conflicts)) throw new Error('INVALID_POS_CHANGES_CONFLICTS');
   return true;
 }
 
@@ -346,7 +347,8 @@ function countChanges(payload: PosSyncChangesPayload) {
     + payload.changes.lots.length
     + payload.changes.allocations.length
     + payload.changes.customers.length
-    + payload.changes.settings.length;
+    + payload.changes.settings.length
+    + payload.changes.conflicts.length;
 }
 
 async function persistFailureState(

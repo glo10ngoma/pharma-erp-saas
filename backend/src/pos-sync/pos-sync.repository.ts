@@ -2,8 +2,12 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { AuthUser } from '../common/types/auth-user';
 import { DatabaseService } from '../database/database.service';
 import { BootstrapPosDto } from './dto/bootstrap-pos.dto';
+import { HeartbeatPosDto } from './dto/heartbeat-pos.dto';
 import { ListPosChangesDto } from './dto/list-pos-changes.dto';
+import { ListPosSyncAdminDto } from './dto/list-pos-sync-admin.dto';
 import { RegisterPosWorkstationDto } from './dto/register-pos-workstation.dto';
+import { ResolvePosSyncConflictDto } from './dto/resolve-pos-sync-conflict.dto';
+import { SubmitPosSaleValidateOperation } from './dto/submit-pos-operations.dto';
 
 type WorkstationRow = {
   workstation_id: string;
@@ -91,6 +95,89 @@ type SiteRow = {
   site_name: string;
 };
 
+type CashSessionBootstrapRow = {
+  cash_session_id: string;
+  user_id: string;
+  site_id: string;
+  workstation_id: string | null;
+  status: string;
+  opened_at: Date;
+  opening_balance_usd: string | null;
+  opening_balance_cdf: string | null;
+  updated_at: Date | null;
+};
+
+type WorkstationStatusRow = {
+  workstation_id: string;
+  workstation_code: string;
+  workstation_name: string;
+  workstation_type: string;
+  site_id: string | null;
+  site_name: string | null;
+  device_uuid: string | null;
+  is_active: boolean;
+  offline_status: string;
+  sync_state: string;
+  last_seen_at: Date | null;
+  last_sync_at: Date | null;
+  last_successful_sync_at: Date | null;
+  pending_count: number | string | null;
+  conflict_count: number | string | null;
+  snapshot_status: string | null;
+  app_version: string | null;
+  local_db_version: string | null;
+  user_id: string | null;
+  user_name: string | null;
+};
+
+type PosSyncConflictRow = {
+  conflict_id: string;
+  tenant_id: string;
+  site_id: string | null;
+  site_name: string | null;
+  workstation_id: string | null;
+  workstation_name: string | null;
+  operation_id: string;
+  local_sale_id: string | null;
+  offline_reference: string | null;
+  conflict_code: string;
+  status: string;
+  severity: string;
+  message: string;
+  local_payload: Record<string, unknown>;
+  server_context: Record<string, unknown>;
+  resolution_type: string | null;
+  resolution_payload: Record<string, unknown> | null;
+  created_at: Date;
+  resolved_at: Date | null;
+  resolved_by: string | null;
+  resolved_by_name: string | null;
+};
+
+type PosSyncConflictChangeRow = {
+  conflict_id: string;
+  workstation_id: string | null;
+  operation_id: string;
+  local_sale_id: string | null;
+  offline_reference: string | null;
+  conflict_code: string;
+  status: string;
+  severity: string;
+  message: string;
+  resolution_type: string | null;
+  created_at: Date;
+  resolved_at: Date | null;
+};
+
+type PosSyncLogRow = {
+  event_at: Date;
+  event_type: string;
+  level: string;
+  site_name: string | null;
+  workstation_name: string | null;
+  message: string;
+};
+
 type TimestampedArticleChange = ArticleBootstrapRow & { operation: 'UPSERT' | 'DEACTIVATE'; changed_at: Date | null };
 type TimestampedLotChange = LotBootstrapRow & { operation: 'UPSERT' | 'REVOKE'; changed_at: Date | null };
 type TimestampedAllocationChange = AllocationBootstrapRow & { operation: 'UPSERT' | 'REVOKE'; changed_at: Date | null };
@@ -169,11 +256,12 @@ export class PosSyncRepository {
   async buildBootstrap(user: AuthUser, query: BootstrapPosDto) {
     this.assertOfflinePermissions(user);
     const workstation = await this.resolveWorkstation(user, query);
-    const [tenant, site, exchangeRate, settings, articles, lots, allocations, customers] = await Promise.all([
+    const [tenant, site, exchangeRate, settings, cashSession, articles, lots, allocations, customers] = await Promise.all([
       this.getTenant(user),
       this.getSite(user, workstation.siteId),
       this.getExchangeRate(user),
       this.getOfflineSettings(user),
+      this.getBootstrapCashSession(user, workstation),
       this.getBootstrapArticles(user, workstation),
       this.getBootstrapLots(user, workstation),
       this.getBootstrapAllocations(user, workstation),
@@ -208,6 +296,7 @@ export class PosSyncRepository {
         timezone: settings.timezone,
         supportedCurrencies: settings.supportedCurrencies,
       },
+      cashSession,
       articles,
       lots,
       offlineAllocations: allocations,
@@ -219,12 +308,13 @@ export class PosSyncRepository {
     this.assertOfflinePermissions(user);
     const workstation = await this.resolveWorkstation(user, query);
     const since = decodeCursor(query.cursor);
-    const [articles, lots, allocations, customers, settings] = await Promise.all([
+    const [articles, lots, allocations, customers, settings, conflicts] = await Promise.all([
       this.getArticleChanges(user, workstation, since),
       this.getLotChanges(user, workstation, since),
       this.getAllocationChanges(user, workstation, since),
       this.getCustomerChanges(user, since),
       this.getSettingsChanges(user, since),
+      this.listConflictChanges(user, { workstationId: workstation.workstationId, since }),
     ]);
     const serverTime = new Date().toISOString();
     return {
@@ -232,14 +322,817 @@ export class PosSyncRepository {
       previousCursor: query.cursor ?? null,
       nextCursor: encodeCursor(serverTime),
       hasMore: false,
-      changes: { articles, lots, allocations, customers, settings },
+      changes: { articles, lots, allocations, customers, settings, conflicts, cashSession: null },
     };
+  }
+
+  async heartbeat(user: AuthUser, dto: HeartbeatPosDto) {
+    this.assertOfflineReadPermissions(user);
+    const workstation = await this.resolveWorkstation(user, dto);
+    const lastSyncAt = parseOptionalDate(dto.lastSyncAt);
+    const lastSuccessfulSyncAt = parseOptionalDate(dto.lastSuccessfulSyncAt);
+    const snapshotStatus = dto.snapshotStatus ?? 'UNKNOWN';
+    const pendingCount = Math.max(0, Number(dto.pendingCount ?? 0));
+    const conflictCount = Math.max(0, Number(dto.conflictCount ?? 0));
+
+    await this.db.query(
+      `
+      INSERT INTO pos_workstation_status (
+        tenant_id, site_id, workstation_id, device_id, user_id, app_version,
+        local_db_version, sync_cursor, pending_count, conflict_count, snapshot_status,
+        last_seen_at, last_sync_at, last_successful_sync_at, updated_at
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,CURRENT_TIMESTAMP,$12,$13,CURRENT_TIMESTAMP)
+      ON CONFLICT (workstation_id) DO UPDATE SET
+        site_id = EXCLUDED.site_id,
+        device_id = EXCLUDED.device_id,
+        user_id = EXCLUDED.user_id,
+        app_version = EXCLUDED.app_version,
+        local_db_version = EXCLUDED.local_db_version,
+        sync_cursor = EXCLUDED.sync_cursor,
+        pending_count = EXCLUDED.pending_count,
+        conflict_count = EXCLUDED.conflict_count,
+        snapshot_status = EXCLUDED.snapshot_status,
+        last_seen_at = CURRENT_TIMESTAMP,
+        last_sync_at = COALESCE(EXCLUDED.last_sync_at, pos_workstation_status.last_sync_at),
+        last_successful_sync_at = COALESCE(EXCLUDED.last_successful_sync_at, pos_workstation_status.last_successful_sync_at),
+        updated_at = CURRENT_TIMESTAMP
+      `,
+      [
+        user.tenantId,
+        workstation.siteId,
+        workstation.workstationId,
+        dto.deviceId ?? workstation.deviceUuid ?? null,
+        user.userId,
+        dto.appVersion ?? null,
+        dto.localDbVersion ?? null,
+        dto.syncCursor ?? null,
+        pendingCount,
+        conflictCount,
+        snapshotStatus,
+        lastSyncAt,
+        lastSuccessfulSyncAt,
+      ],
+    );
+
+    await this.db.query(
+      `
+      UPDATE pos_workstations
+      SET sync_state = $3,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE tenant_id = $1
+        AND workstation_id = $2
+      `,
+      [
+        user.tenantId,
+        workstation.workstationId,
+        conflictCount > 0 ? 'CONFLICT' : pendingCount > 0 ? 'PENDING' : 'SYNCED',
+      ],
+    );
+
+    return {
+      workstationId: workstation.workstationId,
+      status: this.computeWorkstationStatus({
+        isActive: true,
+        offlineStatus: workstation.offlineStatus,
+        snapshotStatus,
+        lastSeenAt: new Date(),
+        conflictCount,
+      }),
+      serverTime: new Date().toISOString(),
+    };
+  }
+
+  async adminDashboard(user: AuthUser, query: ListPosSyncAdminDto) {
+    this.assertOfflineAdminPermissions(user, 'pos_offline.admin.read');
+    const workstations = await this.adminWorkstations(user, query);
+    const conflicts = await this.adminConflicts(user, query);
+    const allocations = await this.db.query<{ active_allocations: string; reserved_quantity: string }>(
+      `
+      SELECT
+        COUNT(*) FILTER (WHERE status = 'ACTIVE')::int AS active_allocations,
+        COALESCE(SUM(GREATEST(allocated_quantity - consumed_quantity, 0)), 0)::numeric AS reserved_quantity
+      FROM offline_stock_allocations
+      WHERE tenant_id = $1
+        AND ($2::uuid IS NULL OR site_id = $2::uuid)
+      `,
+      [user.tenantId, query.siteId ?? user.siteId ?? null],
+    );
+    const freeOnline = await this.db.query<{ free_quantity: string }>(
+      `
+      SELECT COALESCE(SUM(quantity_available), 0)::numeric
+             - COALESCE((
+                SELECT SUM(GREATEST(allocated_quantity - consumed_quantity, 0))
+                FROM offline_stock_allocations
+                WHERE tenant_id = $1
+                  AND ($2::uuid IS NULL OR site_id = $2::uuid)
+                  AND status = 'ACTIVE'
+             ), 0)::numeric AS free_quantity
+      FROM stocks
+      WHERE tenant_id = $1
+        AND ($2::uuid IS NULL OR site_id = $2::uuid)
+      `,
+      [user.tenantId, query.siteId ?? user.siteId ?? null],
+    );
+
+    return {
+      workstations: {
+        total: workstations.length,
+        online: workstations.filter((row) => row.status === 'ONLINE').length,
+        offline: workstations.filter((row) => row.status === 'OFFLINE').length,
+        degraded: workstations.filter((row) => row.status === 'DEGRADED').length,
+        stale: workstations.filter((row) => row.status === 'STALE').length,
+        revoked: workstations.filter((row) => row.status === 'REVOKED').length,
+      },
+      queue: {
+        pending: workstations.reduce((sum, row) => sum + row.pendingCount, 0),
+        conflicts: conflicts.filter((row) => row.status === 'OPEN' || row.status === 'UNDER_REVIEW').length,
+      },
+      allocations: {
+        active: Number(allocations.rows[0]?.active_allocations ?? 0),
+        reservedQuantity: Number(allocations.rows[0]?.reserved_quantity ?? 0),
+        freeOnlineQuantity: Number(freeOnline.rows[0]?.free_quantity ?? 0),
+      },
+    };
+  }
+
+  async adminWorkstations(user: AuthUser, query: ListPosSyncAdminDto) {
+    this.assertOfflineAdminPermissions(user, 'pos_offline.workstations.read');
+    const result = await this.db.query<WorkstationStatusRow>(
+      `
+      SELECT
+        w.workstation_id,
+        w.workstation_code,
+        w.workstation_name,
+        w.workstation_type,
+        w.site_id,
+        s.site_name,
+        w.device_uuid,
+        w.is_active,
+        w.offline_status,
+        w.sync_state,
+        pws.last_seen_at,
+        pws.last_sync_at,
+        pws.last_successful_sync_at,
+        pws.pending_count,
+        pws.conflict_count,
+        pws.snapshot_status,
+        pws.app_version,
+        pws.local_db_version,
+        pws.user_id,
+        u.full_name AS user_name
+      FROM pos_workstations w
+      LEFT JOIN sites s
+        ON s.tenant_id = w.tenant_id
+       AND s.site_id = w.site_id
+      LEFT JOIN pos_workstation_status pws
+        ON pws.workstation_id = w.workstation_id
+      LEFT JOIN users u
+        ON u.tenant_id = w.tenant_id
+       AND u.user_id = pws.user_id
+      WHERE w.tenant_id = $1
+        AND ($2::uuid IS NULL OR w.site_id = $2::uuid)
+        AND ($3::uuid IS NULL OR w.workstation_id = $3::uuid)
+        AND (
+          $4::varchar IS NULL
+          OR w.workstation_name ILIKE '%' || $4 || '%'
+          OR w.workstation_code ILIKE '%' || $4 || '%'
+          OR COALESCE(s.site_name, '') ILIKE '%' || $4 || '%'
+          OR COALESCE(u.full_name, '') ILIKE '%' || $4 || '%'
+        )
+      ORDER BY COALESCE(pws.last_seen_at, w.updated_at) DESC, w.workstation_name ASC
+      `,
+      [user.tenantId, query.siteId ?? user.siteId ?? null, query.workstationId ?? null, query.search?.trim() || null],
+    );
+
+    return result.rows
+      .map((row) => this.toAdminWorkstation(row))
+      .filter((row) => !query.status || row.status === query.status);
+  }
+
+  async adminWorkstation(user: AuthUser, id: string) {
+    const rows = await this.adminWorkstations(user, { workstationId: id });
+    const workstation = rows[0];
+    if (!workstation) throw new NotFoundException('WORKSTATION_NOT_FOUND');
+
+    const [allocations, conflicts] = await Promise.all([
+      this.db.query<{ total: string; reserved: string }>(
+        `
+        SELECT
+          COUNT(*)::int AS total,
+          COALESCE(SUM(GREATEST(allocated_quantity - consumed_quantity, 0)), 0)::numeric AS reserved
+        FROM offline_stock_allocations
+        WHERE tenant_id = $1
+          AND workstation_id = $2
+        `,
+        [user.tenantId, id],
+      ),
+      this.db.query<{ total: string }>(
+        `
+        SELECT COUNT(*)::int AS total
+        FROM pos_sync_conflicts
+        WHERE tenant_id = $1
+          AND workstation_id = $2
+          AND status IN ('OPEN', 'UNDER_REVIEW')
+        `,
+        [user.tenantId, id],
+      ),
+    ]);
+
+    return {
+      ...workstation,
+      allocationSummary: {
+        total: Number(allocations.rows[0]?.total ?? 0),
+        reservedQuantity: Number(allocations.rows[0]?.reserved ?? 0),
+      },
+      openConflicts: Number(conflicts.rows[0]?.total ?? 0),
+    };
+  }
+
+  async revokeWorkstation(user: AuthUser, id: string) {
+    this.assertOfflineAdminPermissions(user, 'pos_offline.workstations.read');
+    const workstation = await this.resolveWorkstationForAdmin(user, id);
+
+    await this.db.transaction(async (client) => {
+      await client.query(
+        `
+        UPDATE pos_workstations
+        SET offline_status = 'REVOKED',
+            sync_state = 'REVOKED',
+            updated_at = CURRENT_TIMESTAMP
+        WHERE tenant_id = $1
+          AND workstation_id = $2
+        `,
+        [user.tenantId, id],
+      );
+
+      await client.query(
+        `
+        UPDATE offline_stock_allocations
+        SET allocated_quantity = consumed_quantity,
+            status = CASE
+              WHEN consumed_quantity > 0 THEN 'EXHAUSTED'
+              ELSE 'REVOKED'
+            END,
+            server_version = server_version + 1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE tenant_id = $1
+          AND workstation_id = $2
+          AND status <> 'REVOKED'
+        `,
+        [user.tenantId, id],
+      );
+
+      await client.query(
+        `
+        INSERT INTO audit_logs (tenant_id, site_id, user_id, table_name, record_id, action_type, new_value)
+        VALUES ($1, $2, $3, 'pos_workstations', $4, 'UPDATE', $5::jsonb)
+        `,
+        [
+          user.tenantId,
+          workstation.siteId ?? user.siteId ?? null,
+          user.userId,
+          id,
+          JSON.stringify({
+            action: 'POS_OFFLINE_WORKSTATION_REVOKE',
+            workstationId: id,
+            workstationName: workstation.workstationName,
+            deviceId: workstation.deviceId,
+          }),
+        ],
+      );
+    });
+
+    return this.adminWorkstation(user, id);
+  }
+
+  async adminConflicts(user: AuthUser, query: ListPosSyncAdminDto) {
+    this.assertOfflineAdminPermissions(user, 'pos_sync.conflicts.read');
+    const result = await this.db.query<PosSyncConflictRow>(
+      `
+      SELECT
+        c.conflict_id,
+        c.tenant_id,
+        c.site_id,
+        s.site_name,
+        c.workstation_id,
+        w.workstation_name,
+        c.operation_id,
+        c.local_sale_id,
+        c.offline_reference,
+        c.conflict_code,
+        c.status,
+        c.severity,
+        c.message,
+        c.local_payload,
+        c.server_context,
+        c.resolution_type,
+        c.resolution_payload,
+        c.created_at,
+        c.resolved_at,
+        c.resolved_by,
+        u.full_name AS resolved_by_name
+      FROM pos_sync_conflicts c
+      LEFT JOIN sites s ON s.site_id = c.site_id AND s.tenant_id = c.tenant_id
+      LEFT JOIN pos_workstations w ON w.workstation_id = c.workstation_id AND w.tenant_id = c.tenant_id
+      LEFT JOIN users u ON u.user_id = c.resolved_by AND u.tenant_id = c.tenant_id
+      WHERE c.tenant_id = $1
+        AND ($2::uuid IS NULL OR c.site_id = $2::uuid)
+        AND ($3::uuid IS NULL OR c.workstation_id = $3::uuid)
+        AND ($4::varchar IS NULL OR c.status = $4::varchar)
+        AND ($5::varchar IS NULL OR c.severity = $5::varchar)
+        AND (
+          $6::varchar IS NULL
+          OR c.offline_reference ILIKE '%' || $6 || '%'
+          OR c.conflict_code ILIKE '%' || $6 || '%'
+          OR c.message ILIKE '%' || $6 || '%'
+        )
+      ORDER BY c.created_at DESC
+      `,
+      [
+        user.tenantId,
+        query.siteId ?? user.siteId ?? null,
+        query.workstationId ?? null,
+        query.conflictStatus ?? null,
+        query.severity ?? null,
+        query.search?.trim() || null,
+      ],
+    );
+    return result.rows.map((row) => this.toAdminConflict(row));
+  }
+
+  async adminConflict(user: AuthUser, id: string) {
+    const rows = await this.adminConflicts(user, { search: undefined });
+    const conflict = rows.find((row) => row.conflictId === id);
+    if (!conflict) throw new NotFoundException('POS_SYNC_CONFLICT_NOT_FOUND');
+    return conflict;
+  }
+
+  async resolveConflict(user: AuthUser, id: string, dto: ResolvePosSyncConflictDto) {
+    this.assertOfflineAdminPermissions(user, 'pos_sync.conflicts.resolve');
+    const result = await this.db.query<PosSyncConflictRow>(
+      `
+      UPDATE pos_sync_conflicts
+      SET status = CASE
+            WHEN $3::varchar = 'UNDER_REVIEW' THEN 'UNDER_REVIEW'
+            WHEN $3::varchar = 'DISMISS' THEN 'DISMISSED'
+            ELSE 'RESOLVED'
+          END,
+          resolution_type = $3,
+          resolution_payload = $4::jsonb,
+          resolved_at = CASE WHEN $3::varchar = 'UNDER_REVIEW' THEN NULL ELSE CURRENT_TIMESTAMP END,
+          resolved_by = CASE WHEN $3::varchar = 'UNDER_REVIEW' THEN NULL ELSE $2::uuid END
+      WHERE tenant_id = $1
+        AND conflict_id = $5
+      RETURNING *
+      `,
+      [
+        user.tenantId,
+        user.userId,
+        dto.resolutionType,
+        JSON.stringify({
+          note: dto.note ?? null,
+          targetCashSessionId: dto.targetCashSessionId ?? null,
+          payload: dto.payload ?? null,
+        }),
+        id,
+      ],
+    );
+    if (!result.rows[0]) throw new NotFoundException('POS_SYNC_CONFLICT_NOT_FOUND');
+    await this.db.query(
+      `
+      INSERT INTO audit_logs (tenant_id, site_id, user_id, table_name, record_id, action_type, new_value)
+      VALUES ($1, $2, $3, 'pos_sync_conflicts', $4, 'UPDATE', $5::jsonb)
+      `,
+      [
+        user.tenantId,
+        user.siteId ?? null,
+        user.userId,
+        id,
+        JSON.stringify({
+          resolutionType: dto.resolutionType,
+          note: dto.note ?? null,
+          targetCashSessionId: dto.targetCashSessionId ?? null,
+        }),
+      ],
+    );
+    return this.toAdminConflict(result.rows[0]);
+  }
+
+  async listConflictChanges(user: AuthUser, params: { workstationId?: string | null; since: Date | null }) {
+    const result = await this.db.query<PosSyncConflictChangeRow>(
+      `
+      SELECT
+        conflict_id,
+        workstation_id,
+        operation_id,
+        local_sale_id,
+        offline_reference,
+        conflict_code,
+        status,
+        severity,
+        message,
+        resolution_type,
+        created_at,
+        resolved_at
+      FROM pos_sync_conflicts
+      WHERE tenant_id = $1
+        AND ($2::uuid IS NULL OR workstation_id = $2::uuid)
+        AND ($3::timestamptz IS NULL OR GREATEST(created_at, COALESCE(resolved_at, created_at)) > $3::timestamptz)
+      ORDER BY GREATEST(created_at, COALESCE(resolved_at, created_at)) ASC, conflict_id ASC
+      `,
+      [user.tenantId, params.workstationId ?? null, params.since ? params.since.toISOString() : null],
+    );
+
+    return result.rows.map((row) => ({
+      operation: row.status === 'RESOLVED' || row.status === 'DISMISSED' ? 'RESOLVE' : 'UPSERT',
+      conflictId: row.conflict_id,
+      workstationId: row.workstation_id,
+      operationId: row.operation_id,
+      localSaleId: row.local_sale_id,
+      offlineReference: row.offline_reference,
+      conflictCode: row.conflict_code,
+      status: row.status,
+      severity: row.severity,
+      message: row.message,
+      resolutionType: row.resolution_type,
+      updatedAt: (row.resolved_at ?? row.created_at).toISOString(),
+    }));
+  }
+
+  async adminLogs(user: AuthUser, query: ListPosSyncAdminDto) {
+    this.assertOfflineAdminPermissions(user, 'pos_sync.logs.read');
+    const result = await this.db.query<PosSyncLogRow>(
+      `
+      SELECT *
+      FROM (
+        SELECT
+          COALESCE(pws.updated_at, pws.last_seen_at) AS event_at,
+          'HEARTBEAT'::varchar AS event_type,
+          CASE WHEN COALESCE(pws.conflict_count, 0) > 0 THEN 'WARNING' ELSE 'INFO' END AS level,
+          s.site_name,
+          w.workstation_name,
+          CONCAT('Heartbeat ', w.workstation_name, ' - pending=', COALESCE(pws.pending_count, 0), ' conflit=', COALESCE(pws.conflict_count, 0)) AS message
+        FROM pos_workstation_status pws
+        JOIN pos_workstations w ON w.workstation_id = pws.workstation_id AND w.tenant_id = pws.tenant_id
+        LEFT JOIN sites s ON s.site_id = pws.site_id AND s.tenant_id = pws.tenant_id
+        WHERE pws.tenant_id = $1
+          AND ($2::uuid IS NULL OR pws.site_id = $2::uuid)
+
+        UNION ALL
+
+        SELECT
+          c.created_at AS event_at,
+          'CONFLICT'::varchar AS event_type,
+          c.severity AS level,
+          s.site_name,
+          w.workstation_name,
+          c.message
+        FROM pos_sync_conflicts c
+        LEFT JOIN sites s ON s.site_id = c.site_id AND s.tenant_id = c.tenant_id
+        LEFT JOIN pos_workstations w ON w.workstation_id = c.workstation_id AND w.tenant_id = c.tenant_id
+        WHERE c.tenant_id = $1
+          AND ($2::uuid IS NULL OR c.site_id = $2::uuid)
+
+        UNION ALL
+
+        SELECT
+          processed_at AS event_at,
+          'SYNC_SUCCESS'::varchar AS event_type,
+          'INFO'::varchar AS level,
+          s.site_name,
+          w.workstation_name,
+          CONCAT('Operation ', operation_type, ' synchronisee pour ', COALESCE(server_sale_number, local_sale_id::text)) AS message
+        FROM pos_sync_operations pso
+        LEFT JOIN sites s ON s.site_id = pso.site_id AND s.tenant_id = pso.tenant_id
+        LEFT JOIN pos_workstations w ON w.site_id = pso.site_id AND w.tenant_id = pso.tenant_id
+        WHERE pso.tenant_id = $1
+          AND ($2::uuid IS NULL OR pso.site_id = $2::uuid)
+      ) logs
+      WHERE ($3::varchar IS NULL OR logs.event_type = $3::varchar)
+      ORDER BY logs.event_at DESC
+      LIMIT 200
+      `,
+      [user.tenantId, query.siteId ?? user.siteId ?? null, query.search?.trim() || null],
+    );
+    return result.rows.map((row) => ({
+      eventAt: row.event_at.toISOString(),
+      eventType: row.event_type,
+      level: row.level,
+      siteName: row.site_name,
+      workstationName: row.workstation_name,
+      message: row.message,
+    }));
+  }
+
+  async findProcessedOperation(user: AuthUser, operationId: string) {
+    const result = await this.db.query<{
+      server_sale_id: string | null;
+      server_sale_number: string | null;
+    }>(
+      `
+      SELECT server_sale_id, server_sale_number
+      FROM pos_sync_operations
+      WHERE tenant_id = $1
+        AND operation_id = $2
+      LIMIT 1
+      `,
+      [user.tenantId, operationId],
+    );
+    const row = result.rows[0];
+    return row
+      ? {
+          serverSaleId: row.server_sale_id,
+          serverSaleNumber: row.server_sale_number,
+        }
+      : null;
+  }
+
+  async recordProcessedOperation(user: AuthUser, params: {
+    operationId: string;
+    localSaleId: string;
+    operationType: string;
+    payload: unknown;
+    serverSaleId: string;
+    serverSaleNumber: string | null;
+  }) {
+    await this.db.query(
+      `
+      INSERT INTO pos_sync_operations (
+        tenant_id,
+        site_id,
+        user_id,
+        operation_id,
+        local_sale_id,
+        operation_type,
+        payload_json,
+        status,
+        server_sale_id,
+        server_sale_number,
+        processed_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, 'SYNCED', $8, $9, CURRENT_TIMESTAMP)
+      ON CONFLICT (tenant_id, operation_id) DO NOTHING
+      `,
+      [
+        user.tenantId,
+        user.siteId ?? null,
+        user.userId,
+        params.operationId,
+        params.localSaleId,
+        params.operationType,
+        JSON.stringify(params.payload),
+        params.serverSaleId,
+        params.serverSaleNumber,
+      ],
+      );
+  }
+
+  async getOperationAllocationStates(user: AuthUser, operation: SubmitPosSaleValidateOperation) {
+    const allocationIds = operation.items.flatMap((item) => item.lotAllocations.map((allocation) => allocation.allocationId));
+    if (!allocationIds.length) return [];
+
+    const placeholders = allocationIds.map((_, index) => `$${index + 2}`).join(',');
+    const result = await this.db.query<{
+      allocation_id: string;
+      lot_id: string;
+      consumed_quantity: string;
+      allocated_quantity: string;
+      server_version: string;
+      status: string;
+    }>(
+      `SELECT allocation_id, lot_id, consumed_quantity, allocated_quantity, server_version, status
+       FROM offline_stock_allocations
+       WHERE tenant_id = $1
+         AND allocation_id IN (${placeholders})`,
+      [user.tenantId, ...allocationIds],
+    );
+
+    return result.rows.map((row) => ({
+      allocationId: row.allocation_id,
+      lotId: row.lot_id,
+      acknowledgedQuantity: 0,
+      serverConsumedQuantity: Number(row.consumed_quantity ?? 0),
+      availableQuantity: Math.max(
+        0,
+        Number(row.allocated_quantity ?? 0) - Number(row.consumed_quantity ?? 0),
+      ),
+      serverVersion: Number(row.server_version ?? 0),
+      status: row.status,
+    }));
+  }
+
+  async ensureWorkstationOperational(user: AuthUser, params: { workstationId?: string; deviceId?: string }) {
+    return this.resolveWorkstation(user, params);
+  }
+
+  async recordConflict(user: AuthUser, params: {
+    operationId: string;
+    localSaleId: string;
+    workstationId?: string | null;
+    siteId?: string | null;
+    offlineReference?: string | null;
+    conflictCode: string;
+    message: string;
+    localPayload: unknown;
+    serverContext?: unknown;
+    severity?: 'INFO' | 'WARNING' | 'CRITICAL';
+  }) {
+    await this.db.query(
+      `
+      INSERT INTO pos_sync_conflicts (
+        tenant_id,
+        site_id,
+        workstation_id,
+        operation_id,
+        local_sale_id,
+        offline_reference,
+        conflict_code,
+        status,
+        severity,
+        message,
+        local_payload,
+        server_context
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'OPEN', $8, $9, $10::jsonb, $11::jsonb)
+      ON CONFLICT (tenant_id, operation_id) DO UPDATE SET
+        site_id = EXCLUDED.site_id,
+        workstation_id = EXCLUDED.workstation_id,
+        local_sale_id = EXCLUDED.local_sale_id,
+        offline_reference = EXCLUDED.offline_reference,
+        conflict_code = EXCLUDED.conflict_code,
+        status = 'OPEN',
+        severity = EXCLUDED.severity,
+        message = EXCLUDED.message,
+        local_payload = EXCLUDED.local_payload,
+        server_context = EXCLUDED.server_context,
+        resolution_type = NULL,
+        resolution_payload = NULL,
+        resolved_at = NULL,
+        resolved_by = NULL
+      `,
+      [
+        user.tenantId,
+        params.siteId ?? user.siteId ?? null,
+        params.workstationId ?? null,
+        params.operationId,
+        params.localSaleId,
+        params.offlineReference ?? null,
+        params.conflictCode,
+        params.severity ?? inferConflictSeverity(params.conflictCode),
+        params.message,
+        JSON.stringify(params.localPayload ?? {}),
+        JSON.stringify(params.serverContext ?? {}),
+      ],
+    );
+  }
+
+  private assertOfflineReadPermissions(user: AuthUser) {
+    if (
+      !user.permissions.includes('pos_sync.read')
+      && !user.permissions.includes('offline_allocations.read')
+      && user.role !== 'SUPER_ADMIN'
+    ) {
+      throw new ForbiddenException('PERMISSION_DENIED');
+    }
+  }
+
+  private assertOfflineAdminPermissions(user: AuthUser, permission: string) {
+    if (!user.permissions.includes(permission) && user.role !== 'SUPER_ADMIN') {
+      throw new ForbiddenException('PERMISSION_DENIED');
+    }
   }
 
   private assertOfflinePermissions(user: AuthUser) {
     if (!user.permissions.includes('offline_allocations.read') && user.role !== 'SUPER_ADMIN') {
       throw new ForbiddenException('PERMISSION_DENIED');
     }
+  }
+
+  private toAdminWorkstation(row: WorkstationStatusRow) {
+    const pendingCount = Number(row.pending_count ?? 0);
+    const conflictCount = Number(row.conflict_count ?? 0);
+    const lastSeenAt = row.last_seen_at ? row.last_seen_at.toISOString() : null;
+    const lastSyncAt = row.last_sync_at ? row.last_sync_at.toISOString() : null;
+    const lastSuccessfulSyncAt = row.last_successful_sync_at ? row.last_successful_sync_at.toISOString() : null;
+
+    return {
+      workstationId: row.workstation_id,
+      workstationCode: row.workstation_code,
+      workstationName: row.workstation_name,
+      workstationType: row.workstation_type,
+      siteId: row.site_id,
+      siteName: row.site_name,
+      deviceId: row.device_uuid,
+      isActive: row.is_active,
+      offlineStatus: row.offline_status,
+      syncState: row.sync_state,
+      snapshotStatus: row.snapshot_status ?? 'UNKNOWN',
+      pendingCount,
+      conflictCount,
+      appVersion: row.app_version,
+      localDbVersion: row.local_db_version,
+      userId: row.user_id,
+      userName: row.user_name,
+      lastSeenAt,
+      lastSyncAt,
+      lastSuccessfulSyncAt,
+      status: this.computeWorkstationStatus({
+        isActive: row.is_active,
+        offlineStatus: row.offline_status,
+        snapshotStatus: row.snapshot_status,
+        lastSeenAt: row.last_seen_at,
+        conflictCount,
+      }),
+    };
+  }
+
+  private toAdminConflict(row: PosSyncConflictRow) {
+    return {
+      conflictId: row.conflict_id,
+      tenantId: row.tenant_id,
+      siteId: row.site_id,
+      siteName: row.site_name,
+      workstationId: row.workstation_id,
+      workstationName: row.workstation_name,
+      operationId: row.operation_id,
+      localSaleId: row.local_sale_id,
+      offlineReference: row.offline_reference,
+      conflictCode: row.conflict_code,
+      status: row.status,
+      severity: row.severity,
+      message: row.message,
+      localPayload: row.local_payload ?? {},
+      serverContext: row.server_context ?? {},
+      resolutionType: row.resolution_type,
+      resolutionPayload: row.resolution_payload ?? null,
+      createdAt: row.created_at.toISOString(),
+      resolvedAt: row.resolved_at ? row.resolved_at.toISOString() : null,
+      resolvedBy: row.resolved_by,
+      resolvedByName: row.resolved_by_name,
+    };
+  }
+
+  private computeWorkstationStatus(params: {
+    isActive: boolean;
+    offlineStatus: string | null;
+    snapshotStatus: string | null;
+    lastSeenAt: Date | null;
+    conflictCount: number;
+  }): 'ONLINE' | 'OFFLINE' | 'DEGRADED' | 'STALE' | 'REVOKED' {
+    if (!params.isActive || params.offlineStatus === 'REVOKED') return 'REVOKED';
+    if (params.conflictCount > 0) return 'DEGRADED';
+    if (!params.lastSeenAt) return 'OFFLINE';
+
+    const ageMs = Date.now() - params.lastSeenAt.getTime();
+    if (ageMs > 1000 * 60 * 30) return 'OFFLINE';
+    if (ageMs > 1000 * 60 * 5) return 'STALE';
+    if (params.snapshotStatus === 'STALE' || params.snapshotStatus === 'EXPIRED') return 'DEGRADED';
+    return 'ONLINE';
+  }
+
+  private async resolveWorkstationForAdmin(user: AuthUser, workstationId: string) {
+    const result = await this.db.query<WorkstationStatusRow>(
+      `
+      SELECT
+        w.workstation_id,
+        w.workstation_code,
+        w.workstation_name,
+        w.workstation_type,
+        w.site_id,
+        s.site_name,
+        w.device_uuid,
+        w.is_active,
+        w.offline_status,
+        w.sync_state,
+        pws.last_seen_at,
+        pws.last_sync_at,
+        pws.last_successful_sync_at,
+        pws.pending_count,
+        pws.conflict_count,
+        pws.snapshot_status,
+        pws.app_version,
+        pws.local_db_version,
+        pws.user_id,
+        u.full_name AS user_name
+      FROM pos_workstations w
+      LEFT JOIN sites s
+        ON s.tenant_id = w.tenant_id
+       AND s.site_id = w.site_id
+      LEFT JOIN pos_workstation_status pws
+        ON pws.workstation_id = w.workstation_id
+      LEFT JOIN users u
+        ON u.tenant_id = w.tenant_id
+       AND u.user_id = pws.user_id
+      WHERE w.tenant_id = $1
+        AND w.workstation_id = $2
+      LIMIT 1
+      `,
+      [user.tenantId, workstationId],
+    );
+    const row = result.rows[0];
+    if (!row) throw new NotFoundException('WORKSTATION_NOT_FOUND');
+    return this.toAdminWorkstation(row);
   }
 
   private async resolveWorkstation(user: AuthUser, query: { workstationId?: string; deviceId?: string }) {
@@ -265,6 +1158,7 @@ export class PosSyncRepository {
     if (!row) throw new NotFoundException('WORKSTATION_NOT_FOUND');
     if (!row.is_active) throw new BadRequestException('WORKSTATION_INACTIVE');
     if (!row.site_id) throw new BadRequestException('WORKSTATION_SITE_REQUIRED');
+    if (row.offline_status === 'REVOKED') throw new BadRequestException('WORKSTATION_REVOKED');
     return {
       workstationId: row.workstation_id,
       siteId: row.site_id,
@@ -360,6 +1254,50 @@ export class PosSyncRepository {
       supportedCurrencies: row?.supported_currencies ?? ['USD', 'CDF'],
       offlineAuthorizationHours: Number(row?.offline_hours ?? DEFAULT_OFFLINE_AUTHORIZATION_HOURS),
       timezone: row?.timezone ?? DEFAULT_TIMEZONE,
+    };
+  }
+
+  private async getBootstrapCashSession(
+    user: AuthUser,
+    workstation: { workstationId: string; siteId: string; deviceUuid: string | null },
+  ) {
+    const result = await this.db.query<CashSessionBootstrapRow>(
+      `
+      SELECT
+        cs.cash_session_id,
+        cs.user_id,
+        cs.site_id,
+        cs.workstation_id,
+        cs.status,
+        cs.opened_at,
+        cs.opening_balance_usd,
+        cs.opening_balance_cdf,
+        cs.updated_at
+      FROM cash_sessions cs
+      WHERE cs.tenant_id = $1
+        AND cs.user_id = $2
+        AND cs.site_id = $3
+        AND cs.status = 'OPEN'
+        AND ($4::uuid IS NULL OR cs.workstation_id = $4::uuid)
+        AND ($5::text IS NULL OR cs.device_uuid = $5::text)
+      ORDER BY cs.opened_at DESC
+      LIMIT 1
+      `,
+      [user.tenantId, user.userId, workstation.siteId, workstation.workstationId, workstation.deviceUuid ?? null],
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    return {
+      cashSessionId: row.cash_session_id,
+      userId: row.user_id,
+      siteId: row.site_id,
+      workstationId: row.workstation_id,
+      status: row.status === 'OPEN' ? 'OPEN' : 'CLOSED',
+      openedAt: row.opened_at.toISOString(),
+      openingBalanceUsd: Number(row.opening_balance_usd ?? 0),
+      openingBalanceCdf: Number(row.opening_balance_cdf ?? 0),
+      serverVersion: row.updated_at ? new Date(row.updated_at).getTime() : new Date(row.opened_at).getTime(),
+      updatedAt: row.updated_at ? row.updated_at.toISOString() : null,
     };
   }
 
@@ -711,4 +1649,20 @@ function decodeCursor(cursor?: string | null) {
 function toIsoDate(value: string | Date) {
   if (value instanceof Date) return value.toISOString().slice(0, 10);
   return String(value).slice(0, 10);
+}
+
+function parseOptionalDate(value?: string | null) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function inferConflictSeverity(conflictCode: string): 'INFO' | 'WARNING' | 'CRITICAL' {
+  if (['LOT_BLOCKED_AFTER_OFFLINE_SALE', 'LOT_EXPIRED_AT_OFFLINE_SALE', 'STOCK_RECONCILIATION_REQUIRED'].includes(conflictCode)) {
+    return 'CRITICAL';
+  }
+  if (['ALLOCATION_MISMATCH', 'ALLOCATION_REVOKED', 'CASH_SESSION_CLOSED_AFTER_OFFLINE_SALE'].includes(conflictCode)) {
+    return 'WARNING';
+  }
+  return 'INFO';
 }

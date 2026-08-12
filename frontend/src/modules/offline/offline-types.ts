@@ -5,6 +5,11 @@ export type OfflineAuthorizationState = 'VALID' | 'EXPIRING' | 'EXPIRED';
 export type OfflineCartStatus = 'DRAFT' | 'READY' | 'BLOCKED' | 'CANCELLED';
 export type OfflineCartSaveState = 'IDLE' | 'SAVING' | 'SAVED' | 'ERROR';
 export type OfflinePriceSource = 'ARTICLE_DEFAULT' | 'LOT_FEFO';
+export type OfflineSaleStatus = 'LOCAL_VALIDATED' | 'PENDING_SYNC' | 'SYNCING' | 'SYNCED' | 'CONFLICT' | 'FAILED';
+export type OfflinePaymentStatus = 'CAPTURED_LOCAL' | 'SYNCED';
+export type OfflinePendingConsumptionStatus = 'PENDING' | 'SYNCED' | 'CONFLICT';
+export type OfflineSyncQueueStatus = 'PENDING' | 'SYNCING' | 'SYNCED' | 'CONFLICT' | 'FAILED';
+export type OfflineSyncQueueOperationType = 'SALE_VALIDATE';
 export type OfflineActivityType =
   | 'cart.created'
   | 'cart.item_added'
@@ -14,7 +19,11 @@ export type OfflineActivityType =
   | 'cart.cancelled'
   | 'fefo.recalculated'
   | 'reservation.created'
-  | 'reservation.released';
+  | 'reservation.released'
+  | 'sale.validated_local'
+  | 'sale.sync_queued'
+  | 'sale.synced'
+  | 'sale.sync_conflict';
 export type OfflineCartErrorCode =
   | 'CATALOG_EMPTY'
   | 'ARTICLE_NOT_FOUND'
@@ -27,6 +36,10 @@ export type OfflineCartErrorCode =
   | 'LOT_EXPIRED'
   | 'LOT_EXPIRY_DATE_INVALID'
   | 'CART_BLOCKED'
+  | 'CASH_SESSION_REQUIRED'
+  | 'PAYMENT_REQUIRED'
+  | 'PAYMENT_INSUFFICIENT'
+  | 'EXCHANGE_RATE_REQUIRED'
   | 'LOCAL_STORAGE_ERROR';
 
 export type OfflineAllocationConflictCode =
@@ -35,6 +48,8 @@ export type OfflineAllocationConflictCode =
   | 'ALLOCATION_VERSION_STALE'
   | 'ALLOCATION_REVOKED'
   | 'LOT_BLOCKED_AFTER_OFFLINE_SALE'
+  | 'LOT_EXPIRED_AT_OFFLINE_SALE'
+  | 'CASH_SESSION_CLOSED_AFTER_OFFLINE_SALE'
   | 'WORKSTATION_REVOKED';
 
 export interface OfflinePosArticle {
@@ -148,6 +163,21 @@ export interface OfflineWorkstationSnapshot {
   updatedAt: string | null;
 }
 
+export interface OfflineCashSessionSnapshot {
+  cashSessionId: string;
+  tenantId: string;
+  siteId: string;
+  workstationId: string | null;
+  userId: string;
+  status: 'OPEN' | 'CLOSED';
+  openedAt: string;
+  openingBalanceUsd: number;
+  openingBalanceCdf: number;
+  serverVersion: number;
+  updatedAt: string | null;
+  lastSyncedAt: string | null;
+}
+
 export interface OfflineSyncState {
   id: 'sync-state';
   tenantId: string | null;
@@ -167,11 +197,15 @@ export interface OfflineSyncState {
 export interface OfflineSyncQueueEntry {
   localId: string;
   operationId: string;
+  operationType: OfflineSyncQueueOperationType;
   workstationId: string;
   tenantId: string;
   siteId: string;
-  payload: OfflineAllocationConsumption[];
-  status: 'PENDING' | 'SYNCED' | 'CONFLICT';
+  payload: OfflineSaleValidateOperation;
+  status: OfflineSyncQueueStatus;
+  relatedLocalSaleId?: string | null;
+  lastErrorCode?: string | null;
+  lastErrorMessage?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -188,6 +222,14 @@ export interface OfflineSyncConflictEntry {
   localId: string;
   code: OfflineAllocationConflictCode;
   message: string;
+  conflictId?: string;
+  operationId?: string;
+  localSaleId?: string | null;
+  offlineReference?: string | null;
+  status?: string;
+  severity?: string;
+  resolutionType?: string | null;
+  updatedAt?: string | null;
   articleId?: string;
   lotId?: string;
   workstationId?: string;
@@ -308,6 +350,7 @@ export interface OfflineDraftReservation {
 export interface OfflineActivityLogEntry {
   localId: string;
   cartId: string | null;
+  saleId?: string | null;
   type: OfflineActivityType;
   message: string;
   createdAt: string;
@@ -355,6 +398,137 @@ export interface OfflineSaleDraftOperation {
   }>;
 }
 
+export interface OfflinePendingConsumption {
+  pendingConsumptionId: string;
+  localSaleId: string;
+  operationId: string;
+  allocationId: string;
+  articleId: string;
+  lotId: string;
+  lotNumber: string;
+  expiryDate: string;
+  quantity: number;
+  allocationServerVersion: number;
+  tenantId: string;
+  siteId: string;
+  workstationId: string;
+  status: OfflinePendingConsumptionStatus;
+  consumedAt: string;
+  syncedAt: string | null;
+}
+
+export interface OfflineSaleItem {
+  localSaleItemId: string;
+  articleId: string;
+  articleCode: string;
+  articleName: string;
+  quantity: number;
+  unitPriceSnapshot: number;
+  lineTotal: number;
+  salesUnit: string | null;
+  packaging: string | null;
+  packagingQuantity: number | null;
+  lotAllocations: OfflineCartLotAllocation[];
+}
+
+export interface OfflinePaymentSettlement {
+  amountPaidUsd: number;
+  amountPaidCdf: number;
+  amountReturnedUsd: number;
+  amountReturnedCdf: number;
+  suggestedChangeUsd: number;
+  suggestedChangeCdf: number;
+  netReceivedUsd: number;
+  netReceivedCdf: number;
+  netTotalEquivalentUsd: number;
+  settlementDifferenceUsd: number;
+}
+
+export interface OfflinePayment {
+  offlinePaymentId: string;
+  localSaleId: string;
+  tenantId: string;
+  siteId: string;
+  workstationId: string;
+  cashSessionId: string;
+  currencyCode: 'USD';
+  exchangeRate: number | null;
+  settlement: OfflinePaymentSettlement;
+  note: string | null;
+  status: OfflinePaymentStatus;
+  createdAt: string;
+  syncedAt: string | null;
+}
+
+export interface OfflineSale {
+  localSaleId: string;
+  offlineReference: string;
+  tenantId: string;
+  siteId: string;
+  workstationId: string;
+  deviceId: string;
+  userId: string;
+  cashSessionId: string;
+  customerId: string | null;
+  customerNameSnapshot: string | null;
+  saleType: 'CASH';
+  saleMode: 'IMMEDIATE';
+  currency: 'USD';
+  exchangeRateSnapshot: number | null;
+  note: string | null;
+  status: OfflineSaleStatus;
+  syncStatus: OfflineSyncQueueStatus;
+  serverSaleId: string | null;
+  serverSaleNumber: string | null;
+  subtotal: number;
+  total: number;
+  itemCount: number;
+  quantityTotal: number;
+  items: OfflineSaleItem[];
+  createdAt: string;
+  validatedAt: string;
+  syncedAt: string | null;
+}
+
+export interface OfflineSaleValidateOperation {
+  operationType: 'SALE_VALIDATE';
+  operationId: string;
+  localSaleId: string;
+  offlineReference: string;
+  tenantId: string;
+  siteId: string;
+  workstationId: string;
+  deviceId: string;
+  userId: string;
+  cashSessionId: string;
+  customerId: string | null;
+  currency: 'USD';
+  exchangeRateSnapshot: number | null;
+  createdAt: string;
+  validatedAt: string;
+  saleMode: 'IMMEDIATE';
+  saleType: 'CASH';
+  note: string | null;
+  subtotal: number;
+  total: number;
+  payment: OfflinePaymentSettlement;
+  items: Array<{
+    articleId: string;
+    articleCode: string;
+    articleName: string;
+    quantity: number;
+    unitPriceSnapshot: number;
+    lotAllocations: Array<{
+      allocationId: string;
+      lotId: string;
+      lotNumber: string;
+      expiryDate: string;
+      quantity: number;
+      allocationServerVersion: number;
+    }>;
+  }>;
+}
+
 export interface PosSyncWorkstation {
   workstationId: string;
   workstationName: string;
@@ -391,6 +565,18 @@ export interface PosSyncBootstrapPayload {
     timezone: string;
     supportedCurrencies: string[];
   };
+  cashSession: {
+    cashSessionId: string;
+    userId: string;
+    siteId: string;
+    workstationId: string | null;
+    status: 'OPEN' | 'CLOSED';
+    openedAt: string;
+    openingBalanceUsd: number;
+    openingBalanceCdf: number;
+    serverVersion: number;
+    updatedAt: string | null;
+  } | null;
   articles: Array<{
     articleId: string;
     articleCode: string;
@@ -447,6 +633,21 @@ export interface PosSyncChangesPayload {
     allocations: Array<PosSyncBootstrapPayload['offlineAllocations'][number] & { operation: 'UPSERT' | 'REVOKE' }>;
     customers: Array<PosSyncBootstrapPayload['customers'][number] & { operation: 'UPSERT' | 'DEACTIVATE' }>;
     settings: Array<{ operation: 'UPSERT'; exchangeRate: number | null; updatedAt: string | null }>;
+    conflicts: Array<{
+      operation: 'UPSERT' | 'RESOLVE';
+      conflictId: string;
+      workstationId: string | null;
+      operationId: string;
+      localSaleId: string | null;
+      offlineReference: string | null;
+      conflictCode: OfflineAllocationConflictCode | string;
+      status: string;
+      severity: string;
+      message: string;
+      resolutionType: string | null;
+      updatedAt: string;
+    }>;
+    cashSession?: PosSyncBootstrapPayload['cashSession'];
   };
 }
 
@@ -458,5 +659,6 @@ export interface OfflineLocalSnapshot {
   settings: OfflinePosSettings | null;
   auth: OfflineAuthSnapshot | null;
   workstation: OfflineWorkstationSnapshot | null;
+  cashSession: OfflineCashSessionSnapshot | null;
   syncState: OfflineSyncState | null;
 }
