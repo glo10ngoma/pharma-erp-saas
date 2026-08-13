@@ -16,6 +16,7 @@ import {
 } from './offline-storage';
 import { loadLocalSnapshot, type OfflineSnapshotViewModel } from './offline-bootstrap';
 import { runSync } from './sync-engine';
+import { OfflineSellerHeader, OfflineSellerNav, mapOfflineSellerMessage } from './offline-ui';
 import { type OfflineCashCount, type OfflineCashMovement, type OfflineCashReconciliationEvent, type OfflineCashSessionSnapshot } from './offline-types';
 
 const emptyViewModel: OfflineSnapshotViewModel = {
@@ -105,7 +106,7 @@ export function OfflineCashPage() {
       setOpeningNote('');
       await refresh();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'OPEN_FAILED');
+      setMessage(mapOfflineSellerMessage(error));
     } finally {
       setBusy(null);
     }
@@ -127,7 +128,7 @@ export function OfflineCashPage() {
       setExpenseDescription('');
       await refresh();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'EXPENSE_FAILED');
+      setMessage(mapOfflineSellerMessage(error));
     } finally {
       setBusy(null);
     }
@@ -155,7 +156,7 @@ export function OfflineCashPage() {
       setCloseNote('');
       await refresh();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'CLOSE_FAILED');
+      setMessage(mapOfflineSellerMessage(error));
     } finally {
       setBusy(null);
     }
@@ -174,6 +175,8 @@ export function OfflineCashPage() {
 
   return (
     <section className="offline-page">
+      <OfflineSellerHeader viewModel={viewModel} cashSession={activeSession} />
+      <OfflineSellerNav />
       <header className="page-heading offline-heading">
         <div>
           <span className="breadcrumb">Offline</span>
@@ -307,8 +310,8 @@ export function OfflineCashPage() {
                 <div className="offline-summary-grid">
                   <div><span>Theorique USD</span><strong>{formatMoney(activeSession.expectedClosingUsd, 'USD')}</strong></div>
                   <div><span>Theorique CDF</span><strong>{`${Math.round(activeSession.expectedClosingCdf).toLocaleString('fr-FR')} FC`}</strong></div>
-                  <div><span>Ecart USD</span><strong>{formatMoney(Number(declaredUsd || 0) - activeSession.expectedClosingUsd, 'USD')}</strong></div>
-                  <div><span>Ecart CDF</span><strong>{`${Math.round((Number(declaredCdf || 0) - activeSession.expectedClosingCdf)).toLocaleString('fr-FR')} FC`}</strong></div>
+                  <div><span>Ecart USD</span><strong>{gapLabel(Number(declaredUsd || 0) - activeSession.expectedClosingUsd)} - {formatMoney(Number(declaredUsd || 0) - activeSession.expectedClosingUsd, 'USD')}</strong></div>
+                  <div><span>Ecart CDF</span><strong>{gapLabel(Number(declaredCdf || 0) - activeSession.expectedClosingCdf)} - {`${Math.round((Number(declaredCdf || 0) - activeSession.expectedClosingCdf)).toLocaleString('fr-FR')} FC`}</strong></div>
                 </div>
                 <label>
                   <span>Note de fermeture</span>
@@ -391,6 +394,11 @@ export function OfflineCashPage() {
       </section>
     </section>
   );
+}
+
+function gapLabel(value: number) {
+  if (Math.abs(value) < 0.009) return 'Equilibre';
+  return value > 0 ? 'Excedent' : 'Manquant';
 }
 
 function movementTypeLabel(type: OfflineCashMovement['movementType']) {

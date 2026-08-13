@@ -23,13 +23,14 @@ import {
 } from './offline-sale';
 import { canAttachOfflineCashSale } from './offline-cash';
 import { notifyOfflineSaleQueued, runSync } from './sync-engine';
+import { OfflineNetworkBanner, OfflineReceiptTicket, OfflineSellerHeader, OfflineSellerNav, mapOfflineSellerMessage } from './offline-ui';
 import {
   calculateAuthorizationState,
   calculateSnapshotFreshness,
   loadLocalSnapshot,
   type OfflineSnapshotViewModel,
 } from './offline-bootstrap';
-import { type OfflineCart, type OfflinePosCustomer } from './offline-types';
+import { type OfflineCart, type OfflinePosCustomer, type OfflineSale } from './offline-types';
 import { useSyncEngine } from './useSyncEngine';
 
 type OfflinePageModel = Awaited<ReturnType<typeof getOfflineCartPageModel>>;
@@ -69,9 +70,10 @@ export function OfflinePosPage() {
   const [noteDraft, setNoteDraft] = useState('');
   const [amountPaidUsd, setAmountPaidUsd] = useState('');
   const [amountPaidCdf, setAmountPaidCdf] = useState('');
-  const [lastReceiptId, setLastReceiptId] = useState<string | null>(null);
+  const [lastReceiptSale, setLastReceiptSale] = useState<OfflineSale | null>(null);
   const articleInputRef = useRef<HTMLInputElement | null>(null);
   const customerInputRef = useRef<HTMLInputElement | null>(null);
+  const amountPaidCdfRef = useRef<HTMLInputElement | null>(null);
   const noteSaveTimer = useRef<number | null>(null);
   const syncEngine = useSyncEngine();
 
@@ -83,7 +85,6 @@ export function OfflinePosPage() {
     setViewModel(localView);
     setPageModel(cartView);
     setNoteDraft(cartView.cart.note ?? '');
-    setLastReceiptId(null);
     setSaveLabel('SAVED');
     const nextCartId = cartView.cart.cartId;
     if (nextCartId !== selectedCartId) {
@@ -100,6 +101,25 @@ export function OfflinePosPage() {
   useEffect(() => () => {
     if (noteSaveTimer.current) window.clearTimeout(noteSaveTimer.current);
   }, []);
+
+  useEffect(() => {
+    function handleKeys(event: KeyboardEvent) {
+      if (event.key === 'F2') {
+        event.preventDefault();
+        articleInputRef.current?.focus();
+      }
+      if (event.key === 'F4') {
+        event.preventDefault();
+        amountPaidCdfRef.current?.focus();
+      }
+      if (event.key === 'F8') {
+        event.preventDefault();
+        if (canFinalizeOfflineSale && busyAction === null) void handleFinalizeOfflineSale();
+      }
+    }
+    window.addEventListener('keydown', handleKeys);
+    return () => window.removeEventListener('keydown', handleKeys);
+  });
 
   const cart = pageModel?.cart ?? null;
   const snapshot = pageModel?.snapshot ?? viewModel.snapshot;
@@ -268,19 +288,29 @@ export function OfflinePosPage() {
       await notifyOfflineSaleQueued();
       setAmountPaidUsd('');
       setAmountPaidCdf('');
-      setLastReceiptId(result.sale.localSaleId);
+      setLastReceiptSale(result.sale);
       setMessage(`Vente offline ${result.sale.offlineReference} validee localement. Ticket pret a imprimer.`);
       await refresh(null);
+      setTimeout(() => articleInputRef.current?.focus(), 0);
+      try {
+        window.print();
+      } catch {
+        setMessage('Vente enregistree. Impression impossible. Vous pouvez reimprimer le ticket.');
+      }
     } catch (error) {
-      setMessage(mapOfflineError(error));
+      setMessage(mapOfflineSellerMessage(error));
     } finally {
       setBusyAction(null);
     }
   }
 
   function handlePrintReceipt() {
-    if (!lastReceiptId) return;
-    window.print();
+    if (!lastReceiptSale) return;
+    try {
+      window.print();
+    } catch {
+      setMessage('Vente enregistree. Impression impossible. Vous pouvez reimprimer le ticket.');
+    }
   }
 
   if (!pageModel || !cart) {
@@ -300,11 +330,15 @@ export function OfflinePosPage() {
 
   return (
     <section className="offline-page offline-pos-page">
-      <header className="page-heading offline-heading">
+      <OfflineSellerHeader viewModel={viewModel} syncEngine={syncEngine} cashSession={snapshot.cashSession} />
+      <OfflineSellerNav />
+      <OfflineNetworkBanner viewModel={viewModel} syncEngine={syncEngine} />
+
+      <header className="page-heading offline-heading offline-pos-title">
         <div>
           <span className="breadcrumb">Offline</span>
-          <h1>POS Offline</h1>
-          <p>Catalogue local, FEFO local, brouillons persistants et reservations par poste.</p>
+          <h1>POS</h1>
+          <p>Scannez, ajoutez, encaissez. Les ventes hors ligne se synchronisent automatiquement.</p>
         </div>
         <div className="page-heading-actions">
           <button className="ghost-button compact-button" type="button" onClick={() => void handleNewDraft()} disabled={busyAction !== null}>
@@ -324,16 +358,6 @@ export function OfflinePosPage() {
           </Link>
         </div>
       </header>
-
-      <section className="offline-kpis">
-        <div className="card offline-kpi"><span>Reseau</span><strong>{networkLabel(viewModel.networkStatus)}</strong></div>
-        <div className="card offline-kpi"><span>Snapshot</span><strong>{snapshotLabel(snapshotStatus)}</strong></div>
-        <div className="card offline-kpi"><span>Autorisation</span><strong>{authorizationLabel(authorizationState)}</strong></div>
-        <div className="card offline-kpi"><span>Derniere synchro</span><strong>{formatDateTime(snapshot.syncState?.lastSuccessfulSyncAt)}</strong></div>
-        <div className="card offline-kpi"><span>Etat sync</span><strong>{formatSyncEngineStatus(syncEngine.currentStatus)}</strong></div>
-        <div className="card offline-kpi"><span>En attente</span><strong>{syncEngine.pendingCount}</strong></div>
-        <div className="card offline-kpi"><span>Conflits</span><strong>{syncEngine.conflictCount}</strong></div>
-      </section>
 
       <section className="offline-pos-grid">
         <div className="offline-pos-left">
@@ -382,16 +406,14 @@ export function OfflinePosPage() {
           <section className="card offline-panel">
             <div className="offline-panel-heading">
               <h3>Recherche article</h3>
-              <span className="offline-row-meta">Catalogue local uniquement. Aucun appel API pendant la saisie.</span>
+              <span className="offline-row-meta">Scannez ou tapez un nom/code/barcode. F2 ramene le focus ici.</span>
             </div>
             <FloatingSearchPopover
               columns={[
                 { header: 'Article', render: (item: LocalCatalogSearchResult) => <strong>{item.article.commercialName}</strong> },
                 { header: 'Code', render: (item: LocalCatalogSearchResult) => item.article.articleCode },
                 { header: 'Prix', render: (item: LocalCatalogSearchResult) => item.unitPrice ? formatMoney(item.unitPrice, cart.currency) : '-' },
-                { header: 'Quota poste', render: (item: LocalCatalogSearchResult) => item.offlineAvailableQuantity },
-                { header: 'Lot FEFO', render: (item: LocalCatalogSearchResult) => item.nextLot?.lotNumber ?? '-' },
-                { header: 'Expiration', render: (item: LocalCatalogSearchResult) => item.nextLot?.expiryDate ? formatDate(item.nextLot.expiryDate) : '-' },
+                { header: 'Stock poste', render: (item: LocalCatalogSearchResult) => item.offlineAvailableQuantity },
               ]}
               getKey={(item) => item.article.articleId}
               inputRef={articleInputRef}
@@ -407,8 +429,8 @@ export function OfflinePosPage() {
               onSelect={(item) => void handleSelectArticle(item, 1)}
             />
             <div className="offline-search-help">
-              <span>Scan exact barcode: ajout direct avec recalcul FEFO local.</span>
-              <span>Articles inactifs ou sans prix restent visibles mais non ajoutables.</span>
+              <span>Le lot FEFO est applique automatiquement.</span>
+              <span>Entrer = selectionner, F4 = paiement, F8 = encaisser.</span>
             </div>
             {articleResults.length > 0 ? (
               <div className="offline-inline-results">
@@ -476,10 +498,8 @@ export function OfflinePosPage() {
                 <thead>
                   <tr>
                     <th>Article</th>
-                    <th>Lot FEFO</th>
-                    <th>Conditionnement</th>
                     <th>Qte</th>
-                    <th>Prix</th>
+                    <th>PU</th>
                     <th>Total</th>
                     <th>Action</th>
                   </tr>
@@ -487,8 +507,8 @@ export function OfflinePosPage() {
                 <tbody>
                   {cart.items.length === 0 ? (
                     <tr>
-                      <td colSpan={7}>
-                        <p className="empty-state">Aucun article dans ce brouillon offline.</p>
+                      <td colSpan={5}>
+                        <p className="empty-state">Scannez ou recherchez un article pour commencer.</p>
                       </td>
                     </tr>
                   ) : cart.items.map((item) => (
@@ -497,14 +517,6 @@ export function OfflinePosPage() {
                         <strong>{item.articleName}</strong>
                         <div className="offline-row-meta">{item.articleCode}</div>
                       </td>
-                      <td>
-                        {item.lotAllocations.map((allocation) => (
-                          <div key={allocation.allocationId} className="offline-row-meta">
-                            {allocation.lotNumber} x {allocation.quantity} - {formatDate(allocation.expiryDate)}
-                          </div>
-                        ))}
-                      </td>
-                      <td>{item.packaging ?? item.salesUnit ?? '-'}</td>
                       <td>
                         <div className="quantity-stepper">
                           <button type="button" className="ghost-button compact-button" onClick={() => void handleQuantityChange(item, item.quantity - 1)} disabled={busyAction !== null}>-</button>
@@ -522,9 +534,17 @@ export function OfflinePosPage() {
                       <td>{formatMoney(item.unitPriceSnapshot, cart.currency)}</td>
                       <td>{formatMoney(item.lineTotal, cart.currency)}</td>
                       <td>
-                        <button type="button" className="ghost-button compact-button" onClick={() => void handleQuantityChange(item, 0)} disabled={busyAction !== null}>
-                          Supprimer
-                        </button>
+                        <details className="offline-line-details">
+                          <summary>Details</summary>
+                          {item.lotAllocations.map((allocation) => (
+                            <div key={allocation.allocationId}>
+                              {allocation.lotNumber} x {allocation.quantity} - {formatDate(allocation.expiryDate)}
+                            </div>
+                          ))}
+                          <button type="button" className="ghost-button compact-button" onClick={() => void handleQuantityChange(item, 0)} disabled={busyAction !== null}>
+                            Supprimer
+                          </button>
+                        </details>
                       </td>
                     </tr>
                   ))}
@@ -536,18 +556,12 @@ export function OfflinePosPage() {
 
         <aside className="offline-pos-right">
           <section className="card offline-panel offline-summary-card">
-            <h3>Resume panier</h3>
+            <h3>Total</h3>
             <div className="offline-summary-grid">
               <div><span>Sous-total</span><strong>{formatMoney(cart.subtotal, cart.currency)}</strong></div>
               <div><span>Total</span><strong>{formatMoney(cart.total, cart.currency)}</strong></div>
               <div><span>Lignes</span><strong>{cart.itemCount}</strong></div>
               <div><span>Quantite</span><strong>{cart.quantityTotal}</strong></div>
-            </div>
-            <div className="offline-summary-grid">
-              <div><span>Quota panier</span><strong>{quotaSummary.cartReserved}</strong></div>
-              <div><span>Quota restant</span><strong>{quotaSummary.totalAvailable}</strong></div>
-              <div><span>Reserve ailleurs</span><strong>{quotaSummary.reservedElsewhere}</strong></div>
-              <div><span>Consomme serveur</span><strong>{quotaSummary.serverConsumed}</strong></div>
             </div>
             {quotaAlert ? <p className="offline-warning-text">{quotaAlert}</p> : null}
           </section>
@@ -555,14 +569,14 @@ export function OfflinePosPage() {
           <section className="card offline-panel">
             <h3>Caisse offline</h3>
             <div className="detail-grid compact-detail-grid">
-              <div><span>Session</span><strong>{canAttachOfflineCashSale(snapshot.cashSession) ? 'Ouverte' : 'Indisponible'}</strong></div>
+              <div><span>Session</span><strong>{canAttachOfflineCashSale(snapshot.cashSession) ? 'Caisse ouverte' : 'Caisse fermee'}</strong></div>
               <div><span>Reference</span><strong>{snapshot.cashSession?.offlineCashReference ?? '-'}</strong></div>
               <div><span>Ouverte le</span><strong>{formatDateTime(snapshot.cashSession?.openedAt)}</strong></div>
               <div><span>Solde USD</span><strong>{snapshot.cashSession ? formatMoney(snapshot.cashSession.openingBalanceUsd, 'USD') : '-'}</strong></div>
             </div>
             {!snapshot.cashSession ? (
               <div className="offline-panel-actions">
-                <p className="offline-warning-text">Aucune session caisse locale n est ouverte pour ce poste.</p>
+                <p className="offline-warning-text">Ouvrez la caisse avant d encaisser une vente.</p>
                 <Link className="button compact-button" to="/offline/cash">Ouvrir la caisse</Link>
               </div>
             ) : null}
@@ -572,12 +586,12 @@ export function OfflinePosPage() {
             <h3>Paiement cash local</h3>
             <div className="detail-grid compact-detail-grid">
               <label>
-                <span>Paye USD</span>
-                <input className="input compact-input" type="number" min="0" step="0.01" value={amountPaidUsd} onChange={(event) => setAmountPaidUsd(event.target.value)} />
+                <span>Paye FC</span>
+                <input ref={amountPaidCdfRef} className="input compact-input" type="number" min="0" step="1" value={amountPaidCdf} onChange={(event) => setAmountPaidCdf(event.target.value)} />
               </label>
               <label>
-                <span>Paye CDF</span>
-                <input className="input compact-input" type="number" min="0" step="1" value={amountPaidCdf} onChange={(event) => setAmountPaidCdf(event.target.value)} />
+                <span>Paye USD</span>
+                <input className="input compact-input" type="number" min="0" step="0.01" value={amountPaidUsd} onChange={(event) => setAmountPaidUsd(event.target.value)} />
               </label>
             </div>
             <div className="offline-summary-grid">
@@ -586,11 +600,11 @@ export function OfflinePosPage() {
               <div><span>Rendu prop. USD</span><strong>{formatMoney(settlementPreview.suggestedChangeUsd, 'USD')}</strong></div>
               <div><span>Rendu prop. CDF</span><strong>{`${Math.round(settlementPreview.suggestedChangeCdf).toLocaleString('fr-FR')} FC`}</strong></div>
             </div>
-            <div className="offline-panel-actions">
-              <button className="button compact-button" type="button" onClick={() => void handleFinalizeOfflineSale()} disabled={busyAction !== null || !canFinalizeOfflineSale}>
-                Encaisser hors ligne
+            <div className="offline-panel-actions offline-checkout-actions">
+              <button className="button compact-button offline-checkout-button" type="button" onClick={() => void handleFinalizeOfflineSale()} disabled={busyAction !== null || !canFinalizeOfflineSale}>
+                ENCAISSER
               </button>
-              <button className="ghost-button compact-button" type="button" onClick={handlePrintReceipt} disabled={!lastReceiptId}>
+              <button className="ghost-button compact-button" type="button" onClick={handlePrintReceipt} disabled={!lastReceiptSale}>
                 Imprimer ticket
               </button>
             </div>
@@ -620,6 +634,12 @@ export function OfflinePosPage() {
           </section>
         </aside>
       </section>
+      <OfflineReceiptTicket
+        sale={lastReceiptSale}
+        siteName={workstation?.siteName ?? null}
+        sellerName={auth?.displayName ?? null}
+        workstationName={workstation?.workstationName ?? null}
+      />
     </section>
   );
 }

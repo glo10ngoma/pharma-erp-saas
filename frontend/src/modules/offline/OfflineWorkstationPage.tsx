@@ -86,6 +86,7 @@ export function OfflineWorkstationPage() {
   const auth = viewModel.snapshot.auth;
   const settings = viewModel.snapshot.settings;
   const syncState = viewModel.snapshot.syncState;
+  const isWorkstationReady = Boolean(workstation?.workstationId && auth && settings && viewModel.snapshot.articles.length > 0);
   const usagePercent = storage?.usageRatio !== null && storage?.usageRatio !== undefined
     ? `${Math.round(storage.usageRatio * 100)} %`
     : '-';
@@ -147,6 +148,30 @@ export function OfflineWorkstationPage() {
         <div className="card offline-kpi"><span>Quota total</span><strong>{metrics.quotaTotal}</strong></div>
         <div className="card offline-kpi"><span>Reserve par brouillons</span><strong>{metrics.quotaReserved}</strong></div>
       </section>
+
+      {!isWorkstationReady ? (
+        <section className="card offline-panel offline-setup-card">
+          <div className="offline-panel-heading">
+            <div>
+              <h3>Assistant premier demarrage</h3>
+              <p className="offline-row-meta">Preparez ce poste avant les ventes hors ligne.</p>
+            </div>
+            <Link className="button compact-button" to="/offline/synchronisation">Preparer ce poste</Link>
+          </div>
+          <ol className="offline-setup-steps">
+            <li className={auth ? 'is-done' : ''}>Connexion utilisateur</li>
+            <li className={workstation?.siteId ? 'is-done' : ''}>Choisir le site</li>
+            <li className={workstation?.workstationId ? 'is-done' : ''}>Enregistrer ce poste</li>
+            <li className={viewModel.snapshot.articles.length > 0 ? 'is-done' : ''}>Telecharger articles, stock, clients, allocations et parametres</li>
+            <li className={isWorkstationReady ? 'is-done' : ''}>Poste pret pour les ventes hors ligne</li>
+          </ol>
+          <p className="offline-action-message">Impossible de preparer le poste ? Verifiez la connexion puis reessayez depuis Synchronisation.</p>
+        </section>
+      ) : (
+        <section className="card offline-panel offline-setup-card">
+          <strong>Ce poste est pret pour les ventes hors ligne.</strong>
+        </section>
+      )}
 
       <section className="card offline-panel">
         <div className="offline-panel-heading">

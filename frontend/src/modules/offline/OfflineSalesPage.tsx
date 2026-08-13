@@ -2,17 +2,43 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { formatDateTime } from '../../utils/date';
 import { formatMoney } from '../../utils/money';
+import { loadLocalSnapshot, type OfflineSnapshotViewModel } from './offline-bootstrap';
 import { listOfflineSalesHistory } from './offline-sale';
 import { processPendingOfflineQueue } from './sync-engine';
+import { OfflineReceiptTicket, OfflineSellerHeader, OfflineSellerNav } from './offline-ui';
 import { type OfflineSale } from './offline-types';
+
+const emptyViewModel: OfflineSnapshotViewModel = {
+  snapshot: {
+    articles: [],
+    lots: [],
+    allocations: [],
+    customers: [],
+    settings: null,
+    auth: null,
+    workstation: null,
+    cashSession: null,
+    syncState: null,
+  },
+  queue: [],
+  syncLog: [],
+  conflicts: [],
+  authorizationState: 'EXPIRED',
+  snapshotStatus: 'UNKNOWN',
+  networkStatus: 'OFFLINE',
+};
 
 export function OfflineSalesPage() {
   const [sales, setSales] = useState<OfflineSale[]>([]);
+  const [viewModel, setViewModel] = useState<OfflineSnapshotViewModel>(emptyViewModel);
+  const [selectedSale, setSelectedSale] = useState<OfflineSale | null>(null);
   const [message, setMessage] = useState('Historique local des ventes offline finalisees.');
   const [busy, setBusy] = useState(false);
 
   async function refresh() {
-    setSales(await listOfflineSalesHistory());
+    const [localSales, localView] = await Promise.all([listOfflineSalesHistory(), loadLocalSnapshot()]);
+    setSales(localSales);
+    setViewModel(localView);
   }
 
   useEffect(() => {
@@ -33,8 +59,15 @@ export function OfflineSalesPage() {
     }
   }
 
+  function handlePrint(sale: OfflineSale) {
+    setSelectedSale(sale);
+    window.setTimeout(() => window.print(), 0);
+  }
+
   return (
     <section className="offline-page">
+      <OfflineSellerHeader viewModel={viewModel} cashSession={viewModel.snapshot.cashSession} />
+      <OfflineSellerNav />
       <header className="page-heading offline-heading">
         <div>
           <span className="breadcrumb">POS Offline</span>
@@ -71,12 +104,13 @@ export function OfflineSalesPage() {
                 <th>Total</th>
                 <th>Statut sync</th>
                 <th>Vente serveur</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {sales.length === 0 ? (
                 <tr>
-                  <td colSpan={6}><p className="empty-state">Aucune vente offline finalisee sur ce poste.</p></td>
+                  <td colSpan={7}><p className="empty-state">Aucune vente offline finalisee sur ce poste.</p></td>
                 </tr>
               ) : sales.map((sale) => (
                 <tr key={sale.localSaleId}>
@@ -86,12 +120,23 @@ export function OfflineSalesPage() {
                   <td>{formatMoney(sale.total, 'USD')}</td>
                   <td><span className="badge compact-badge badge-neutral">{sale.syncStatus}</span></td>
                   <td>{sale.serverSaleNumber ?? '-'}</td>
+                  <td>
+                    <button className="ghost-button compact-button" type="button" onClick={() => handlePrint(sale)}>
+                      Reimprimer ticket
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </section>
+      <OfflineReceiptTicket
+        sale={selectedSale}
+        siteName={viewModel.snapshot.workstation?.siteName ?? null}
+        sellerName={viewModel.snapshot.auth?.displayName ?? null}
+        workstationName={viewModel.snapshot.workstation?.workstationName ?? null}
+      />
     </section>
   );
 }

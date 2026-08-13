@@ -359,7 +359,7 @@ export function buildOfflineSaleDraftOperation(cart: OfflineCart): OfflineSaleDr
 
 export function mapOfflineError(error: unknown) {
   const code = error instanceof Error ? error.message : 'LOCAL_STORAGE_ERROR';
-  const messages: Record<OfflineCartErrorCode, string> = {
+  const messages: Record<OfflineCartErrorCode | string, string> = {
     CATALOG_EMPTY: 'Le catalogue local est vide. Lancez une synchronisation.',
     ARTICLE_NOT_FOUND: 'Article introuvable dans le catalogue local.',
     ARTICLE_INACTIVE: 'Cet article est inactif dans le snapshot local.',
@@ -371,11 +371,18 @@ export function mapOfflineError(error: unknown) {
     LOT_EXPIRED: 'Le lot est expire dans le snapshot local.',
     LOT_EXPIRY_DATE_INVALID: 'La date d expiration du lot est invalide.',
     CART_BLOCKED: 'Le brouillon est bloque et doit etre corrige.',
-    CASH_SESSION_REQUIRED: 'Aucune session caisse synchronisee n est disponible pour ce poste.',
+    CASH_SESSION_REQUIRED: 'Ouvrez la caisse avant d encaisser une vente.',
     PAYMENT_REQUIRED: 'Saisissez un montant USD ou CDF avant de valider hors ligne.',
     PAYMENT_INSUFFICIENT: 'Le paiement saisi est insuffisant pour finaliser la vente offline.',
     EXCHANGE_RATE_REQUIRED: 'Un taux local valide est requis pour accepter un paiement en CDF hors ligne.',
     LOCAL_STORAGE_ERROR: 'Impossible d enregistrer localement ce brouillon.',
+    OFFLINE_AUTH_EXPIRED: 'L autorisation hors ligne de ce poste a expire. Reconnectez-vous a Internet.',
+    WORKSTATION_REVOKED: 'Ce poste n est plus autorise a effectuer des ventes hors ligne.',
+    SNAPSHOT_EXPIRED: 'Les donnees locales sont trop anciennes. Reconnectez Internet puis synchronisez.',
+    STORAGE_CRITICAL: 'Le stockage local du poste est presque plein. Contactez un responsable.',
+    RECOVERY_REQUIRED: 'Une verification locale est requise avant de continuer les ventes hors ligne.',
+    SYNC_CONFLICT: 'Une operation necessite la verification d un responsable.',
+    INTERNAL_SERVER_ERROR: 'Une erreur technique est survenue. La vente locale reste conservee si elle a ete encaissee.',
   };
   return messages[code as OfflineCartErrorCode] ?? code;
 }
