@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { AuthUser } from '../common/types/auth-user';
+import {
+  SubmitPosCashExpenseOperation,
+  SubmitPosCashSessionCloseOperation,
+  SubmitPosCashSessionOpenOperation,
+} from '../pos-sync/dto/submit-pos-operations.dto';
 import { CashRepository } from './cash.repository';
 import { CloseCashSessionDto } from './dto/close-cash-session.dto';
 import { CreateCashExpenseDto } from './dto/create-cash-expense.dto';
@@ -35,5 +40,17 @@ export class CashService {
 
   createExpense(user: AuthUser, dto: CreateCashExpenseDto) {
     return this.repository.createExpense(user, dto);
+  }
+
+  replayOfflineOpenSession(user: AuthUser, operation: SubmitPosCashSessionOpenOperation) {
+    return this.repository.replayOfflineOpenSession(user, operation);
+  }
+
+  replayOfflineExpense(user: AuthUser, operation: SubmitPosCashExpenseOperation) {
+    return this.repository.replayOfflineExpense(user, operation);
+  }
+
+  replayOfflineCloseSession(user: AuthUser, operation: SubmitPosCashSessionCloseOperation) {
+    return this.repository.replayOfflineCloseSession(user, operation);
   }
 }

@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { formatDateTime } from '../../utils/date';
 import { formatMoney } from '../../utils/money';
-import { listOfflineSalesHistory, syncPendingOfflineSales } from './offline-sale';
+import { listOfflineSalesHistory } from './offline-sale';
+import { processPendingOfflineQueue } from './sync-engine';
 import { type OfflineSale } from './offline-types';
 
 export function OfflineSalesPage() {
@@ -21,7 +22,7 @@ export function OfflineSalesPage() {
   async function handleSync() {
     setBusy(true);
     try {
-      const results = await syncPendingOfflineSales();
+      const results = await processPendingOfflineQueue();
       const synced = results.filter((row) => row.status === 'SYNCED').length;
       const conflicts = results.filter((row) => row.status === 'CONFLICT').length;
       const failed = results.filter((row) => row.status === 'FAILED').length;

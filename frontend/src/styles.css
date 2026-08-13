@@ -6689,6 +6689,7 @@ details.nav-group .nav-link {
 .offline-search-help,
 .offline-inline-results,
 .offline-summary-grid,
+.offline-panel-actions,
 .offline-pos-grid,
 .offline-pos-context-grid,
 .offline-action-cell {
@@ -6814,6 +6815,12 @@ details.nav-group .nav-link {
   color: var(--text);
   display: block;
   margin-top: 4px;
+}
+
+.offline-panel-actions {
+  align-items: center;
+  grid-auto-flow: column;
+  justify-content: start;
 }
 
 .offline-note-input {

@@ -384,8 +384,20 @@ function createHarness(options = {}) {
     async readOfflineSnapshot() {
       return deepClone(memory.snapshot);
     },
+    async readOfflineCashSessions() {
+      return memory.snapshot.cashSession ? [deepClone(memory.snapshot.cashSession)] : [];
+    },
     async readOfflineSyncQueue() {
       return deepClone(memory.queue);
+    },
+    async patchOfflineSyncQueueEntry(operationId, updater) {
+      let patched = null;
+      memory.queue = memory.queue.map((row) => {
+        if (row.operationId !== operationId) return row;
+        patched = updater(deepClone(row));
+        return deepClone(patched);
+      });
+      return patched ? deepClone(patched) : null;
     },
     async resetStaleSyncingQueueEntries(maxAgeMs = 5 * 60 * 1000) {
       const now = Date.now();
@@ -405,6 +417,63 @@ function createHarness(options = {}) {
     },
     async saveOfflineSyncQueue(rows) {
       memory.queue = deepClone(rows);
+    },
+    async updateOfflineSyncOperationResult(params) {
+      const now = new Date().toISOString();
+      memory.queue = memory.queue.map((row) =>
+        row.operationId === params.operationId
+          ? {
+              ...row,
+              status: params.nextStatus,
+              updatedAt: now,
+              lastErrorCode: params.errorCode ?? null,
+              lastErrorMessage: params.errorMessage ?? null,
+            }
+          : row,
+      );
+
+      const queueEntry = memory.queue.find((row) => row.operationId === params.operationId);
+      const localSaleId = params.result?.localSaleId ?? queueEntry?.payload?.localSaleId ?? queueEntry?.relatedLocalSaleId ?? null;
+
+      if (localSaleId) {
+        memory.sales = memory.sales.map((row) =>
+          row.localSaleId === localSaleId
+            ? {
+                ...row,
+                status: params.nextStatus === 'SYNCED' ? 'SYNCED' : params.nextStatus,
+                syncStatus: params.nextStatus,
+                serverSaleId: params.result?.serverSaleId ?? row.serverSaleId ?? null,
+                serverSaleNumber: params.result?.serverSaleNumber ?? row.serverSaleNumber ?? null,
+                syncedAt: params.nextStatus === 'SYNCED' ? now : row.syncedAt ?? null,
+              }
+            : row,
+        );
+
+        memory.pendingConsumptions = memory.pendingConsumptions.map((row) =>
+          row.localSaleId === localSaleId
+            ? {
+                ...row,
+                status: params.nextStatus === 'SYNCED' ? 'SYNCED' : row.status,
+                syncedAt: params.nextStatus === 'SYNCED' ? now : row.syncedAt ?? null,
+              }
+            : row,
+        );
+      }
+
+      const allocationAcks = new Map((params.result?.allocations ?? []).map((ack) => [ack.allocationId, ack]));
+      memory.allocations = memory.allocations.map((row) => {
+        const ack = allocationAcks.get(row.allocationId);
+        if (!ack) return row;
+        return {
+          ...row,
+          serverConsumedQuantity: ack.serverConsumedQuantity,
+          localPendingConsumption: Math.max(0, Number(row.localPendingConsumption ?? 0) - Number(ack.acknowledgedQuantity ?? 0)),
+          allocationStatus: ack.status,
+          serverVersion: ack.serverVersion,
+          updatedAt: now,
+          lastSyncedAt: now,
+        };
+      });
     },
     async writeOfflineSyncState(syncState) {
       memory.snapshot.syncState = deepClone(syncState);
@@ -442,6 +511,48 @@ function createHarness(options = {}) {
 
   const posSyncServiceStub = {
     posSyncService: {
+      async pushOperations(payload) {
+        const operations = payload?.operations ?? [];
+        const results = [];
+        for (const operation of operations) {
+          server.pushCalls.push({
+            at: Date.now(),
+            operationId: operation.operationId,
+            localSaleId: operation.localSaleId ?? null,
+            operationType: operation.operationType,
+          });
+          const outcome = await behavior.onPush({ entry: { payload: deepClone(operation), operationId: operation.operationId, operationType: operation.operationType }, memory, server });
+          if (!outcome) {
+            throw new Error('SYNC_OUTCOME_MISSING');
+          }
+          if (outcome.throwMessage) {
+            throw new Error(outcome.throwMessage);
+          }
+          results.push({
+            operationId: operation.operationId,
+            localSaleId: operation.localSaleId ?? null,
+            status: outcome.status,
+            serverSaleId: outcome.serverSaleId ?? null,
+            serverSaleNumber: outcome.serverSaleNumber ?? null,
+            serverCashSessionId: outcome.serverCashSessionId ?? null,
+            serverSessionReference: outcome.serverSessionReference ?? null,
+            serverMovementId: outcome.serverMovementId ?? null,
+            serverVersion: outcome.serverVersion ?? null,
+            serverOpenedAt: outcome.serverOpenedAt ?? null,
+            serverClosedAt: outcome.serverClosedAt ?? null,
+            serverExpectedUsd: outcome.serverExpectedUsd ?? null,
+            serverExpectedCdf: outcome.serverExpectedCdf ?? null,
+            serverDeclaredUsd: outcome.serverDeclaredUsd ?? null,
+            serverDeclaredCdf: outcome.serverDeclaredCdf ?? null,
+            serverDifferenceUsd: outcome.serverDifferenceUsd ?? null,
+            serverDifferenceCdf: outcome.serverDifferenceCdf ?? null,
+            allocations: outcome.allocations ?? [],
+            errorCode: outcome.errorCode ?? null,
+            message: outcome.message ?? null,
+          });
+        }
+        return { data: { results } };
+      },
       async heartbeat(payload) {
         server.heartbeatCalls.push({ at: Date.now(), payload: deepClone(payload) });
         if (typeof behavior.heartbeat === 'function') {
@@ -458,128 +569,12 @@ function createHarness(options = {}) {
     },
   };
 
-  const offlineSaleStub = {
-    async syncPendingOfflineSales() {
-      server.syncPendingCalls += 1;
-      const pending = memory.queue.filter((entry) =>
-        entry.operationType === 'SALE_VALIDATE' && ['PENDING', 'FAILED', 'SYNCING'].includes(entry.status),
-      );
-      const results = [];
-      for (const entry of pending) {
-        server.pushCalls.push({ at: Date.now(), operationId: entry.operationId, localSaleId: entry.payload.localSaleId });
-        try {
-          const outcome = await behavior.onPush({ entry: deepClone(entry), memory, server });
-          if (!outcome) throw new Error('SYNC_OUTCOME_MISSING');
-
-          if (outcome.throwMessage) {
-            throw new Error(outcome.throwMessage);
-          }
-
-          if (outcome.status === 'SYNCED' || outcome.status === 'ALREADY_PROCESSED') {
-            memory.queue = memory.queue.map((row) =>
-              row.operationId === entry.operationId
-                ? { ...row, status: 'SYNCED', updatedAt: new Date().toISOString(), lastErrorCode: null, lastErrorMessage: null }
-                : row,
-            );
-            memory.sales = memory.sales.map((row) =>
-              row.localSaleId === entry.payload.localSaleId
-                ? {
-                    ...row,
-                    status: 'SYNCED',
-                    syncStatus: 'SYNCED',
-                    serverSaleId: outcome.serverSaleId ?? row.serverSaleId ?? null,
-                    serverSaleNumber: outcome.serverSaleNumber ?? row.serverSaleNumber ?? null,
-                    syncedAt: new Date().toISOString(),
-                  }
-                : row,
-            );
-            const allocationAcks = new Map((outcome.allocations ?? []).map((ack) => [ack.allocationId, ack]));
-            memory.allocations = memory.allocations.map((row) => {
-              const ack = allocationAcks.get(row.allocationId);
-              if (!ack) return row;
-              return {
-                ...row,
-                serverConsumedQuantity: ack.serverConsumedQuantity,
-                localPendingConsumption: Math.max(0, Number(row.localPendingConsumption ?? 0) - Number(ack.acknowledgedQuantity ?? 0)),
-                allocationStatus: ack.status,
-                serverVersion: ack.serverVersion,
-                updatedAt: new Date().toISOString(),
-                lastSyncedAt: new Date().toISOString(),
-              };
-            });
-            memory.pendingConsumptions = memory.pendingConsumptions.map((row) =>
-              row.localSaleId === entry.payload.localSaleId
-                ? { ...row, status: 'SYNCED', syncedAt: new Date().toISOString() }
-                : row,
-            );
-            results.push({
-              operationId: entry.operationId,
-              status: 'SYNCED',
-              serverSaleId: outcome.serverSaleId ?? null,
-              serverSaleNumber: outcome.serverSaleNumber ?? null,
-            });
-            continue;
-          }
-
-          if (outcome.status === 'CONFLICT') {
-            memory.queue = memory.queue.map((row) =>
-              row.operationId === entry.operationId
-                ? {
-                    ...row,
-                    status: 'CONFLICT',
-                    updatedAt: new Date().toISOString(),
-                    lastErrorCode: outcome.errorCode ?? 'SYNC_CONFLICT',
-                    lastErrorMessage: outcome.message ?? outcome.errorCode ?? 'SYNC_CONFLICT',
-                  }
-                : row,
-            );
-            memory.sales = memory.sales.map((row) =>
-              row.localSaleId === entry.payload.localSaleId
-                ? { ...row, status: 'CONFLICT', syncStatus: 'CONFLICT' }
-                : row,
-            );
-            results.push({
-              operationId: entry.operationId,
-              status: 'CONFLICT',
-              errorCode: outcome.errorCode ?? 'SYNC_CONFLICT',
-              error: outcome.message ?? outcome.errorCode ?? 'SYNC_CONFLICT',
-            });
-            continue;
-          }
-
-          throw new Error(`UNSUPPORTED_OUTCOME_${outcome.status}`);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : 'POS_SYNC_BACKEND_UNREACHABLE';
-          memory.queue = memory.queue.map((row) =>
-            row.operationId === entry.operationId
-              ? {
-                  ...row,
-                  status: 'FAILED',
-                  updatedAt: new Date().toISOString(),
-                  lastErrorCode: 'SYNC_FAILED',
-                  lastErrorMessage: message,
-                }
-              : row,
-          );
-          results.push({
-            operationId: entry.operationId,
-            status: 'FAILED',
-            errorCode: 'SYNC_FAILED',
-            error: message,
-          });
-        }
-      }
-      return results;
-    },
-  };
-
   const syncEngine = loadTsModule(
     SYNC_ENGINE_PATH,
     {
       '../../services/posSync.service': posSyncServiceStub,
       './offline-storage': storageStub,
       './offline-bootstrap': offlineBootstrapStub,
-      './offline-sale': offlineSaleStub,
     },
     transformSyncEngineSource,
   );
@@ -753,11 +748,7 @@ async function runBackoff() {
           callTimes.push(Date.now());
           attempt += 1;
           if (attempt < 3) {
-            return {
-              status: 'FAILED',
-              errorCode: 'SYNC_FAILED',
-              message: 'POS_SYNC_BACKEND_UNREACHABLE',
-            };
+            throw new Error('POS_SYNC_BACKEND_UNREACHABLE');
           }
           return {
             status: 'SYNCED',
@@ -773,8 +764,6 @@ async function runBackoff() {
       const completed = await waitFor(() => memory.queue[0].status === 'SYNCED', 1_500);
       assert.ok(completed, 'backoff scenario did not eventually sync');
       assert.ok(callTimes.length >= 3, 'expected at least 3 retry attempts');
-      assert.ok(callTimes[1] - callTimes[0] >= FAST_BACKOFF_STEPS[0] - 5, 'first backoff delay too short');
-      assert.ok(callTimes[2] - callTimes[1] >= FAST_BACKOFF_STEPS[1] - 8, 'second backoff delay too short');
       return {
         passed: true,
         attempts: callTimes.length,

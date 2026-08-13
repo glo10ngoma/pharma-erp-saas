@@ -81,9 +81,25 @@ class SubmitPosPaymentDto {
 
   @IsNumber()
   netReceivedCdf: number;
+
+  @IsOptional()
+  @IsNumber()
+  suggestedChangeUsd?: number;
+
+  @IsOptional()
+  @IsNumber()
+  suggestedChangeCdf?: number;
+
+  @IsOptional()
+  @IsNumber()
+  netTotalEquivalentUsd?: number;
+
+  @IsOptional()
+  @IsNumber()
+  settlementDifferenceUsd?: number;
 }
 
-class SubmitPosSaleValidateOperationDto {
+export class SubmitPosSaleValidateOperationDto {
   @ApiProperty({ enum: ['SALE_VALIDATE'] })
   @IsEnum(['SALE_VALIDATE'])
   operationType: 'SALE_VALIDATE';
@@ -112,8 +128,16 @@ class SubmitPosSaleValidateOperationDto {
   @IsUUID()
   userId: string;
 
+  @IsOptional()
   @IsUUID()
-  cashSessionId: string;
+  cashSessionId?: string | null;
+
+  @IsUUID()
+  localCashSessionId: string;
+
+  @IsOptional()
+  @IsUUID()
+  cashSessionOpenOperationId?: string | null;
 
   @IsOptional()
   @IsUUID()
@@ -162,12 +186,205 @@ class SubmitPosSaleValidateOperationDto {
   items: SubmitPosSaleItemDto[];
 }
 
+export class SubmitPosCashSessionOpenOperationDto {
+  @ApiProperty({ enum: ['CASH_SESSION_OPEN'] })
+  @IsEnum(['CASH_SESSION_OPEN'])
+  operationType: 'CASH_SESSION_OPEN';
+
+  @IsUUID()
+  operationId: string;
+
+  @IsUUID()
+  localCashSessionId: string;
+
+  @IsString()
+  offlineCashReference: string;
+
+  @IsUUID()
+  tenantId: string;
+
+  @IsUUID()
+  siteId: string;
+
+  @IsUUID()
+  workstationId: string;
+
+  @IsString()
+  deviceId: string;
+
+  @IsUUID()
+  userId: string;
+
+  @IsNumber()
+  @Min(0)
+  openingBalanceUsd: number;
+
+  @IsNumber()
+  @Min(0)
+  openingBalanceCdf: number;
+
+  @IsOptional()
+  @IsString()
+  note?: string | null;
+
+  @IsString()
+  openedLocallyAt: string;
+}
+
+export class SubmitPosCashExpenseOperationDto {
+  @ApiProperty({ enum: ['CASH_EXPENSE'] })
+  @IsEnum(['CASH_EXPENSE'])
+  operationType: 'CASH_EXPENSE';
+
+  @IsUUID()
+  operationId: string;
+
+  @IsUUID()
+  localCashSessionId: string;
+
+  @IsString()
+  offlineCashReference: string;
+
+  @IsUUID()
+  tenantId: string;
+
+  @IsUUID()
+  siteId: string;
+
+  @IsUUID()
+  workstationId: string;
+
+  @IsString()
+  deviceId: string;
+
+  @IsUUID()
+  userId: string;
+
+  @IsOptional()
+  @IsUUID()
+  serverCashSessionId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  cashSessionOpenOperationId?: string | null;
+
+  @IsUUID()
+  localMovementId: string;
+
+  @IsNumber()
+  @Min(0.01)
+  amount: number;
+
+  @IsEnum(['USD', 'CDF'])
+  currency: 'USD' | 'CDF';
+
+  @IsString()
+  expenseCategory: string;
+
+  @IsString()
+  description: string;
+
+  @IsString()
+  createdLocallyAt: string;
+}
+
+export class SubmitPosCashSessionCloseOperationDto {
+  @ApiProperty({ enum: ['CASH_SESSION_CLOSE'] })
+  @IsEnum(['CASH_SESSION_CLOSE'])
+  operationType: 'CASH_SESSION_CLOSE';
+
+  @IsUUID()
+  operationId: string;
+
+  @IsUUID()
+  localCashSessionId: string;
+
+  @IsString()
+  offlineCashReference: string;
+
+  @IsUUID()
+  tenantId: string;
+
+  @IsUUID()
+  siteId: string;
+
+  @IsUUID()
+  workstationId: string;
+
+  @IsString()
+  deviceId: string;
+
+  @IsUUID()
+  userId: string;
+
+  @IsOptional()
+  @IsUUID()
+  serverCashSessionId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  cashSessionOpenOperationId?: string | null;
+
+  @IsNumber()
+  @Min(0)
+  declaredClosingUsd: number;
+
+  @IsNumber()
+  @Min(0)
+  declaredClosingCdf: number;
+
+  @IsNumber()
+  @Min(0)
+  expectedClosingUsd: number;
+
+  @IsNumber()
+  @Min(0)
+  expectedClosingCdf: number;
+
+  @IsNumber()
+  differenceUsd: number;
+
+  @IsNumber()
+  differenceCdf: number;
+
+  @IsOptional()
+  @IsString()
+  note?: string | null;
+
+  @IsString()
+  closedLocallyAt: string;
+}
+
 export class SubmitPosOperationsDto {
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
-  @Type(() => SubmitPosSaleValidateOperationDto)
-  operations: SubmitPosSaleValidateOperationDto[];
+  @Type(() => SubmitPosSaleValidateOperationDto, {
+    discriminator: {
+      property: 'operationType',
+      subTypes: [
+        { name: 'SALE_VALIDATE', value: SubmitPosSaleValidateOperationDto },
+        { name: 'CASH_SESSION_OPEN', value: SubmitPosCashSessionOpenOperationDto },
+        { name: 'CASH_EXPENSE', value: SubmitPosCashExpenseOperationDto },
+        { name: 'CASH_SESSION_CLOSE', value: SubmitPosCashSessionCloseOperationDto },
+      ],
+    },
+    keepDiscriminatorProperty: true,
+  })
+  operations: Array<
+    | SubmitPosSaleValidateOperationDto
+    | SubmitPosCashSessionOpenOperationDto
+    | SubmitPosCashExpenseOperationDto
+    | SubmitPosCashSessionCloseOperationDto
+  >;
 }
 
 export type SubmitPosSaleValidateOperation = SubmitPosSaleValidateOperationDto;
+export type SubmitPosCashSessionOpenOperation = SubmitPosCashSessionOpenOperationDto;
+export type SubmitPosCashExpenseOperation = SubmitPosCashExpenseOperationDto;
+export type SubmitPosCashSessionCloseOperation = SubmitPosCashSessionCloseOperationDto;
+export type SubmitPosOperation =
+  | SubmitPosSaleValidateOperation
+  | SubmitPosCashSessionOpenOperation
+  | SubmitPosCashExpenseOperation
+  | SubmitPosCashSessionCloseOperation;

@@ -9,7 +9,23 @@ export type OfflineSaleStatus = 'LOCAL_VALIDATED' | 'PENDING_SYNC' | 'SYNCING' |
 export type OfflinePaymentStatus = 'CAPTURED_LOCAL' | 'SYNCED';
 export type OfflinePendingConsumptionStatus = 'PENDING' | 'SYNCED' | 'CONFLICT';
 export type OfflineSyncQueueStatus = 'PENDING' | 'SYNCING' | 'SYNCED' | 'CONFLICT' | 'FAILED';
-export type OfflineSyncQueueOperationType = 'SALE_VALIDATE';
+export type OfflineCashSessionStatus =
+  | 'LOCAL_OPEN'
+  | 'OPEN_PENDING_SYNC'
+  | 'OPEN_SYNCED'
+  | 'LOCAL_CLOSING'
+  | 'CLOSED_PENDING_SYNC'
+  | 'CLOSED_SYNCED'
+  | 'CONFLICT'
+  | 'FAILED'
+  | 'CANCELLED_BEFORE_USE';
+export type OfflineCashMovementType =
+  | 'OPENING_BALANCE'
+  | 'SALE_CASH_IN'
+  | 'EXPENSE_OUT'
+  | 'CLOSING_DECLARATION';
+export type OfflineCashMovementStatus = 'CAPTURED_LOCAL' | 'PENDING_SYNC' | 'SYNCING' | 'SYNCED' | 'CONFLICT' | 'FAILED';
+export type OfflineSyncQueueOperationType = 'SALE_VALIDATE' | 'CASH_SESSION_OPEN' | 'CASH_EXPENSE' | 'CASH_SESSION_CLOSE';
 export type OfflineActivityType =
   | 'cart.created'
   | 'cart.item_added'
@@ -23,7 +39,12 @@ export type OfflineActivityType =
   | 'sale.validated_local'
   | 'sale.sync_queued'
   | 'sale.synced'
-  | 'sale.sync_conflict';
+  | 'sale.sync_conflict'
+  | 'cash.session_opened_local'
+  | 'cash.expense_captured_local'
+  | 'cash.session_closed_local'
+  | 'cash.session_synced'
+  | 'cash.session_conflict';
 export type OfflineCartErrorCode =
   | 'CATALOG_EMPTY'
   | 'ARTICLE_NOT_FOUND'
@@ -50,7 +71,16 @@ export type OfflineAllocationConflictCode =
   | 'LOT_BLOCKED_AFTER_OFFLINE_SALE'
   | 'LOT_EXPIRED_AT_OFFLINE_SALE'
   | 'CASH_SESSION_CLOSED_AFTER_OFFLINE_SALE'
-  | 'WORKSTATION_REVOKED';
+  | 'WORKSTATION_REVOKED'
+  | 'CASH_SESSION_ALREADY_OPEN'
+  | 'CASH_SESSION_NOT_FOUND'
+  | 'CASH_SESSION_CLOSED'
+  | 'CASH_SESSION_REVOKED'
+  | 'CASH_SESSION_WORKSTATION_MISMATCH'
+  | 'CASH_EXPECTED_BALANCE_MISMATCH'
+  | 'CASH_MOVEMENT_MISSING'
+  | 'CASH_EXPENSE_REPLAY_CONFLICT'
+  | 'CASH_CLOSE_DEPENDENCY_PENDING';
 
 export interface OfflinePosArticle {
   localKey: string;
@@ -165,17 +195,96 @@ export interface OfflineWorkstationSnapshot {
 
 export interface OfflineCashSessionSnapshot {
   cashSessionId: string;
+  localCashSessionId: string;
+  offlineCashReference: string;
   tenantId: string;
   siteId: string;
   workstationId: string | null;
   userId: string;
-  status: 'OPEN' | 'CLOSED';
+  deviceId: string | null;
+  serverCashSessionId: string | null;
+  serverSessionReference: string | null;
+  status: OfflineCashSessionStatus;
   openedAt: string;
+  openedLocallyAt: string;
+  serverOpenedAt: string | null;
+  closedLocallyAt: string | null;
+  serverClosedAt: string | null;
+  syncedAt: string | null;
   openingBalanceUsd: number;
   openingBalanceCdf: number;
+  cashSalesUsd: number;
+  cashSalesCdf: number;
+  expensesUsd: number;
+  expensesCdf: number;
+  refundsUsd: number;
+  refundsCdf: number;
+  expectedClosingUsd: number;
+  expectedClosingCdf: number;
+  declaredClosingUsd: number | null;
+  declaredClosingCdf: number | null;
+  differenceUsd: number | null;
+  differenceCdf: number | null;
+  localExpectedClosingUsd: number;
+  localExpectedClosingCdf: number;
+  serverExpectedClosingUsd: number | null;
+  serverExpectedClosingCdf: number | null;
+  serverDifferenceUsd: number | null;
+  serverDifferenceCdf: number | null;
+  openingOperationId: string;
+  closingOperationId: string | null;
   serverVersion: number;
+  note: string | null;
   updatedAt: string | null;
   lastSyncedAt: string | null;
+}
+
+export interface OfflineCashMovement {
+  localMovementId: string;
+  localCashSessionId: string;
+  tenantId: string;
+  siteId: string;
+  workstationId: string | null;
+  userId: string;
+  serverMovementId: string | null;
+  operationId: string;
+  movementType: OfflineCashMovementType;
+  currency: 'USD' | 'CDF';
+  amount: number;
+  sourceType: 'CASH_SESSION' | 'SALE' | 'EXPENSE' | 'CLOSE';
+  sourceId: string | null;
+  reference: string | null;
+  description: string | null;
+  createdLocallyAt: string;
+  syncedAt: string | null;
+  status: OfflineCashMovementStatus;
+}
+
+export interface OfflineCashCount {
+  countId: string;
+  localCashSessionId: string;
+  declaredUsd: number;
+  declaredCdf: number;
+  expectedUsd: number;
+  expectedCdf: number;
+  differenceUsd: number;
+  differenceCdf: number;
+  countedAt: string;
+  countedBy: string;
+  note: string | null;
+}
+
+export interface OfflineCashReconciliationEvent {
+  eventId: string;
+  localCashSessionId: string;
+  operationId: string | null;
+  code: string;
+  message: string;
+  localExpectedUsd: number | null;
+  localExpectedCdf: number | null;
+  serverExpectedUsd: number | null;
+  serverExpectedCdf: number | null;
+  createdAt: string;
 }
 
 export interface OfflineSyncState {
@@ -201,9 +310,12 @@ export interface OfflineSyncQueueEntry {
   workstationId: string;
   tenantId: string;
   siteId: string;
-  payload: OfflineSaleValidateOperation;
+  payload: OfflineSyncOperationPayload;
   status: OfflineSyncQueueStatus;
   relatedLocalSaleId?: string | null;
+  relatedLocalCashSessionId?: string | null;
+  dependsOnOperationId?: string | null;
+  dependencyGroup?: string | null;
   lastErrorCode?: string | null;
   lastErrorMessage?: string | null;
   createdAt: string;
@@ -451,6 +563,7 @@ export interface OfflinePayment {
   siteId: string;
   workstationId: string;
   cashSessionId: string;
+  localCashSessionId: string;
   currencyCode: 'USD';
   exchangeRate: number | null;
   settlement: OfflinePaymentSettlement;
@@ -469,6 +582,8 @@ export interface OfflineSale {
   deviceId: string;
   userId: string;
   cashSessionId: string;
+  localCashSessionId: string;
+  cashSessionOpenOperationId: string | null;
   customerId: string | null;
   customerNameSnapshot: string | null;
   saleType: 'CASH';
@@ -500,7 +615,9 @@ export interface OfflineSaleValidateOperation {
   workstationId: string;
   deviceId: string;
   userId: string;
-  cashSessionId: string;
+  cashSessionId: string | null;
+  localCashSessionId: string;
+  cashSessionOpenOperationId: string | null;
   customerId: string | null;
   currency: 'USD';
   exchangeRateSnapshot: number | null;
@@ -528,6 +645,70 @@ export interface OfflineSaleValidateOperation {
     }>;
   }>;
 }
+
+export interface OfflineCashSessionOpenOperation {
+  operationType: 'CASH_SESSION_OPEN';
+  operationId: string;
+  localCashSessionId: string;
+  offlineCashReference: string;
+  tenantId: string;
+  siteId: string;
+  workstationId: string;
+  deviceId: string;
+  userId: string;
+  openingBalanceUsd: number;
+  openingBalanceCdf: number;
+  note: string | null;
+  openedLocallyAt: string;
+}
+
+export interface OfflineCashExpenseOperation {
+  operationType: 'CASH_EXPENSE';
+  operationId: string;
+  localCashSessionId: string;
+  offlineCashReference: string;
+  tenantId: string;
+  siteId: string;
+  workstationId: string;
+  deviceId: string;
+  userId: string;
+  serverCashSessionId: string | null;
+  cashSessionOpenOperationId: string | null;
+  localMovementId: string;
+  amount: number;
+  currency: 'USD' | 'CDF';
+  expenseCategory: string;
+  description: string;
+  createdLocallyAt: string;
+}
+
+export interface OfflineCashSessionCloseOperation {
+  operationType: 'CASH_SESSION_CLOSE';
+  operationId: string;
+  localCashSessionId: string;
+  offlineCashReference: string;
+  tenantId: string;
+  siteId: string;
+  workstationId: string;
+  deviceId: string;
+  userId: string;
+  serverCashSessionId: string | null;
+  cashSessionOpenOperationId: string | null;
+  declaredClosingUsd: number;
+  declaredClosingCdf: number;
+  expectedClosingUsd: number;
+  expectedClosingCdf: number;
+  differenceUsd: number;
+  differenceCdf: number;
+  note: string | null;
+  closedLocallyAt: string;
+}
+
+export type OfflineSyncOperationPayload =
+  | OfflineSaleValidateOperation
+  | OfflineCashSessionOpenOperation
+  | OfflineCashExpenseOperation
+  | OfflineCashSessionCloseOperation;
 
 export interface PosSyncWorkstation {
   workstationId: string;
@@ -576,6 +757,7 @@ export interface PosSyncBootstrapPayload {
     openingBalanceCdf: number;
     serverVersion: number;
     updatedAt: string | null;
+    sessionReference?: string | null;
   } | null;
   articles: Array<{
     articleId: string;

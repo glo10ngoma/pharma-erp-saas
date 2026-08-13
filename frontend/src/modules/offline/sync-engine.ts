@@ -2,15 +2,17 @@ import { posSyncService, type PosSyncEngineStatus } from '../../services/posSync
 import {
   appendSyncConflict,
   appendSyncLog,
+  patchOfflineSyncQueueEntry,
+  readOfflineCashSessions,
   readOfflineConflicts,
   readOfflineSnapshot,
   readOfflineSyncQueue,
   resetStaleSyncingQueueEntries,
-  saveOfflineSyncQueue,
+  updateOfflineSyncOperationResult,
   writeOfflineSyncState,
 } from './offline-storage';
 import { applyChanges, getStableDeviceId, pingPosSync } from './offline-bootstrap';
-import { syncPendingOfflineSales } from './offline-sale';
+import { type OfflineCashExpenseOperation, type OfflineCashSessionCloseOperation, type OfflineSaleValidateOperation, type OfflineSyncOperationPayload, type OfflineSyncQueueEntry } from './offline-types';
 
 const AUTO_SYNC_INTERVAL_MS = 60_000;
 const BACKOFF_STEPS_MS = [60_000, 120_000, 300_000, 600_000, 1_800_000] as const;
@@ -78,15 +80,12 @@ async function refreshCounters() {
   });
 }
 
-async function markPendingAsSyncing() {
-  const queue = await readOfflineSyncQueue();
-  const now = new Date().toISOString();
-  const nextQueue = queue.map((row) =>
-    row.status === 'PENDING' || row.status === 'FAILED'
-      ? { ...row, status: 'SYNCING' as const, updatedAt: now }
-      : row,
-  );
-  await saveOfflineSyncQueue(nextQueue);
+async function markQueueEntrySyncing(operationId: string) {
+  await patchOfflineSyncQueueEntry(operationId, (row) => ({
+    ...row,
+    status: 'SYNCING',
+    updatedAt: new Date().toISOString(),
+  }));
   await refreshCounters();
 }
 
@@ -188,9 +187,7 @@ export async function runSync(trigger: 'manual' | 'timer' | 'online' | 'visibili
     }
 
     setState({ currentStatus: 'SYNCING' });
-    await markPendingAsSyncing();
-
-    const results = await syncPendingOfflineSales();
+    const results = await processPendingOfflineQueue();
     const conflicts = results.filter((row) => row.status === 'CONFLICT');
     const failures = results.filter((row) => row.status === 'FAILED');
 
@@ -254,6 +251,155 @@ export async function runSync(trigger: 'manual' | 'timer' | 'online' | 'visibili
       await refreshCounters();
     }
   }
+}
+
+type OfflineSyncProcessResult = {
+  operationId: string;
+  operationType: OfflineSyncQueueEntry['operationType'];
+  status: 'SYNCED' | 'CONFLICT' | 'FAILED';
+  error?: string;
+  errorCode?: string | null;
+};
+
+export async function processPendingOfflineQueue() {
+  const results: OfflineSyncProcessResult[] = [];
+  while (true) {
+    const queue = await readOfflineSyncQueue();
+    const nextEntry = await selectNextEligibleEntry(queue);
+    if (!nextEntry) break;
+
+    await markQueueEntrySyncing(nextEntry.operationId);
+    const preparedEntry = await prepareEntryForSend(nextEntry);
+
+    try {
+      const response = await posSyncService.pushOperations({
+        operations: [preparedEntry.payload as OfflineSyncOperationPayload],
+      });
+      const result = response.data.results[0];
+      if (result?.status === 'SYNCED' || result?.status === 'ALREADY_PROCESSED') {
+        await updateOfflineSyncOperationResult({
+          operationId: preparedEntry.operationId,
+          nextStatus: 'SYNCED',
+          result,
+        });
+        results.push({
+          operationId: preparedEntry.operationId,
+          operationType: preparedEntry.operationType,
+          status: 'SYNCED',
+        });
+        continue;
+      }
+
+      await updateOfflineSyncOperationResult({
+        operationId: preparedEntry.operationId,
+        nextStatus: 'CONFLICT',
+        result: result ?? null,
+        errorCode: result?.errorCode ?? 'SYNC_CONFLICT',
+        errorMessage: result?.message ?? 'Conflit de synchronisation',
+      });
+      results.push({
+        operationId: preparedEntry.operationId,
+        operationType: preparedEntry.operationType,
+        status: 'CONFLICT',
+        errorCode: result?.errorCode ?? 'SYNC_CONFLICT',
+        error: result?.message ?? result?.errorCode ?? 'SYNC_CONFLICT',
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'SYNC_FAILED';
+      await updateOfflineSyncOperationResult({
+        operationId: preparedEntry.operationId,
+        nextStatus: 'FAILED',
+        errorCode: 'SYNC_FAILED',
+        errorMessage: message,
+      });
+      results.push({
+        operationId: preparedEntry.operationId,
+        operationType: preparedEntry.operationType,
+        status: 'FAILED',
+        errorCode: 'SYNC_FAILED',
+        error: message,
+      });
+      if (isTechnicalError(message)) break;
+    }
+  }
+  return results;
+}
+
+async function selectNextEligibleEntry(queue: OfflineSyncQueueEntry[]) {
+  const candidates = queue
+    .filter((entry) => entry.status === 'PENDING' || entry.status === 'FAILED')
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+
+  for (const entry of candidates) {
+    if (await isEntryEligible(entry, queue)) return entry;
+  }
+  return null;
+}
+
+async function isEntryEligible(entry: OfflineSyncQueueEntry, queue: OfflineSyncQueueEntry[]) {
+  if (entry.dependsOnOperationId) {
+    const dependency = queue.find((row) => row.operationId === entry.dependsOnOperationId);
+    if (!dependency || dependency.status !== 'SYNCED') return false;
+  }
+
+  if (entry.operationType === 'CASH_SESSION_CLOSE') {
+    return canCloseSessionSync(entry.relatedLocalCashSessionId ?? null, queue, entry.operationId, entry.createdAt);
+  }
+
+  return true;
+}
+
+function canCloseSessionSync(
+  localCashSessionId: string | null,
+  queue: OfflineSyncQueueEntry[],
+  currentOperationId: string,
+  createdAt: string,
+) {
+  if (!localCashSessionId) return false;
+  return queue
+    .filter((row) =>
+      row.relatedLocalCashSessionId === localCashSessionId
+      && row.operationId !== currentOperationId
+      && row.createdAt <= createdAt,
+    )
+    .every((row) => row.status === 'SYNCED');
+}
+
+async function prepareEntryForSend(entry: OfflineSyncQueueEntry) {
+  if (!entry.relatedLocalCashSessionId) return entry;
+
+  const sessions = await readOfflineCashSessions();
+  const session = sessions.find((row) => row.localCashSessionId === entry.relatedLocalCashSessionId);
+  if (!session?.serverCashSessionId) return entry;
+
+  let nextPayload = entry.payload;
+  if (entry.operationType === 'SALE_VALIDATE') {
+    const payload = entry.payload as OfflineSaleValidateOperation;
+    if (payload.cashSessionId !== session.serverCashSessionId) {
+      nextPayload = { ...payload, cashSessionId: session.serverCashSessionId };
+    }
+  } else if (entry.operationType === 'CASH_EXPENSE') {
+    const payload = entry.payload as OfflineCashExpenseOperation;
+    if (payload.serverCashSessionId !== session.serverCashSessionId) {
+      nextPayload = { ...payload, serverCashSessionId: session.serverCashSessionId };
+    }
+  } else if (entry.operationType === 'CASH_SESSION_CLOSE') {
+    const payload = entry.payload as OfflineCashSessionCloseOperation;
+    if (payload.serverCashSessionId !== session.serverCashSessionId) {
+      nextPayload = { ...payload, serverCashSessionId: session.serverCashSessionId };
+    }
+  }
+
+  if (nextPayload !== entry.payload) {
+    const patched = await patchOfflineSyncQueueEntry(entry.operationId, (row) => ({
+      ...row,
+      payload: nextPayload,
+      updatedAt: new Date().toISOString(),
+    }));
+    if (patched) return patched;
+  }
+
+  return entry;
 }
 
 async function startInternal() {

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AdminExportActions, AdminSummary } from '../administration/admin-ui';
@@ -17,6 +17,19 @@ import { sitesService } from '../../services/sites.service';
 import { workstationsService } from '../../services/workstations.service';
 import { SearchBox } from '../../components/SearchBox';
 import { formatDate, formatDateTime } from '../../utils/date';
+import { formatMoney } from '../../utils/money';
+import {
+  readOfflineCashCounts,
+  readOfflineCashMovements,
+  readOfflineCashSessions,
+  readOfflineCashReconciliationEvents,
+} from './offline-storage';
+import {
+  type OfflineCashCount,
+  type OfflineCashMovement,
+  type OfflineCashReconciliationEvent,
+  type OfflineCashSessionSnapshot,
+} from './offline-types';
 
 function PageShell(props: {
   title: string;
@@ -501,6 +514,135 @@ export function OfflineAdminLogsPage() {
             </table>
           </div>
         )}
+      </div>
+    </PageShell>
+  );
+}
+
+export function OfflineAdminCashSessionsPage() {
+  const [search, setSearch] = useState('');
+  const [sessions, setSessions] = useState<OfflineCashSessionSnapshot[]>([]);
+  const [movements, setMovements] = useState<OfflineCashMovement[]>([]);
+  const [counts, setCounts] = useState<OfflineCashCount[]>([]);
+  const [events, setEvents] = useState<OfflineCashReconciliationEvent[]>([]);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      const [localSessions, localMovements, localCounts, localEvents] = await Promise.all([
+        readOfflineCashSessions(),
+        readOfflineCashMovements(),
+        readOfflineCashCounts(),
+        readOfflineCashReconciliationEvents(),
+      ]);
+      setSessions(localSessions);
+      setMovements(localMovements);
+      setCounts(localCounts);
+      setEvents(localEvents);
+      setSelectedSessionId((current) => current ?? localSessions[0]?.localCashSessionId ?? null);
+    })();
+  }, []);
+
+  const rows = useMemo(
+    () => sessions.filter((row) =>
+      [
+        row.offlineCashReference,
+        row.serverSessionReference,
+        row.siteId,
+        row.workstationId,
+        row.userId,
+        row.status,
+      ].some((value) => String(value ?? '').toLowerCase().includes(search.toLowerCase()))),
+    [search, sessions],
+  );
+  const selected = rows.find((row) => row.localCashSessionId === selectedSessionId) ?? rows[0] ?? null;
+  const selectedMovements = selected ? movements.filter((row) => row.localCashSessionId === selected.localCashSessionId) : [];
+  const selectedCounts = selected ? counts.filter((row) => row.localCashSessionId === selected.localCashSessionId) : [];
+  const selectedEvents = selected ? events.filter((row) => row.localCashSessionId === selected.localCashSessionId) : [];
+  const exportRows = useMemo(() => [
+    ['Reference offline', 'Reference serveur', 'Site', 'Poste', 'Caissier', 'Ouverture', 'Fermeture', 'Statut', 'Expected USD', 'Declared USD', 'Difference USD'],
+    ...rows.map((row) => [
+      row.offlineCashReference,
+      row.serverSessionReference ?? '-',
+      row.siteId,
+      row.workstationId ?? '-',
+      row.userId,
+      formatDateTime(row.openedLocallyAt),
+      formatDateTime(row.closedLocallyAt ?? row.serverClosedAt),
+      row.status,
+      row.serverExpectedClosingUsd ?? row.expectedClosingUsd,
+      row.declaredClosingUsd ?? '-',
+      row.serverDifferenceUsd ?? row.differenceUsd ?? '-',
+    ]),
+  ], [rows]);
+
+  return (
+    <PageShell
+      title="Sessions caisse offline"
+      description="Vue V1 des sessions caisse locales/offline, des mouvements et des ecarts."
+      actions={<AdminExportActions baseName="offline_cash_sessions" sheetName="Sessions offline" rows={exportRows} jsonData={rows} disabled={rows.length === 0} />}
+    >
+      <AdminSummary cards={[
+        { label: 'Sessions', value: rows.length },
+        { label: 'Ouvertes', value: rows.filter((row) => row.status === 'OPEN_PENDING_SYNC' || row.status === 'OPEN_SYNCED' || row.status === 'LOCAL_OPEN').length },
+        { label: 'Pending close', value: rows.filter((row) => row.status === 'CLOSED_PENDING_SYNC').length },
+        { label: 'Conflits', value: rows.filter((row) => row.status === 'CONFLICT').length },
+      ]} />
+
+      <div className="card reference-filters"><SearchBox value={search} onChange={setSearch} placeholder="Rechercher reference, site, poste, statut..." /></div>
+
+      <div className="dashboard-grid reports-dashboard-grid">
+        <section className="card table-card">
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead><tr><th>Reference</th><th>Poste</th><th>Ouverture</th><th>Statut</th><th>Expected USD</th><th>Declared USD</th><th>Difference USD</th><th>Actions</th></tr></thead>
+              <tbody>
+                {rows.length === 0 ? (
+                  <tr><td colSpan={8}><p className="empty-state">Aucune session caisse offline locale.</p></td></tr>
+                ) : rows.map((row) => (
+                  <tr key={row.localCashSessionId}>
+                    <td><strong>{row.offlineCashReference}</strong><div className="offline-row-meta">{row.serverSessionReference ?? '-'}</div></td>
+                    <td>{row.workstationId ?? '-'}</td>
+                    <td>{formatDateTime(row.openedLocallyAt)}</td>
+                    <td><span className="badge compact-badge badge-neutral">{row.status}</span></td>
+                    <td>{formatMoney(row.serverExpectedClosingUsd ?? row.expectedClosingUsd, 'USD')}</td>
+                    <td>{row.declaredClosingUsd === null ? '-' : formatMoney(row.declaredClosingUsd, 'USD')}</td>
+                    <td>{row.serverDifferenceUsd === null && row.differenceUsd === null ? '-' : formatMoney(row.serverDifferenceUsd ?? row.differenceUsd ?? 0, 'USD')}</td>
+                    <td className="reference-actions-cell">
+                      <button className="ghost-button compact-button" onClick={() => setSelectedSessionId(row.localCashSessionId)}>Voir</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="card detail-card">
+          <div className="card-header"><h3>Detail session</h3></div>
+          {!selected ? (
+            <p className="empty-state">Selectionnez une session.</p>
+          ) : (
+            <>
+              <div className="detail-grid compact-detail-grid">
+                <div><span>Reference offline</span><strong>{selected.offlineCashReference}</strong></div>
+                <div><span>Reference serveur</span><strong>{selected.serverSessionReference ?? '-'}</strong></div>
+                <div><span>Statut</span><strong>{selected.status}</strong></div>
+                <div><span>Ouverte</span><strong>{formatDateTime(selected.openedLocallyAt)}</strong></div>
+                <div><span>Fermee</span><strong>{formatDateTime(selected.closedLocallyAt ?? selected.serverClosedAt)}</strong></div>
+                <div><span>Theorique local USD</span><strong>{formatMoney(selected.expectedClosingUsd, 'USD')}</strong></div>
+                <div><span>Theorique serveur USD</span><strong>{selected.serverExpectedClosingUsd === null ? '-' : formatMoney(selected.serverExpectedClosingUsd, 'USD')}</strong></div>
+                <div><span>Declare USD</span><strong>{selected.declaredClosingUsd === null ? '-' : formatMoney(selected.declaredClosingUsd, 'USD')}</strong></div>
+                <div><span>Ecart USD</span><strong>{selected.serverDifferenceUsd === null && selected.differenceUsd === null ? '-' : formatMoney(selected.serverDifferenceUsd ?? selected.differenceUsd ?? 0, 'USD')}</strong></div>
+              </div>
+              <div className="detail-grid compact-detail-grid">
+                <div><span>Mouvements</span><strong>{selectedMovements.length}</strong></div>
+                <div><span>Comptages</span><strong>{selectedCounts.length}</strong></div>
+                <div><span>Reconciliations</span><strong>{selectedEvents.length}</strong></div>
+              </div>
+            </>
+          )}
+        </section>
       </div>
     </PageShell>
   );

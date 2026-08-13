@@ -304,6 +304,7 @@ function createFakeOperation(context) {
     operationType: 'SALE_VALIDATE',
     operationId: crypto.randomUUID(),
     localSaleId: crypto.randomUUID(),
+    localCashSessionId: crypto.randomUUID(),
     offlineReference: 'OFF-STG-CONFLICT-4',
     tenantId: context.tenantId,
     siteId: context.siteId,

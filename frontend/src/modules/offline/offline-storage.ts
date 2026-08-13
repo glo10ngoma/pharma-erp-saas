@@ -2,6 +2,9 @@ import {
   type OfflineActivityLogEntry,
   type OfflineAuthSnapshot,
   type OfflineCart,
+  type OfflineCashCount,
+  type OfflineCashMovement,
+  type OfflineCashReconciliationEvent,
   type OfflineCashSessionSnapshot,
   type OfflineDraftReservation,
   type OfflineLocalSnapshot,
@@ -15,6 +18,7 @@ import {
   type OfflineSaleValidateOperation,
   type OfflineSnapshotStatus,
   type OfflineStockAllocation,
+  type OfflineSyncOperationPayload,
   type OfflineSyncConflictEntry,
   type OfflineSyncLogEntry,
   type OfflineSyncQueueEntry,
@@ -24,10 +28,10 @@ import {
   type PosSyncChangesPayload,
 } from './offline-types';
 import { normalizeAllocationStatus } from './offline-fefo';
-import { type PosSyncOperationAllocationAck } from '../../services/posSync.service';
+import { type PosSyncOperationAllocationAck, type PosSyncOperationResult } from '../../services/posSync.service';
 
 const DB_NAME = 'PharmaErpPosDb';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 const ARTICLES_STORE = 'offline_articles';
 const LOTS_STORE = 'offline_lots';
 const ALLOCATIONS_STORE = 'offline_allocations';
@@ -36,6 +40,9 @@ const SETTINGS_STORE = 'offline_settings';
 const AUTH_STORE = 'auth_snapshot';
 const WORKSTATION_STORE = 'workstation';
 const CASH_SESSION_STORE = 'offline_cash_sessions';
+const CASH_MOVEMENTS_STORE = 'offline_cash_movements';
+const CASH_COUNTS_STORE = 'offline_cash_counts';
+const CASH_RECONCILIATION_EVENTS_STORE = 'offline_cash_reconciliation_events';
 const SYNC_STATE_STORE = 'sync_state';
 const SYNC_QUEUE_STORE = 'sync_queue';
 const SYNC_LOG_STORE = 'sync_log';
@@ -89,7 +96,31 @@ export async function readWorkstationSnapshot() {
 export async function readOfflineCashSession() {
   const db = await openOfflineDatabase();
   const rows = await readAll<OfflineCashSessionSnapshot>(db, CASH_SESSION_STORE);
-  return rows[0] ?? null;
+  return selectActiveOfflineCashSession(rows);
+}
+
+export async function readOfflineCashSessions() {
+  const db = await openOfflineDatabase();
+  const rows = await readAll<OfflineCashSessionSnapshot>(db, CASH_SESSION_STORE);
+  return rows.sort((left, right) => sortByMostRecent(right.updatedAt ?? right.openedLocallyAt, left.updatedAt ?? left.openedLocallyAt));
+}
+
+export async function readOfflineCashMovements() {
+  const db = await openOfflineDatabase();
+  const rows = await readAll<OfflineCashMovement>(db, CASH_MOVEMENTS_STORE);
+  return rows.sort((left, right) => sortByMostRecent(right.createdLocallyAt, left.createdLocallyAt));
+}
+
+export async function readOfflineCashCounts() {
+  const db = await openOfflineDatabase();
+  const rows = await readAll<OfflineCashCount>(db, CASH_COUNTS_STORE);
+  return rows.sort((left, right) => sortByMostRecent(right.countedAt, left.countedAt));
+}
+
+export async function readOfflineCashReconciliationEvents() {
+  const db = await openOfflineDatabase();
+  const rows = await readAll<OfflineCashReconciliationEvent>(db, CASH_RECONCILIATION_EVENTS_STORE);
+  return rows.sort((left, right) => sortByMostRecent(right.createdAt, left.createdAt));
 }
 
 export async function readSyncState() {
@@ -218,11 +249,27 @@ export async function clearOfflineSnapshot() {
       AUTH_STORE,
       WORKSTATION_STORE,
       CASH_SESSION_STORE,
+      CASH_MOVEMENTS_STORE,
+      CASH_COUNTS_STORE,
+      CASH_RECONCILIATION_EVENTS_STORE,
       SYNC_STATE_STORE,
     ],
     'readwrite',
   );
-  for (const storeName of [ARTICLES_STORE, LOTS_STORE, ALLOCATIONS_STORE, CUSTOMERS_STORE, SETTINGS_STORE, AUTH_STORE, WORKSTATION_STORE, CASH_SESSION_STORE, SYNC_STATE_STORE]) {
+  for (const storeName of [
+    ARTICLES_STORE,
+    LOTS_STORE,
+    ALLOCATIONS_STORE,
+    CUSTOMERS_STORE,
+    SETTINGS_STORE,
+    AUTH_STORE,
+    WORKSTATION_STORE,
+    CASH_SESSION_STORE,
+    CASH_MOVEMENTS_STORE,
+    CASH_COUNTS_STORE,
+    CASH_RECONCILIATION_EVENTS_STORE,
+    SYNC_STATE_STORE,
+  ]) {
     await clearStore(tx.objectStore(storeName));
   }
   await txDone(tx);
@@ -314,10 +361,40 @@ export async function saveOfflinePendingConsumptions(rows: OfflinePendingConsump
   await txDone(tx);
 }
 
+export async function saveOfflineCashSessions(rows: OfflineCashSessionSnapshot[]) {
+  const db = await openOfflineDatabase();
+  const tx = db.transaction(CASH_SESSION_STORE, 'readwrite');
+  await replaceAll(tx.objectStore(CASH_SESSION_STORE), rows);
+  await txDone(tx);
+}
+
+export async function saveOfflineCashMovements(rows: OfflineCashMovement[]) {
+  const db = await openOfflineDatabase();
+  const tx = db.transaction(CASH_MOVEMENTS_STORE, 'readwrite');
+  await replaceAll(tx.objectStore(CASH_MOVEMENTS_STORE), rows);
+  await txDone(tx);
+}
+
+export async function saveOfflineCashCounts(rows: OfflineCashCount[]) {
+  const db = await openOfflineDatabase();
+  const tx = db.transaction(CASH_COUNTS_STORE, 'readwrite');
+  await replaceAll(tx.objectStore(CASH_COUNTS_STORE), rows);
+  await txDone(tx);
+}
+
+export async function saveOfflineCashReconciliationEvents(rows: OfflineCashReconciliationEvent[]) {
+  const db = await openOfflineDatabase();
+  const tx = db.transaction(CASH_RECONCILIATION_EVENTS_STORE, 'readwrite');
+  await replaceAll(tx.objectStore(CASH_RECONCILIATION_EVENTS_STORE), rows);
+  await txDone(tx);
+}
+
 export async function persistValidatedOfflineSale(params: {
   sale: OfflineSale;
   payment: OfflinePayment;
   pendingConsumptions: OfflinePendingConsumption[];
+  cashSession?: OfflineCashSessionSnapshot | null;
+  cashMovements?: OfflineCashMovement[];
   queueEntry: Omit<OfflineSyncQueueEntry, 'localId' | 'createdAt' | 'updatedAt'>;
   cartId: string;
   activityEntries?: OfflineActivityLogEntry[];
@@ -328,6 +405,8 @@ export async function persistValidatedOfflineSale(params: {
       CARTS_STORE,
       DRAFT_RESERVATIONS_STORE,
       ALLOCATIONS_STORE,
+      CASH_SESSION_STORE,
+      CASH_MOVEMENTS_STORE,
       OFFLINE_SALES_STORE,
       OFFLINE_PAYMENTS_STORE,
       OFFLINE_PENDING_CONSUMPTIONS_STORE,
@@ -340,16 +419,20 @@ export async function persistValidatedOfflineSale(params: {
   const cartsStore = tx.objectStore(CARTS_STORE);
   const reservationsStore = tx.objectStore(DRAFT_RESERVATIONS_STORE);
   const allocationsStore = tx.objectStore(ALLOCATIONS_STORE);
+  const cashSessionStore = tx.objectStore(CASH_SESSION_STORE);
+  const cashMovementsStore = tx.objectStore(CASH_MOVEMENTS_STORE);
   const salesStore = tx.objectStore(OFFLINE_SALES_STORE);
   const paymentsStore = tx.objectStore(OFFLINE_PAYMENTS_STORE);
   const pendingStore = tx.objectStore(OFFLINE_PENDING_CONSUMPTIONS_STORE);
   const queueStore = tx.objectStore(SYNC_QUEUE_STORE);
   const activityStore = tx.objectStore(ACTIVITY_LOG_STORE);
 
-  const [carts, reservations, allocations, sales, payments, pendingRows] = await Promise.all([
+  const [carts, reservations, allocations, cashSessions, cashMovements, sales, payments, pendingRows] = await Promise.all([
     readAllFromTransaction<OfflineCart>(cartsStore),
     readAllFromTransaction<OfflineDraftReservation>(reservationsStore),
     readAllFromTransaction<OfflineStockAllocation>(allocationsStore),
+    readAllFromTransaction<OfflineCashSessionSnapshot>(cashSessionStore),
+    readAllFromTransaction<OfflineCashMovement>(cashMovementsStore),
     readAllFromTransaction<OfflineSale>(salesStore),
     readAllFromTransaction<OfflinePayment>(paymentsStore),
     readAllFromTransaction<OfflinePendingConsumption>(pendingStore),
@@ -377,10 +460,21 @@ export async function persistValidatedOfflineSale(params: {
     ...pendingRows.filter((row) => row.localSaleId !== params.sale.localSaleId),
     ...params.pendingConsumptions,
   ];
+  const nextCashSessions = params.cashSession
+    ? cashSessions.map((row) => row.localCashSessionId === params.cashSession?.localCashSessionId ? params.cashSession : row)
+    : cashSessions;
+  const nextCashMovements = params.cashMovements && params.cashMovements.length > 0
+    ? [
+        ...cashMovements.filter((row) => !params.cashMovements?.some((movement) => movement.localMovementId === row.localMovementId)),
+        ...params.cashMovements,
+      ]
+    : cashMovements;
 
   await replaceAll(cartsStore, nextCarts);
   await replaceAll(reservationsStore, nextReservations);
   await replaceAll(allocationsStore, nextAllocations);
+  await replaceAll(cashSessionStore, nextCashSessions);
+  await replaceAll(cashMovementsStore, nextCashMovements);
   await replaceAll(salesStore, nextSales);
   await replaceAll(paymentsStore, nextPayments);
   await replaceAll(pendingStore, nextPendingRows);
@@ -400,33 +494,50 @@ export async function persistValidatedOfflineSale(params: {
   await txDone(tx);
 }
 
-export async function updateOfflineSyncReplayResult(params: {
+export async function updateOfflineSyncOperationResult(params: {
   operationId: string;
-  localSaleId: string;
   nextStatus: OfflineSyncQueueEntry['status'];
-  serverSaleId?: string | null;
-  serverSaleNumber?: string | null;
-  allocations?: PosSyncOperationAllocationAck[];
+  result?: PosSyncOperationResult | null;
   errorCode?: string | null;
   errorMessage?: string | null;
 }) {
   const db = await openOfflineDatabase();
   const tx = db.transaction(
-    [SYNC_QUEUE_STORE, OFFLINE_SALES_STORE, OFFLINE_PENDING_CONSUMPTIONS_STORE, ALLOCATIONS_STORE, ACTIVITY_LOG_STORE],
+    [
+      SYNC_QUEUE_STORE,
+      OFFLINE_SALES_STORE,
+      OFFLINE_PENDING_CONSUMPTIONS_STORE,
+      ALLOCATIONS_STORE,
+      CASH_SESSION_STORE,
+      CASH_MOVEMENTS_STORE,
+      CASH_RECONCILIATION_EVENTS_STORE,
+      ACTIVITY_LOG_STORE,
+    ],
     'readwrite',
   );
   const queueStore = tx.objectStore(SYNC_QUEUE_STORE);
   const salesStore = tx.objectStore(OFFLINE_SALES_STORE);
   const pendingStore = tx.objectStore(OFFLINE_PENDING_CONSUMPTIONS_STORE);
   const allocationsStore = tx.objectStore(ALLOCATIONS_STORE);
+  const cashSessionStore = tx.objectStore(CASH_SESSION_STORE);
+  const cashMovementsStore = tx.objectStore(CASH_MOVEMENTS_STORE);
+  const reconciliationStore = tx.objectStore(CASH_RECONCILIATION_EVENTS_STORE);
   const activityStore = tx.objectStore(ACTIVITY_LOG_STORE);
 
-  const [queueEntries, sales, pendingRows, allocations] = await Promise.all([
+  const [queueEntries, sales, pendingRows, allocations, cashSessions, cashMovements, reconciliationEvents] = await Promise.all([
     readAllFromTransaction<OfflineSyncQueueEntry>(queueStore),
     readAllFromTransaction<OfflineSale>(salesStore),
     readAllFromTransaction<OfflinePendingConsumption>(pendingStore),
     readAllFromTransaction<OfflineStockAllocation>(allocationsStore),
+    readAllFromTransaction<OfflineCashSessionSnapshot>(cashSessionStore),
+    readAllFromTransaction<OfflineCashMovement>(cashMovementsStore),
+    readAllFromTransaction<OfflineCashReconciliationEvent>(reconciliationStore),
   ]);
+  const queueEntry = queueEntries.find((row) => row.operationId === params.operationId);
+  if (!queueEntry) {
+    await txDone(tx);
+    return;
+  }
 
   const now = new Date().toISOString();
   await replaceAll(queueStore, queueEntries.map((row) => row.operationId === params.operationId ? {
@@ -437,49 +548,225 @@ export async function updateOfflineSyncReplayResult(params: {
     lastErrorMessage: params.errorMessage ?? null,
   } : row));
 
-  await replaceAll(salesStore, sales.map((row) => row.localSaleId === params.localSaleId ? {
-    ...row,
-    status: params.nextStatus === 'SYNCED' ? 'SYNCED' : params.nextStatus === 'CONFLICT' ? 'CONFLICT' : row.status,
-    syncStatus: params.nextStatus,
-    serverSaleId: params.serverSaleId ?? row.serverSaleId,
-    serverSaleNumber: params.serverSaleNumber ?? row.serverSaleNumber,
-    syncedAt: params.nextStatus === 'SYNCED' ? now : row.syncedAt,
-  } : row));
+  const result = params.result ?? null;
+  const saleId = 'localSaleId' in queueEntry.payload ? queueEntry.payload.localSaleId : null;
 
-  if (params.nextStatus === 'SYNCED') {
-    const allocationAcks = new Map((params.allocations ?? []).map((entry) => [entry.allocationId, entry]));
-    await replaceAll(allocationsStore, allocations.map((row) => {
-      const ack = allocationAcks.get(row.allocationId);
-      if (!ack) return normalizeAllocation(row);
-      return normalizeAllocation({
-        ...row,
-        serverConsumedQuantity: Math.max(Number(row.serverConsumedQuantity ?? 0), Number(ack.serverConsumedQuantity ?? 0)),
-        localPendingConsumption: Math.max(0, Number(row.localPendingConsumption ?? 0) - Number(ack.acknowledgedQuantity ?? 0)),
-        allocationStatus: normalizeAllocationStatus(ack.status),
-        serverVersion: Math.max(Number(row.serverVersion ?? 0), Number(ack.serverVersion ?? 0)),
-        updatedAt: now,
-        lastSyncedAt: now,
-      });
-    }));
-    await replaceAll(pendingStore, pendingRows.map((row) => row.localSaleId === params.localSaleId ? {
+  if (queueEntry.operationType === 'SALE_VALIDATE' && saleId) {
+    await replaceAll(salesStore, sales.map((row) => row.localSaleId === saleId ? {
       ...row,
-      status: 'SYNCED',
-      syncedAt: now,
+      status: params.nextStatus === 'SYNCED' ? 'SYNCED' : params.nextStatus === 'CONFLICT' ? 'CONFLICT' : row.status,
+      syncStatus: params.nextStatus,
+      serverSaleId: result?.serverSaleId ?? row.serverSaleId,
+      serverSaleNumber: result?.serverSaleNumber ?? row.serverSaleNumber,
+      syncedAt: params.nextStatus === 'SYNCED' ? now : row.syncedAt,
     } : row));
+
+    if (params.nextStatus === 'SYNCED') {
+      const allocationAcks = new Map((result?.allocations ?? []).map((entry) => [entry.allocationId, entry]));
+      await replaceAll(allocationsStore, allocations.map((row) => {
+        const ack = allocationAcks.get(row.allocationId);
+        if (!ack) return normalizeAllocation(row);
+        return normalizeAllocation({
+          ...row,
+          serverConsumedQuantity: Math.max(Number(row.serverConsumedQuantity ?? 0), Number(ack.serverConsumedQuantity ?? 0)),
+          localPendingConsumption: Math.max(0, Number(row.localPendingConsumption ?? 0) - Number(ack.acknowledgedQuantity ?? 0)),
+          allocationStatus: normalizeAllocationStatus(ack.status),
+          serverVersion: Math.max(Number(row.serverVersion ?? 0), Number(ack.serverVersion ?? 0)),
+          updatedAt: now,
+          lastSyncedAt: now,
+        });
+      }));
+      await replaceAll(pendingStore, pendingRows.map((row) => row.localSaleId === saleId ? {
+        ...row,
+        status: 'SYNCED',
+        syncedAt: now,
+      } : row));
+    }
+
+    await putStore(activityStore, {
+      localId: crypto.randomUUID(),
+      cartId: null,
+      saleId,
+      type: params.nextStatus === 'SYNCED' ? 'sale.synced' : 'sale.sync_conflict',
+      message: params.nextStatus === 'SYNCED'
+        ? `Vente offline ${saleId} synchronisee sur le serveur.`
+        : `Conflit de synchronisation offline ${saleId}: ${params.errorMessage ?? params.errorCode ?? 'inconnu'}.`,
+      createdAt: now,
+    } satisfies OfflineActivityLogEntry);
   }
 
-  await putStore(activityStore, {
-    localId: crypto.randomUUID(),
-    cartId: null,
-    saleId: params.localSaleId,
-    type: params.nextStatus === 'SYNCED' ? 'sale.synced' : 'sale.sync_conflict',
-    message: params.nextStatus === 'SYNCED'
-      ? `Vente offline ${params.localSaleId} synchronisee sur le serveur.`
-      : `Conflit de synchronisation offline ${params.localSaleId}: ${params.errorMessage ?? params.errorCode ?? 'inconnu'}.`,
-    createdAt: now,
-  } satisfies OfflineActivityLogEntry);
+  if (queueEntry.operationType === 'CASH_SESSION_OPEN') {
+    const operation = queueEntry.payload as Extract<OfflineSyncOperationPayload, { operationType: 'CASH_SESSION_OPEN' }>;
+    const nextSessions = cashSessions.map((row) => {
+      if (row.localCashSessionId !== operation.localCashSessionId) return row;
+      if (params.nextStatus === 'SYNCED') {
+        return {
+          ...row,
+          status: 'OPEN_SYNCED',
+          serverCashSessionId: result?.serverCashSessionId ?? row.serverCashSessionId,
+          serverSessionReference: result?.serverSessionReference ?? row.serverSessionReference,
+          serverOpenedAt: result?.serverOpenedAt ?? row.serverOpenedAt ?? now,
+          serverVersion: Math.max(Number(row.serverVersion ?? 0), Number(result?.serverVersion ?? 0)),
+          syncedAt: now,
+          lastSyncedAt: now,
+          updatedAt: now,
+        };
+      }
+      if (params.nextStatus === 'CONFLICT') {
+        return { ...row, status: 'CONFLICT', updatedAt: now };
+      }
+      return { ...row, updatedAt: now };
+    });
+    const nextMovements = cashMovements.map((row) =>
+      row.operationId === operation.operationId
+        ? {
+            ...row,
+            status: params.nextStatus === 'SYNCED' ? 'SYNCED' : params.nextStatus === 'CONFLICT' ? 'CONFLICT' : row.status,
+            syncedAt: params.nextStatus === 'SYNCED' ? now : row.syncedAt,
+          }
+        : row,
+    );
+    await replaceAll(cashSessionStore, nextSessions);
+    await replaceAll(cashMovementsStore, nextMovements);
+    await putStore(activityStore, {
+      localId: crypto.randomUUID(),
+      cartId: null,
+      saleId: null,
+      type: params.nextStatus === 'SYNCED' ? 'cash.session_synced' : 'cash.session_conflict',
+      message: params.nextStatus === 'SYNCED'
+        ? `Session offline ${operation.offlineCashReference} synchronisee.`
+        : `Conflit session offline ${operation.offlineCashReference}: ${params.errorMessage ?? params.errorCode ?? 'inconnu'}.`,
+      createdAt: now,
+    } satisfies OfflineActivityLogEntry);
+  }
+
+  if (queueEntry.operationType === 'CASH_EXPENSE') {
+    const operation = queueEntry.payload as Extract<OfflineSyncOperationPayload, { operationType: 'CASH_EXPENSE' }>;
+    const nextMovements = cashMovements.map((row) =>
+      row.localMovementId === operation.localMovementId
+        ? {
+            ...row,
+            serverMovementId: result?.serverMovementId ?? row.serverMovementId,
+            status: params.nextStatus === 'SYNCED' ? 'SYNCED' : params.nextStatus === 'CONFLICT' ? 'CONFLICT' : row.status,
+            syncedAt: params.nextStatus === 'SYNCED' ? now : row.syncedAt,
+          }
+        : row,
+    );
+    const nextSessions = cashSessions.map((row) =>
+      row.localCashSessionId === operation.localCashSessionId && params.nextStatus === 'SYNCED'
+        ? {
+            ...row,
+            serverCashSessionId: result?.serverCashSessionId ?? row.serverCashSessionId,
+            serverVersion: Math.max(Number(row.serverVersion ?? 0), Number(result?.serverVersion ?? 0)),
+            lastSyncedAt: now,
+            updatedAt: now,
+          }
+        : row.localCashSessionId === operation.localCashSessionId && params.nextStatus === 'CONFLICT'
+          ? { ...row, status: 'CONFLICT', updatedAt: now }
+          : row
+    );
+    await replaceAll(cashMovementsStore, nextMovements);
+    await replaceAll(cashSessionStore, nextSessions);
+  }
+
+  if (queueEntry.operationType === 'CASH_SESSION_CLOSE') {
+    const operation = queueEntry.payload as Extract<OfflineSyncOperationPayload, { operationType: 'CASH_SESSION_CLOSE' }>;
+    const nextSessions = cashSessions.map((row) => {
+      if (row.localCashSessionId !== operation.localCashSessionId) return row;
+      if (params.nextStatus === 'SYNCED') {
+        return {
+          ...row,
+          status: 'CLOSED_SYNCED',
+          serverCashSessionId: result?.serverCashSessionId ?? row.serverCashSessionId,
+          serverSessionReference: result?.serverSessionReference ?? row.serverSessionReference,
+          serverClosedAt: result?.serverClosedAt ?? row.serverClosedAt ?? now,
+          serverExpectedClosingUsd: result?.serverExpectedUsd ?? row.serverExpectedClosingUsd,
+          serverExpectedClosingCdf: result?.serverExpectedCdf ?? row.serverExpectedClosingCdf,
+          serverDifferenceUsd: result?.serverDifferenceUsd ?? row.serverDifferenceUsd,
+          serverDifferenceCdf: result?.serverDifferenceCdf ?? row.serverDifferenceCdf,
+          declaredClosingUsd: result?.serverDeclaredUsd ?? row.declaredClosingUsd,
+          declaredClosingCdf: result?.serverDeclaredCdf ?? row.declaredClosingCdf,
+          serverVersion: Math.max(Number(row.serverVersion ?? 0), Number(result?.serverVersion ?? 0)),
+          syncedAt: now,
+          lastSyncedAt: now,
+          updatedAt: now,
+        };
+      }
+      if (params.nextStatus === 'CONFLICT') {
+        return { ...row, status: 'CONFLICT', updatedAt: now };
+      }
+      return { ...row, updatedAt: now };
+    });
+    const nextMovements = cashMovements.map((row) =>
+      row.operationId === operation.operationId
+        ? {
+            ...row,
+            status: params.nextStatus === 'SYNCED' ? 'SYNCED' : params.nextStatus === 'CONFLICT' ? 'CONFLICT' : row.status,
+            syncedAt: params.nextStatus === 'SYNCED' ? now : row.syncedAt,
+          }
+        : row,
+    );
+    await replaceAll(cashSessionStore, nextSessions);
+    await replaceAll(cashMovementsStore, nextMovements);
+
+    if (params.nextStatus === 'CONFLICT' && (params.errorCode ?? result?.errorCode) === 'CASH_EXPECTED_BALANCE_MISMATCH') {
+      await replaceAll(reconciliationStore, [
+        ...reconciliationEvents,
+        {
+          eventId: crypto.randomUUID(),
+          localCashSessionId: operation.localCashSessionId,
+          operationId: operation.operationId,
+          code: 'CASH_EXPECTED_BALANCE_MISMATCH',
+          message: params.errorMessage ?? result?.message ?? 'Ecart entre le theorique local et le theorique serveur.',
+          localExpectedUsd: operation.expectedClosingUsd,
+          localExpectedCdf: operation.expectedClosingCdf,
+          serverExpectedUsd: result?.serverExpectedUsd ?? null,
+          serverExpectedCdf: result?.serverExpectedCdf ?? null,
+          createdAt: now,
+        } satisfies OfflineCashReconciliationEvent,
+      ]);
+    }
+    await putStore(activityStore, {
+      localId: crypto.randomUUID(),
+      cartId: null,
+      saleId: null,
+      type: params.nextStatus === 'SYNCED' ? 'cash.session_synced' : 'cash.session_conflict',
+      message: params.nextStatus === 'SYNCED'
+        ? `Fermeture offline ${operation.offlineCashReference} synchronisee.`
+        : `Conflit fermeture offline ${operation.offlineCashReference}: ${params.errorMessage ?? params.errorCode ?? 'inconnu'}.`,
+      createdAt: now,
+    } satisfies OfflineActivityLogEntry);
+  }
 
   await txDone(tx);
+}
+
+export async function updateOfflineSyncReplayResult(params: {
+  operationId: string;
+  localSaleId: string;
+  nextStatus: OfflineSyncQueueEntry['status'];
+  serverSaleId?: string | null;
+  serverSaleNumber?: string | null;
+  allocations?: PosSyncOperationAllocationAck[];
+  errorCode?: string | null;
+  errorMessage?: string | null;
+}) {
+  await updateOfflineSyncOperationResult({
+    operationId: params.operationId,
+    nextStatus: params.nextStatus,
+    result: {
+      operationId: params.operationId,
+      localSaleId: params.localSaleId,
+      status: params.nextStatus === 'CONFLICT' ? 'CONFLICT' : 'SYNCED',
+      serverSaleId: params.serverSaleId ?? null,
+      serverSaleNumber: params.serverSaleNumber ?? null,
+      allocations: params.allocations ?? [],
+      errorCode: params.errorCode ?? null,
+      message: params.errorMessage ?? null,
+    },
+    errorCode: params.errorCode ?? null,
+    errorMessage: params.errorMessage ?? null,
+  });
 }
 
 export async function appendOfflineActivityLog(entry: Omit<OfflineActivityLogEntry, 'localId' | 'createdAt'>) {
@@ -504,6 +791,16 @@ export async function appendOfflineSyncQueueEntry(entry: Omit<OfflineSyncQueueEn
     updatedAt: now,
   } satisfies OfflineSyncQueueEntry);
   await txDone(tx);
+}
+
+export async function patchOfflineSyncQueueEntry(
+  operationId: string,
+  mutate: (entry: OfflineSyncQueueEntry) => OfflineSyncQueueEntry,
+) {
+  const rows = await readOfflineSyncQueue();
+  const nextRows = rows.map((row) => (row.operationId === operationId ? mutate(row) : row));
+  await saveOfflineSyncQueue(nextRows);
+  return nextRows.find((row) => row.operationId === operationId) ?? null;
 }
 
 export async function appendSyncLog(entry: Omit<OfflineSyncLogEntry, 'localId' | 'createdAt'>) {
@@ -629,25 +926,11 @@ export async function persistBootstrapSnapshot(
 
   await replaceAll(tx.objectStore(AUTH_STORE), [auth]);
   await replaceAll(tx.objectStore(WORKSTATION_STORE), [workstation]);
-  await replaceAll(
-    tx.objectStore(CASH_SESSION_STORE),
-    payload.cashSession
-      ? [{
-          cashSessionId: payload.cashSession.cashSessionId,
-          tenantId: payload.tenant.tenantId,
-          siteId: payload.cashSession.siteId,
-          workstationId: payload.cashSession.workstationId,
-          userId: payload.cashSession.userId,
-          status: payload.cashSession.status,
-          openedAt: payload.cashSession.openedAt,
-          openingBalanceUsd: payload.cashSession.openingBalanceUsd,
-          openingBalanceCdf: payload.cashSession.openingBalanceCdf,
-          serverVersion: payload.cashSession.serverVersion,
-          updatedAt: payload.cashSession.updatedAt,
-          lastSyncedAt: payload.serverTime,
-        } satisfies OfflineCashSessionSnapshot]
-      : [],
-  );
+  const currentCashSessions = await readAllFromTransaction<OfflineCashSessionSnapshot>(tx.objectStore(CASH_SESSION_STORE));
+  const nextCashSessions = payload.cashSession
+    ? mergeServerCashSession(currentCashSessions, payload.tenant.tenantId, payload.serverTime, payload.cashSession, workstation.deviceId)
+    : currentCashSessions;
+  await replaceAll(tx.objectStore(CASH_SESSION_STORE), nextCashSessions);
   await replaceAll(tx.objectStore(SYNC_STATE_STORE), [syncState]);
 
   await txDone(tx);
@@ -803,25 +1086,11 @@ export async function applyPosChanges(
 
   if ('cashSession' in changesPayload.changes) {
     const row = changesPayload.changes.cashSession;
-    await replaceAll(
-      cashSessionStore,
-      row
-        ? [{
-            cashSessionId: row.cashSessionId,
-            tenantId: context.tenantId,
-            siteId: row.siteId,
-            workstationId: row.workstationId,
-            userId: row.userId,
-            status: row.status,
-            openedAt: row.openedAt,
-            openingBalanceUsd: row.openingBalanceUsd,
-            openingBalanceCdf: row.openingBalanceCdf,
-            serverVersion: row.serverVersion,
-            updatedAt: row.updatedAt,
-            lastSyncedAt: changesPayload.serverTime,
-          } satisfies OfflineCashSessionSnapshot]
-        : [],
-    );
+    const currentCashSessions = await readAllFromTransaction<OfflineCashSessionSnapshot>(cashSessionStore);
+    const nextCashSessions = row
+      ? mergeServerCashSession(currentCashSessions, context.tenantId, changesPayload.serverTime, row, null)
+      : currentCashSessions;
+    await replaceAll(cashSessionStore, nextCashSessions);
   }
 
   await replaceAll(articleStore, Array.from(currentArticles.values()));
@@ -863,6 +1132,9 @@ async function openOfflineDatabase() {
       ensureObjectStore(db, upgradeTransaction, AUTH_STORE, 'id');
       ensureObjectStore(db, upgradeTransaction, WORKSTATION_STORE, 'id');
       ensureObjectStore(db, upgradeTransaction, CASH_SESSION_STORE, 'cashSessionId', [['byWorkstation', 'workstationId'], ['byUser', 'userId'], ['byStatus', 'status']]);
+      ensureObjectStore(db, upgradeTransaction, CASH_MOVEMENTS_STORE, 'localMovementId', [['bySession', 'localCashSessionId'], ['byOperation', 'operationId'], ['byStatus', 'status']]);
+      ensureObjectStore(db, upgradeTransaction, CASH_COUNTS_STORE, 'countId', [['bySession', 'localCashSessionId'], ['byCountedAt', 'countedAt']]);
+      ensureObjectStore(db, upgradeTransaction, CASH_RECONCILIATION_EVENTS_STORE, 'eventId', [['bySession', 'localCashSessionId'], ['byOperation', 'operationId'], ['byCreatedAt', 'createdAt']]);
       ensureObjectStore(db, upgradeTransaction, SYNC_STATE_STORE, 'id');
       ensureObjectStore(db, upgradeTransaction, SYNC_QUEUE_STORE, 'localId', [['byOperation', 'operationId'], ['byStatus', 'status'], ['byWorkstation', 'workstationId']]);
       ensureObjectStore(db, upgradeTransaction, SYNC_LOG_STORE, 'localId', [['byType', 'type'], ['byStatus', 'status']]);
@@ -914,6 +1186,109 @@ function normalizeAllocation(row: OfflineStockAllocation): OfflineStockAllocatio
     updatedAt: row.updatedAt ?? null,
     lastSyncedAt: row.lastSyncedAt ?? null,
   };
+}
+
+function selectActiveOfflineCashSession(rows: OfflineCashSessionSnapshot[]) {
+  const priority: OfflineCashSessionSnapshot['status'][] = [
+    'LOCAL_CLOSING',
+    'LOCAL_OPEN',
+    'OPEN_PENDING_SYNC',
+    'OPEN_SYNCED',
+    'CLOSED_PENDING_SYNC',
+    'CLOSED_SYNCED',
+    'CONFLICT',
+    'FAILED',
+    'CANCELLED_BEFORE_USE',
+  ];
+  const byPriority = rows
+    .slice()
+    .sort((left, right) => {
+      const priorityDelta = priority.indexOf(left.status) - priority.indexOf(right.status);
+      if (priorityDelta !== 0) return priorityDelta;
+      return sortByMostRecent(right.updatedAt ?? right.openedLocallyAt, left.updatedAt ?? left.openedLocallyAt);
+    });
+  return byPriority[0] ?? null;
+}
+
+function sortByMostRecent(left: string | null | undefined, right: string | null | undefined) {
+  const leftMs = left ? new Date(left).getTime() : 0;
+  const rightMs = right ? new Date(right).getTime() : 0;
+  return leftMs - rightMs;
+}
+
+function mergeServerCashSession(
+  currentRows: OfflineCashSessionSnapshot[],
+  tenantId: string,
+  serverTime: string,
+  row: {
+    cashSessionId: string;
+    userId: string;
+    siteId: string;
+    workstationId: string | null;
+    status: 'OPEN' | 'CLOSED';
+    openedAt: string;
+    openingBalanceUsd: number;
+    openingBalanceCdf: number;
+    serverVersion: number;
+    updatedAt: string | null;
+    sessionReference?: string | null;
+  },
+  deviceId: string | null,
+) {
+  const existingIndex = currentRows.findIndex((entry) => entry.serverCashSessionId === row.cashSessionId || entry.cashSessionId === row.cashSessionId);
+  const next = {
+    ...(existingIndex >= 0 ? currentRows[existingIndex] : null),
+    cashSessionId: existingIndex >= 0 ? currentRows[existingIndex].cashSessionId : row.cashSessionId,
+    localCashSessionId: existingIndex >= 0 ? currentRows[existingIndex].localCashSessionId : row.cashSessionId,
+    offlineCashReference: existingIndex >= 0 ? currentRows[existingIndex].offlineCashReference : (row.sessionReference ?? row.cashSessionId),
+    tenantId,
+    siteId: row.siteId,
+    workstationId: row.workstationId,
+    userId: row.userId,
+    deviceId: existingIndex >= 0 ? currentRows[existingIndex].deviceId : deviceId,
+    serverCashSessionId: row.cashSessionId,
+    serverSessionReference: row.sessionReference ?? null,
+    status: row.status === 'OPEN' ? 'OPEN_SYNCED' : 'CLOSED_SYNCED',
+    openedAt: row.openedAt,
+    openedLocallyAt: existingIndex >= 0 ? currentRows[existingIndex].openedLocallyAt : row.openedAt,
+    serverOpenedAt: row.openedAt,
+    closedLocallyAt: existingIndex >= 0 ? currentRows[existingIndex].closedLocallyAt : null,
+    serverClosedAt: row.status === 'CLOSED' ? row.updatedAt ?? serverTime : null,
+    syncedAt: serverTime,
+    openingBalanceUsd: row.openingBalanceUsd,
+    openingBalanceCdf: row.openingBalanceCdf,
+    cashSalesUsd: existingIndex >= 0 ? currentRows[existingIndex].cashSalesUsd : 0,
+    cashSalesCdf: existingIndex >= 0 ? currentRows[existingIndex].cashSalesCdf : 0,
+    expensesUsd: existingIndex >= 0 ? currentRows[existingIndex].expensesUsd : 0,
+    expensesCdf: existingIndex >= 0 ? currentRows[existingIndex].expensesCdf : 0,
+    refundsUsd: existingIndex >= 0 ? currentRows[existingIndex].refundsUsd : 0,
+    refundsCdf: existingIndex >= 0 ? currentRows[existingIndex].refundsCdf : 0,
+    expectedClosingUsd: existingIndex >= 0 ? currentRows[existingIndex].expectedClosingUsd : row.openingBalanceUsd,
+    expectedClosingCdf: existingIndex >= 0 ? currentRows[existingIndex].expectedClosingCdf : row.openingBalanceCdf,
+    declaredClosingUsd: existingIndex >= 0 ? currentRows[existingIndex].declaredClosingUsd : null,
+    declaredClosingCdf: existingIndex >= 0 ? currentRows[existingIndex].declaredClosingCdf : null,
+    differenceUsd: existingIndex >= 0 ? currentRows[existingIndex].differenceUsd : null,
+    differenceCdf: existingIndex >= 0 ? currentRows[existingIndex].differenceCdf : null,
+    localExpectedClosingUsd: existingIndex >= 0 ? currentRows[existingIndex].localExpectedClosingUsd : row.openingBalanceUsd,
+    localExpectedClosingCdf: existingIndex >= 0 ? currentRows[existingIndex].localExpectedClosingCdf : row.openingBalanceCdf,
+    serverExpectedClosingUsd: existingIndex >= 0 ? currentRows[existingIndex].serverExpectedClosingUsd : null,
+    serverExpectedClosingCdf: existingIndex >= 0 ? currentRows[existingIndex].serverExpectedClosingCdf : null,
+    serverDifferenceUsd: existingIndex >= 0 ? currentRows[existingIndex].serverDifferenceUsd : null,
+    serverDifferenceCdf: existingIndex >= 0 ? currentRows[existingIndex].serverDifferenceCdf : null,
+    openingOperationId: existingIndex >= 0 ? currentRows[existingIndex].openingOperationId : row.cashSessionId,
+    closingOperationId: existingIndex >= 0 ? currentRows[existingIndex].closingOperationId : null,
+    serverVersion: row.serverVersion,
+    note: existingIndex >= 0 ? currentRows[existingIndex].note : null,
+    updatedAt: row.updatedAt,
+    lastSyncedAt: serverTime,
+  } satisfies OfflineCashSessionSnapshot;
+
+  if (existingIndex >= 0) {
+    const nextRows = currentRows.slice();
+    nextRows[existingIndex] = next;
+    return nextRows;
+  }
+  return [...currentRows, next];
 }
 
 async function replaceAll<T>(store: IDBObjectStore, rows: T[]) {

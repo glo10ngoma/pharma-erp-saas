@@ -89,6 +89,7 @@ const InsuranceDisputesPage = lazy(() => import('./modules/insurance-v2/Insuranc
 const InsuranceRemindersPage = lazy(() => import('./modules/insurance-v2/InsuranceV2Pages').then((module) => ({ default: module.InsuranceRemindersPage })));
 const InsuranceHistoryPage = lazy(() => import('./modules/insurance-v2/InsuranceV2Pages').then((module) => ({ default: module.InsuranceHistoryPage })));
 const OfflinePosPage = lazy(() => import('./modules/offline/OfflinePosPage').then((module) => ({ default: module.OfflinePosPage })));
+const OfflineCashPage = lazy(() => import('./modules/offline/OfflineCashPage').then((module) => ({ default: module.OfflineCashPage })));
 const OfflineDraftsPage = lazy(() => import('./modules/offline/OfflineDraftsPage').then((module) => ({ default: module.OfflineDraftsPage })));
 const OfflineSalesPage = lazy(() => import('./modules/offline/OfflineSalesPage').then((module) => ({ default: module.OfflineSalesPage })));
 const OfflineSynchronizationPage = lazy(() => import('./modules/offline/OfflineSynchronizationPage').then((module) => ({ default: module.OfflineSynchronizationPage })));
@@ -99,6 +100,7 @@ const OfflineAdminWorkstationDetailPage = lazy(() => import('./modules/offline/O
 const OfflineAdminConflictsPage = lazy(() => import('./modules/offline/OfflineAdminPages').then((module) => ({ default: module.OfflineAdminConflictsPage })));
 const OfflineAdminAllocationsPage = lazy(() => import('./modules/offline/OfflineAdminPages').then((module) => ({ default: module.OfflineAdminAllocationsPage })));
 const OfflineAdminLogsPage = lazy(() => import('./modules/offline/OfflineAdminPages').then((module) => ({ default: module.OfflineAdminLogsPage })));
+const OfflineAdminCashSessionsPage = lazy(() => import('./modules/offline/OfflineAdminPages').then((module) => ({ default: module.OfflineAdminCashSessionsPage })));
 
 const CashRegistersAdminPage = lazy(() => import('./modules/administration/CashRegistersAdminPage').then((module) => ({ default: module.CashRegistersAdminPage })));
 const GeneralSettingsPage = lazy(() => import('./modules/administration/GeneralSettingsPage').then((module) => ({ default: module.GeneralSettingsPage })));
@@ -150,6 +152,7 @@ export function App() {
                 </Route>
                 <Route path="/pos" element={<PosPage />} />
                 <Route path="/offline/pos" element={<OfflinePosPage />} />
+                <Route path="/offline/cash" element={<OfflineCashPage />} />
                 <Route path="/offline/drafts" element={<OfflineDraftsPage />} />
                 <Route path="/offline/sales" element={<OfflineSalesPage />} />
                 <Route path="/offline/synchronisation" element={<OfflineSynchronizationPage />} />
@@ -159,6 +162,7 @@ export function App() {
                 <Route path="/offline-admin/workstations/:id" element={<OfflineAdminWorkstationDetailPage />} />
                 <Route path="/offline-admin/conflicts" element={<OfflineAdminConflictsPage />} />
                 <Route path="/offline-admin/allocations" element={<OfflineAdminAllocationsPage />} />
+                <Route path="/offline-admin/cash-sessions" element={<OfflineAdminCashSessionsPage />} />
                 <Route path="/offline-admin/logs" element={<OfflineAdminLogsPage />} />
                 <Route path="/sales/:id" element={<SaleDetailPage />} />
                 <Route path="/customer-returns" element={<CustomerReturnsPage />} />

@@ -1,6 +1,6 @@
 import { apiClient } from './apiClient';
 import {
-  type OfflineSaleValidateOperation,
+  type OfflineSyncOperationPayload,
   type PosSyncBootstrapPayload,
   type PosSyncChangesPayload,
 } from '../modules/offline/offline-types';
@@ -57,7 +57,7 @@ export type PosSyncHeartbeatPayload = {
 };
 
 export type PosSyncOperationsPayload = {
-  operations: OfflineSaleValidateOperation[];
+  operations: OfflineSyncOperationPayload[];
 };
 
 export type PosSyncOperationAllocationAck = {
@@ -72,10 +72,22 @@ export type PosSyncOperationAllocationAck = {
 
 export type PosSyncOperationResult = {
   operationId: string;
-  localSaleId: string;
+  localSaleId?: string | null;
   status: 'SYNCED' | 'ALREADY_PROCESSED' | 'CONFLICT';
   serverSaleId?: string | null;
   serverSaleNumber?: string | null;
+  serverCashSessionId?: string | null;
+  serverSessionReference?: string | null;
+  serverMovementId?: string | null;
+  serverVersion?: number | null;
+  serverOpenedAt?: string | null;
+  serverClosedAt?: string | null;
+  serverExpectedUsd?: number | null;
+  serverExpectedCdf?: number | null;
+  serverDeclaredUsd?: number | null;
+  serverDeclaredCdf?: number | null;
+  serverDifferenceUsd?: number | null;
+  serverDifferenceCdf?: number | null;
   allocations?: PosSyncOperationAllocationAck[];
   errorCode?: string | null;
   message?: string | null;

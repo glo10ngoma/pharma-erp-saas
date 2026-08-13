@@ -12,6 +12,7 @@
     "validate:v1": "node scripts/validate-v1.js",
     "validate:rc1": "node scripts/validate-rc1.js",
     "validate:offline4": "node scripts/validate-offline-4.js",
+    "validate:offline5": "node scripts/validate-offline-5.js",
     "validate:offline-autosync": "node scripts/validate-offline-autosync.js",
     "lint": "eslint \"src/**/*.ts\""
   },

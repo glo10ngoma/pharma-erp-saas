@@ -2,6 +2,11 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { AuthUser } from '../common/types/auth-user';
 import { AccountingRepository } from '../accounting/accounting.repository';
 import { DatabaseService } from '../database/database.service';
+import {
+  SubmitPosCashExpenseOperation,
+  SubmitPosCashSessionCloseOperation,
+  SubmitPosCashSessionOpenOperation,
+} from '../pos-sync/dto/submit-pos-operations.dto';
 import { CloseCashSessionDto } from './dto/close-cash-session.dto';
 import { CreateCashExpenseDto } from './dto/create-cash-expense.dto';
 import { OpenCashSessionDto } from './dto/open-cash-session.dto';
@@ -55,6 +60,26 @@ type CashMovementRow = {
   reference_id: string | null;
   description: string | null;
   created_by: string | null;
+};
+
+type OfflineCashReplaySession = {
+  cashSessionId: string;
+  sessionReference: string | null;
+  serverVersion: number;
+  serverOpenedAt?: string | null;
+  serverClosedAt?: string | null;
+  serverExpectedUsd?: number | null;
+  serverExpectedCdf?: number | null;
+  serverDeclaredUsd?: number | null;
+  serverDeclaredCdf?: number | null;
+  serverDifferenceUsd?: number | null;
+  serverDifferenceCdf?: number | null;
+};
+
+type OfflineCashReplayMovement = {
+  cashSessionId: string;
+  cashMovementId: string;
+  serverVersion: number;
 };
 
 @Injectable()
@@ -423,7 +448,7 @@ export class CashRepository {
           tenant_id, cash_session_id, movement_type, amount, currency_id,
           reference_type, reference_id, description, created_by
         )
-        VALUES ($1,$2,'EXPENSE',$3,$4,'CASH_EXPENSE',$5,$6,$7)
+        VALUES ($1,$2,'CASH_OUT',$3,$4,'CASH_EXPENSE',$5,$6,$7)
         `,
         [user.tenantId, dto.cashSessionId, dto.amount, currencyId, expense.rows[0].cash_expense_id, dto.description, user.userId],
       );
@@ -450,6 +475,258 @@ export class CashRepository {
 
     const movements = await this.findMovements(user, dto.cashSessionId);
     return movements[0];
+  }
+
+  async replayOfflineOpenSession(user: AuthUser, operation: SubmitPosCashSessionOpenOperation): Promise<OfflineCashReplaySession> {
+    await this.assertSiteAllowed(user, operation.siteId);
+    const workstation = await this.assertWorkstation(user, operation.siteId, operation.workstationId);
+
+    return this.db.transaction(async (client) => {
+      const existing = await client.query<{ cash_session_id: string; opened_at: Date }>(
+        `
+        SELECT cash_session_id
+        FROM cash_sessions
+        WHERE tenant_id = $1
+          AND site_id = $2
+          AND user_id = $3
+          AND workstation_id = $4
+          AND status = 'OPEN'
+        ORDER BY opened_at DESC
+        LIMIT 1
+        `,
+        [user.tenantId, operation.siteId, operation.userId, operation.workstationId],
+      );
+
+      let cashSessionId = existing.rows[0]?.cash_session_id ?? null;
+      let serverOpenedAt = existing.rows[0]?.opened_at?.toISOString?.() ?? null;
+      if (!cashSessionId) {
+        const created = await client.query<{ cash_session_id: string; opened_at: Date }>(
+          `
+          INSERT INTO cash_sessions (
+            tenant_id, site_id, user_id, cash_register_id, workstation_id, workstation_name,
+            opening_balance, status, notes, opened_ip_address, device_uuid
+          )
+          VALUES ($1, $2, $3, NULL, $4, $5, 0, 'OPEN', $6, NULL, $7)
+          RETURNING cash_session_id, opened_at
+          `,
+          [
+            user.tenantId,
+            operation.siteId,
+            operation.userId,
+            operation.workstationId,
+            workstation.workstation_name,
+            `OFFLINE_OPEN:${operation.offlineCashReference}${operation.note ? ` | ${operation.note}` : ''}`,
+            operation.deviceId,
+          ],
+        );
+        cashSessionId = created.rows[0]?.cash_session_id ?? null;
+        serverOpenedAt = created.rows[0]?.opened_at?.toISOString?.() ?? null;
+      }
+
+      if (!cashSessionId) throw new BadRequestException('CASH_SESSION_OPEN_FAILED');
+
+      await this.insertOfflineOpeningMovement(client, user, cashSessionId, operation, 'USD', operation.openingBalanceUsd);
+      await this.insertOfflineOpeningMovement(client, user, cashSessionId, operation, 'CDF', operation.openingBalanceCdf);
+
+      return {
+        cashSessionId,
+        sessionReference: operation.offlineCashReference,
+        serverVersion: 1,
+        serverOpenedAt,
+      };
+    });
+  }
+
+  async replayOfflineExpense(user: AuthUser, operation: SubmitPosCashExpenseOperation): Promise<OfflineCashReplayMovement> {
+    await this.assertSiteAllowed(user, operation.siteId);
+    return this.db.transaction(async (client) => {
+      const cashSessionId = await this.resolveReplayCashSessionId(client, user, operation.siteId, operation.workstationId, operation.serverCashSessionId);
+      if (!cashSessionId) throw new BadRequestException('CASH_SESSION_NOT_FOUND');
+
+      const current = await client.query<{ cash_session_id: string }>(
+        `SELECT cash_session_id FROM cash_sessions WHERE tenant_id = $1 AND cash_session_id = $2 AND status = 'OPEN' FOR UPDATE`,
+        [user.tenantId, cashSessionId],
+      );
+      if (!current.rows[0]) throw new BadRequestException('CASH_SESSION_NOT_OPEN');
+
+      const currencyId = await this.currencyIdByCode(client, operation.currency);
+      const expenseNumber = `OFF-EXP-${Date.now()}`;
+      const expense = await client.query<{ cash_expense_id: string }>(
+        `
+        INSERT INTO cash_expenses (
+          tenant_id, cash_session_id, expense_number, expense_category, description,
+          amount, currency_id, status, created_by, validated_by, validated_at
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,'VALIDATED',$8,$8,CURRENT_TIMESTAMP)
+        RETURNING cash_expense_id
+        `,
+        [user.tenantId, cashSessionId, expenseNumber, operation.expenseCategory, operation.description, operation.amount, currencyId, user.userId],
+      );
+
+      const movement = await client.query<{ cash_movement_id: string }>(
+        `
+        INSERT INTO cash_movements (
+          tenant_id, cash_session_id, movement_type, amount, currency_id,
+          reference_type, reference_id, description, created_by
+        )
+        VALUES ($1,$2,'CASH_OUT',$3,$4,'CASH_EXPENSE',$5,$6,$7)
+        RETURNING cash_movement_id
+        `,
+        [user.tenantId, cashSessionId, operation.amount, currencyId, expense.rows[0].cash_expense_id, operation.description, user.userId],
+      );
+
+      await client.query(
+        `
+        INSERT INTO audit_logs (tenant_id, user_id, table_name, record_id, action_type, new_value)
+        VALUES ($1, $2, 'cash_expenses', $3, 'INSERT', $4::jsonb)
+        `,
+        [user.tenantId, user.userId, expense.rows[0].cash_expense_id, JSON.stringify({ expenseNumber, amount: operation.amount, status: 'VALIDATED', offline: true })],
+      );
+
+      await this.accounting.createAutomaticEntry(client, user, {
+        journalCode: 'CAI',
+        referenceType: 'CASH_EXPENSE',
+        referenceId: expense.rows[0].cash_expense_id,
+        description: `Depense caisse offline ${expenseNumber}`,
+        lines: [
+          { accountCode: '60', debit: operation.amount, description: operation.description },
+          { accountCode: '57', credit: operation.amount, description: operation.description },
+        ],
+      });
+
+      return {
+        cashSessionId,
+        cashMovementId: movement.rows[0].cash_movement_id,
+        serverVersion: 1,
+      };
+    });
+  }
+
+  async replayOfflineCloseSession(user: AuthUser, operation: SubmitPosCashSessionCloseOperation): Promise<OfflineCashReplaySession> {
+    await this.assertSiteAllowed(user, operation.siteId);
+    return this.db.transaction(async (client) => {
+      const cashSessionId = await this.resolveReplayCashSessionId(client, user, operation.siteId, operation.workstationId, operation.serverCashSessionId);
+      if (!cashSessionId) throw new BadRequestException('CASH_SESSION_NOT_FOUND');
+
+      const locked = await client.query<CashSessionRow>(
+        `
+        SELECT cs.cash_session_id, cs.tenant_id, cs.site_id, NULL::text AS site_name, cs.user_id,
+               NULL::text AS user_name, cs.cash_register_id, NULL::text AS register_name,
+               NULL::text AS register_currency_code, cs.workstation_id, cs.workstation_name,
+               cs.opened_at, cs.closed_at, cs.opening_balance, cs.closing_balance,
+               cs.expected_closing_balance, cs.difference_amount, cs.opened_ip_address, cs.closed_ip_address, cs.device_uuid,
+               cs.counted_closing_balance_usd, cs.counted_closing_balance_cdf,
+               cs.expected_closing_balance_usd, cs.expected_closing_balance_cdf,
+               cs.closing_difference_usd, cs.closing_difference_cdf,
+               cs.status, cs.notes
+        FROM cash_sessions cs
+        WHERE cs.tenant_id = $1 AND cs.cash_session_id = $2
+        FOR UPDATE OF cs
+        `,
+        [user.tenantId, cashSessionId],
+      );
+      const session = locked.rows[0];
+      if (!session) throw new BadRequestException('CASH_SESSION_NOT_FOUND');
+      if (session.status !== 'OPEN') throw new BadRequestException('CASH_SESSION_CLOSED_BEFORE_REPLAY');
+
+      const expected = await this.calculateOfflineReplayExpected(client, user.tenantId, cashSessionId);
+      const mismatchUsd = this.roundMoney(expected.usd - operation.expectedClosingUsd);
+      const mismatchCdf = this.roundMoney(expected.cdf - operation.expectedClosingCdf);
+      if (Math.abs(mismatchUsd) > 0.01 || Math.abs(mismatchCdf) > 0.01) {
+        throw new BadRequestException('CASH_EXPECTED_BALANCE_MISMATCH');
+      }
+
+      await this.insertClosingDeclarationMovement(client, user, cashSessionId, operation, 'USD', operation.declaredClosingUsd);
+      await this.insertClosingDeclarationMovement(client, user, cashSessionId, operation, 'CDF', operation.declaredClosingCdf);
+
+      const closed = await client.query<{
+        closed_at: Date | null;
+        expected_closing_balance_usd: string | null;
+        expected_closing_balance_cdf: string | null;
+        counted_closing_balance_usd: string | null;
+        counted_closing_balance_cdf: string | null;
+        closing_difference_usd: string | null;
+        closing_difference_cdf: string | null;
+      }>(
+        `
+        UPDATE cash_sessions
+        SET status = 'CLOSED',
+            closed_at = CURRENT_TIMESTAMP,
+            closing_balance = $3,
+            expected_closing_balance = $4,
+            difference_amount = $5,
+            counted_closing_balance_usd = $6,
+            counted_closing_balance_cdf = $7,
+            expected_closing_balance_usd = $8,
+            expected_closing_balance_cdf = $9,
+            closing_difference_usd = $10,
+            closing_difference_cdf = $11,
+            validated_by = $12,
+            validated_at = CURRENT_TIMESTAMP,
+            notes = COALESCE($13, notes)
+        WHERE tenant_id = $1 AND cash_session_id = $2
+        RETURNING closed_at,
+                  expected_closing_balance_usd,
+                  expected_closing_balance_cdf,
+                  counted_closing_balance_usd,
+                  counted_closing_balance_cdf,
+                  closing_difference_usd,
+                  closing_difference_cdf
+        `,
+        [
+          user.tenantId,
+          cashSessionId,
+          operation.declaredClosingUsd,
+          expected.usd,
+          operation.differenceUsd,
+          operation.declaredClosingUsd,
+          operation.declaredClosingCdf,
+          expected.usd,
+          expected.cdf,
+          operation.differenceUsd,
+          operation.differenceCdf,
+          user.userId,
+          operation.note ?? null,
+        ],
+      );
+
+      await client.query(
+        `
+        INSERT INTO audit_logs (tenant_id, site_id, user_id, table_name, record_id, action_type, new_value, cash_session_id, workstation_id, workstation_name)
+        VALUES ($1, $2, $3, 'cash_sessions', $4, 'VALIDATE', $5::jsonb, $4, $6, $7)
+        `,
+        [
+          user.tenantId,
+          operation.siteId,
+          user.userId,
+          cashSessionId,
+          JSON.stringify({
+            offlineCashReference: operation.offlineCashReference,
+            declaredClosingUsd: operation.declaredClosingUsd,
+            declaredClosingCdf: operation.declaredClosingCdf,
+            expectedClosingUsd: expected.usd,
+            expectedClosingCdf: expected.cdf,
+            differenceUsd: operation.differenceUsd,
+            differenceCdf: operation.differenceCdf,
+          }),
+          session.workstation_id,
+          session.workstation_name,
+        ],
+      );
+
+      return {
+        cashSessionId,
+        sessionReference: operation.offlineCashReference,
+        serverVersion: 2,
+        serverClosedAt: closed.rows[0]?.closed_at?.toISOString?.() ?? null,
+        serverExpectedUsd: closed.rows[0]?.expected_closing_balance_usd ? Number(closed.rows[0].expected_closing_balance_usd) : expected.usd,
+        serverExpectedCdf: closed.rows[0]?.expected_closing_balance_cdf ? Number(closed.rows[0].expected_closing_balance_cdf) : expected.cdf,
+        serverDeclaredUsd: closed.rows[0]?.counted_closing_balance_usd ? Number(closed.rows[0].counted_closing_balance_usd) : operation.declaredClosingUsd,
+        serverDeclaredCdf: closed.rows[0]?.counted_closing_balance_cdf ? Number(closed.rows[0].counted_closing_balance_cdf) : operation.declaredClosingCdf,
+        serverDifferenceUsd: closed.rows[0]?.closing_difference_usd ? Number(closed.rows[0].closing_difference_usd) : operation.differenceUsd,
+        serverDifferenceCdf: closed.rows[0]?.closing_difference_cdf ? Number(closed.rows[0].closing_difference_cdf) : operation.differenceCdf,
+      };
+    });
   }
 
   private async findSessionById(user: AuthUser, id: string) {
@@ -520,6 +797,136 @@ export class CashRepository {
     );
     if (!result.rows[0]) throw new BadRequestException('CURRENCY_NOT_FOUND');
     return result.rows[0].currency_id;
+  }
+
+  private async currencyIdByCode(client: Queryable, currencyCode: 'USD' | 'CDF') {
+    const result = await client.query<{ currency_id: string }>(
+      `SELECT currency_id FROM currencies WHERE currency_code = $1 LIMIT 1`,
+      [currencyCode],
+    );
+    if (!result.rows[0]) throw new BadRequestException('CURRENCY_NOT_FOUND');
+    return result.rows[0].currency_id;
+  }
+
+  private async resolveReplayCashSessionId(
+    client: Queryable,
+    user: AuthUser,
+    siteId: string,
+    workstationId: string,
+    explicitCashSessionId?: string | null,
+  ) {
+    if (explicitCashSessionId) {
+      const result = await client.query<{ cash_session_id: string }>(
+        `SELECT cash_session_id FROM cash_sessions WHERE tenant_id = $1 AND cash_session_id = $2 LIMIT 1`,
+        [user.tenantId, explicitCashSessionId],
+      );
+      return result.rows[0]?.cash_session_id ?? null;
+    }
+    const result = await client.query<{ cash_session_id: string }>(
+      `
+      SELECT cash_session_id
+      FROM cash_sessions
+      WHERE tenant_id = $1
+        AND site_id = $2
+        AND user_id = $3
+        AND workstation_id = $4
+        AND status = 'OPEN'
+      ORDER BY opened_at DESC
+      LIMIT 1
+      `,
+      [user.tenantId, siteId, user.userId, workstationId],
+    );
+    return result.rows[0]?.cash_session_id ?? null;
+  }
+
+  private async insertOfflineOpeningMovement(
+    client: Queryable,
+    user: AuthUser,
+    cashSessionId: string,
+    operation: SubmitPosCashSessionOpenOperation,
+    currencyCode: 'USD' | 'CDF',
+    amount: number,
+  ) {
+    if (!(amount > 0)) return;
+    const currencyId = await this.currencyIdByCode(client, currencyCode);
+    await client.query(
+      `
+      INSERT INTO cash_movements (
+        tenant_id, cash_session_id, movement_type, amount, currency_id,
+        reference_type, reference_id, description, created_by
+      )
+      VALUES ($1, $2, 'CASH_IN', $3, $4, 'POS_SYNC_OPERATION', $5, $6, $7)
+      `,
+      [
+        user.tenantId,
+        cashSessionId,
+        amount,
+        currencyId,
+        operation.operationId,
+        `Ouverture offline ${operation.offlineCashReference} ${currencyCode}`,
+        user.userId,
+      ],
+    );
+  }
+
+  private async insertClosingDeclarationMovement(
+    client: Queryable,
+    user: AuthUser,
+    cashSessionId: string,
+    operation: SubmitPosCashSessionCloseOperation,
+    currencyCode: 'USD' | 'CDF',
+    amount: number,
+  ) {
+    void client;
+    void user;
+    void cashSessionId;
+    void operation;
+    void currencyCode;
+    void amount;
+  }
+
+  private async calculateOfflineReplayExpected(client: Queryable, tenantId: string, cashSessionId: string) {
+    const result = await client.query<{
+      opening_usd: string;
+      opening_cdf: string;
+      sales_usd: string;
+      sales_cdf: string;
+      expenses_usd: string;
+      expenses_cdf: string;
+      refunds_usd: string;
+      refunds_cdf: string;
+    }>(
+      `
+      SELECT
+        COALESCE(SUM(CASE
+          WHEN cm.movement_type = 'CASH_IN'
+           AND cm.reference_type = 'POS_SYNC_OPERATION'
+           AND cm.description ILIKE 'Ouverture offline %'
+           AND cur.currency_code = 'USD'
+          THEN cm.amount ELSE 0 END), 0)::numeric AS opening_usd,
+        COALESCE(SUM(CASE
+          WHEN cm.movement_type = 'CASH_IN'
+           AND cm.reference_type = 'POS_SYNC_OPERATION'
+           AND cm.description ILIKE 'Ouverture offline %'
+           AND cur.currency_code = 'CDF'
+          THEN cm.amount ELSE 0 END), 0)::numeric AS opening_cdf,
+        COALESCE(SUM(CASE WHEN cm.movement_type IN ('SALE_PAYMENT', 'SALE_CASH_IN') AND cur.currency_code = 'USD' THEN cm.amount ELSE 0 END), 0)::numeric AS sales_usd,
+        COALESCE(SUM(CASE WHEN cm.movement_type IN ('SALE_PAYMENT', 'SALE_CASH_IN') AND cur.currency_code = 'CDF' THEN cm.amount ELSE 0 END), 0)::numeric AS sales_cdf,
+        COALESCE(SUM(CASE WHEN cm.movement_type IN ('EXPENSE', 'EXPENSE_OUT', 'CASH_OUT') AND cur.currency_code = 'USD' THEN cm.amount ELSE 0 END), 0)::numeric AS expenses_usd,
+        COALESCE(SUM(CASE WHEN cm.movement_type IN ('EXPENSE', 'EXPENSE_OUT', 'CASH_OUT') AND cur.currency_code = 'CDF' THEN cm.amount ELSE 0 END), 0)::numeric AS expenses_cdf,
+        COALESCE(SUM(CASE WHEN cm.movement_type = 'REFUND_OUT' AND cur.currency_code = 'USD' THEN cm.amount ELSE 0 END), 0)::numeric AS refunds_usd,
+        COALESCE(SUM(CASE WHEN cm.movement_type = 'REFUND_OUT' AND cur.currency_code = 'CDF' THEN cm.amount ELSE 0 END), 0)::numeric AS refunds_cdf
+      FROM cash_movements cm
+      LEFT JOIN currencies cur ON cur.currency_id = cm.currency_id
+      WHERE cm.tenant_id = $1 AND cm.cash_session_id = $2
+      `,
+      [tenantId, cashSessionId],
+    );
+    const row = result.rows[0];
+    return {
+      usd: this.roundMoney(Number(row?.opening_usd ?? 0) + Number(row?.sales_usd ?? 0) - Number(row?.expenses_usd ?? 0) - Number(row?.refunds_usd ?? 0)),
+      cdf: this.roundMoney(Number(row?.opening_cdf ?? 0) + Number(row?.sales_cdf ?? 0) - Number(row?.expenses_cdf ?? 0) - Number(row?.refunds_cdf ?? 0)),
+    };
   }
 
   private toSession(row: CashSessionRow) {

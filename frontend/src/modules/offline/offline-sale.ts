@@ -4,7 +4,12 @@ import {
   mapOfflineError,
 } from './offline-cart';
 import {
+  canAttachOfflineCashSale,
+  recalculateOfflineCashSessionTotals,
+} from './offline-cash';
+import {
   persistValidatedOfflineSale,
+  readOfflineCashMovements,
   readOfflineDraftReservations,
   readOfflinePayments,
   readOfflineSales,
@@ -68,7 +73,11 @@ export async function finalizeOfflineCashSale(cartId: string, input: FinalizeOff
   if (!snapshot.auth || !snapshot.workstation || !snapshot.settings) {
     throw new Error('CATALOG_EMPTY');
   }
-  if (!snapshot.cashSession || snapshot.cashSession.status !== 'OPEN') {
+  if (!canAttachOfflineCashSale(snapshot.cashSession)) {
+    throw new Error('CASH_SESSION_REQUIRED');
+  }
+  const cashSessionSnapshot = snapshot.cashSession;
+  if (!cashSessionSnapshot) {
     throw new Error('CASH_SESSION_REQUIRED');
   }
   if (!cart.items.length || cart.status === 'BLOCKED') {
@@ -130,7 +139,9 @@ export async function finalizeOfflineCashSale(cartId: string, input: FinalizeOff
     workstationId: cart.workstationId,
     deviceId: cart.deviceId,
     userId: cart.userId,
-    cashSessionId: snapshot.cashSession.cashSessionId,
+    cashSessionId: cashSessionSnapshot.serverCashSessionId,
+    localCashSessionId: cashSessionSnapshot.localCashSessionId,
+    cashSessionOpenOperationId: cashSessionSnapshot.openingOperationId,
     customerId: cart.customerId,
     currency: 'USD',
     exchangeRateSnapshot: rate,
@@ -167,7 +178,9 @@ export async function finalizeOfflineCashSale(cartId: string, input: FinalizeOff
     workstationId: cart.workstationId,
     deviceId: cart.deviceId,
     userId: cart.userId,
-    cashSessionId: snapshot.cashSession.cashSessionId,
+    cashSessionId: cashSessionSnapshot.cashSessionId,
+    localCashSessionId: cashSessionSnapshot.localCashSessionId,
+    cashSessionOpenOperationId: cashSessionSnapshot.openingOperationId,
     customerId: cart.customerId,
     customerNameSnapshot: cart.customerNameSnapshot,
     saleType: 'CASH',
@@ -207,7 +220,8 @@ export async function finalizeOfflineCashSale(cartId: string, input: FinalizeOff
     tenantId: cart.tenantId,
     siteId: cart.siteId,
     workstationId: cart.workstationId,
-    cashSessionId: snapshot.cashSession.cashSessionId,
+    cashSessionId: cashSessionSnapshot.cashSessionId,
+    localCashSessionId: cashSessionSnapshot.localCashSessionId,
     currencyCode: 'USD',
     exchangeRate: rate,
     settlement,
@@ -236,10 +250,71 @@ export async function finalizeOfflineCashSale(cartId: string, input: FinalizeOff
     },
   ];
 
+  const currentCashMovements = await readOfflineCashMovements();
+  const cashMovementUsd = settlement.netReceivedUsd > 0 ? {
+    localMovementId: crypto.randomUUID(),
+    localCashSessionId: cashSessionSnapshot.localCashSessionId,
+    tenantId: cart.tenantId,
+    siteId: cart.siteId,
+    workstationId: cart.workstationId,
+    userId: cart.userId,
+    serverMovementId: null,
+    operationId,
+    movementType: 'SALE_CASH_IN' as const,
+    currency: 'USD' as const,
+    amount: settlement.netReceivedUsd,
+    sourceType: 'SALE' as const,
+    sourceId: localSaleId,
+    reference: offlineReference,
+    description: `Encaissement offline ${offlineReference}`,
+    createdLocallyAt: validatedAt,
+    syncedAt: null,
+    status: 'PENDING_SYNC' as const,
+  } : null;
+  const cashMovementCdf = settlement.netReceivedCdf > 0 ? {
+    ...(cashMovementUsd ?? {
+      localMovementId: crypto.randomUUID(),
+      localCashSessionId: cashSessionSnapshot.localCashSessionId,
+      tenantId: cart.tenantId,
+      siteId: cart.siteId,
+      workstationId: cart.workstationId,
+      userId: cart.userId,
+      serverMovementId: null,
+      operationId,
+      movementType: 'SALE_CASH_IN' as const,
+      sourceType: 'SALE' as const,
+      sourceId: localSaleId,
+      reference: offlineReference,
+      description: `Encaissement offline ${offlineReference}`,
+      createdLocallyAt: validatedAt,
+      syncedAt: null,
+      status: 'PENDING_SYNC' as const,
+    }),
+    localMovementId: crypto.randomUUID(),
+    currency: 'CDF' as const,
+    amount: settlement.netReceivedCdf,
+  } : null;
+  const cashSession = recalculateOfflineCashSessionTotals(
+    {
+      ...cashSessionSnapshot,
+      updatedAt: validatedAt,
+    },
+    [
+      ...currentCashMovements,
+      ...(cashMovementUsd ? [cashMovementUsd] : []),
+      ...(cashMovementCdf ? [cashMovementCdf] : []),
+    ],
+  );
+
   await persistValidatedOfflineSale({
     sale,
     payment,
     pendingConsumptions,
+    cashSession,
+    cashMovements: [
+      ...(cashMovementUsd ? [cashMovementUsd] : []),
+      ...(cashMovementCdf ? [cashMovementCdf] : []),
+    ],
     queueEntry: {
       operationId,
       operationType: 'SALE_VALIDATE',
@@ -249,6 +324,9 @@ export async function finalizeOfflineCashSale(cartId: string, input: FinalizeOff
       payload: operation,
       status: 'PENDING',
       relatedLocalSaleId: localSaleId,
+      relatedLocalCashSessionId: cashSessionSnapshot.localCashSessionId,
+      dependsOnOperationId: cashSessionSnapshot.serverCashSessionId ? null : cashSessionSnapshot.openingOperationId,
+      dependencyGroup: `CASH_SESSION:${cashSessionSnapshot.localCashSessionId}`,
       lastErrorCode: null,
       lastErrorMessage: null,
     },
@@ -270,7 +348,7 @@ export async function syncPendingOfflineSales() {
   const queue = await readOfflineSyncQueue();
   const pending = queue.filter(
     (entry) => entry.operationType === 'SALE_VALIDATE' && (entry.status === 'PENDING' || entry.status === 'FAILED' || entry.status === 'SYNCING'),
-  );
+  ) as Array<(typeof queue)[number] & { payload: OfflineSaleValidateOperation }>;
   const results: Array<{
     operationId: string;
     status: 'SYNCED' | 'CONFLICT' | 'FAILED';

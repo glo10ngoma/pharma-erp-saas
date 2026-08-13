@@ -43,6 +43,7 @@ La page `/purchases/new` - Nouvel Achat - est desormais le modele UI/UX de refer
 - La recherche article est prioritaire dans le POS et doit etre compatible saisie rapide / futur scan barcode.
 - Le resume POS reste visible en permanence : total, part patient, part assurance, montant paye et monnaie.
 - La validation POS doit etre rapide, lisible et explicite sur l'etat caisse.
+- La page `/offline/synchronisation` sert de tableau de bord local de preparation offline : elle reste en lecture seule, affiche le bootstrap local, les allocations du poste, la fraicheur du snapshot, l autorisation offline et la simulation FEFO sans modifier le stock central.
 - Le workflow Inventaire ERP est base sur un prechargement automatique de tous les lots actifs du site.
 - Dans un inventaire, l'utilisateur ne saisit que le stock physique et l'observation ; les ecarts, types et valeurs sont calcules automatiquement.
 - Le FEFO est un assistant decisionnel, pas seulement une regle automatique de vente.

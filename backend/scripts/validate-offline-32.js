@@ -38,6 +38,10 @@ let summary = {
   defects: [],
 };
 
+function currentUserId() {
+  return currentUser?.userId ?? currentUser?.id ?? null;
+}
+
 function unwrap(body) {
   return body && Object.prototype.hasOwnProperty.call(body, 'data') ? body.data : body;
 }
@@ -466,7 +470,7 @@ async function createWorkstations(mainSiteId) {
 async function ensureOpenCashSession(mainSiteId, workstationId, deviceUuid) {
   const sessions = await q(
     `SELECT cash_session_id FROM cash_sessions WHERE tenant_id = $1 AND user_id = $2 AND status = 'OPEN'`,
-    [currentUser.tenantId, currentUser.id],
+    [currentUser.tenantId, currentUserId()],
   );
   for (const row of sessions.rows) {
     const totals = await q(
@@ -529,7 +533,7 @@ async function createArticle(refs, suffix) {
 }
 
 async function createPurchase(mainSiteId, currencyId, supplierId, articleId, lots) {
-  const purchase = await api('/purchases', {
+  const purchaseResponse = await api('/purchases', {
     method: 'POST',
     body: {
       supplierId,
@@ -538,8 +542,18 @@ async function createPurchase(mainSiteId, currencyId, supplierId, articleId, lot
       exchangeRate: 1,
     },
   });
+  const purchaseId =
+    purchaseResponse?.purchaseId
+    ?? purchaseResponse?.id
+    ?? purchaseResponse?.data?.purchaseId
+    ?? purchaseResponse?.data?.id
+    ?? null;
+  if (!purchaseId) {
+    throw new Error('PURCHASE_ID_MISSING_IN_CREATE_RESPONSE');
+  }
+  const createdPurchase = await api(`/purchases/${purchaseId}`, { method: 'GET' });
   for (const lot of lots) {
-    await api(`/purchases/${purchase.purchaseId}/items`, {
+    await api(`/purchases/${purchaseId}/items`, {
       method: 'POST',
       body: {
         articleId,
@@ -551,12 +565,12 @@ async function createPurchase(mainSiteId, currencyId, supplierId, articleId, lot
       },
     });
   }
-  await api(`/purchases/${purchase.purchaseId}/validate`, { method: 'POST' });
+  await api(`/purchases/${purchaseId}/validate`, { method: 'POST' });
   const lotRows = await q(
     `SELECT lot_id, lot_number, expiry_date FROM lots WHERE tenant_id = $1 AND article_id = $2 ORDER BY lot_number ASC`,
     [currentUser.tenantId, articleId],
   );
-  return { purchase, lots: lotRows.rows };
+  return { purchase: createdPurchase, lots: lotRows.rows };
 }
 
 async function createAllocation(params) {
@@ -580,7 +594,7 @@ async function createAllocation(params) {
       params.consumedQuantity ?? 0,
       params.status ?? 'ACTIVE',
       params.serverVersion ?? 1,
-      currentUser.id,
+      currentUserId(),
     ],
   );
   return allocationId;
@@ -650,12 +664,13 @@ async function replayOfflineSale({
           operationType: 'SALE_VALIDATE',
           operationId: operationId ?? crypto.randomUUID(),
           localSaleId: localSaleId ?? crypto.randomUUID(),
+          localCashSessionId: crypto.randomUUID(),
           offlineReference: `OFF32-${Date.now()}`,
           tenantId,
           siteId,
           workstationId,
           deviceId: workstationDeviceMap.get(workstationId) ?? workstationId,
-          userId: currentUser.id,
+          userId: currentUserId(),
           cashSessionId,
           customerId: null,
           currency: 'USD',

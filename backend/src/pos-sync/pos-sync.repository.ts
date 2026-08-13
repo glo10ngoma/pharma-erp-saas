@@ -102,8 +102,9 @@ type CashSessionBootstrapRow = {
   workstation_id: string | null;
   status: string;
   opened_at: Date;
-  opening_balance_usd: string | null;
-  opening_balance_cdf: string | null;
+  opening_balance: string | null;
+  counted_closing_balance_usd: string | null;
+  counted_closing_balance_cdf: string | null;
   updated_at: Date | null;
 };
 
@@ -829,9 +830,10 @@ export class PosSyncRepository {
     const result = await this.db.query<{
       server_sale_id: string | null;
       server_sale_number: string | null;
+      payload_json: Record<string, unknown> | null;
     }>(
       `
-      SELECT server_sale_id, server_sale_number
+      SELECT server_sale_id, server_sale_number, payload_json
       FROM pos_sync_operations
       WHERE tenant_id = $1
         AND operation_id = $2
@@ -844,17 +846,41 @@ export class PosSyncRepository {
       ? {
           serverSaleId: row.server_sale_id,
           serverSaleNumber: row.server_sale_number,
+          serverCashSessionId: typeof row.payload_json?.['serverCashSessionId'] === 'string' ? String(row.payload_json['serverCashSessionId']) : null,
+          serverSessionReference: typeof row.payload_json?.['serverSessionReference'] === 'string' ? String(row.payload_json['serverSessionReference']) : null,
+          serverMovementId: typeof row.payload_json?.['serverMovementId'] === 'string' ? String(row.payload_json['serverMovementId']) : null,
+          serverVersion: typeof row.payload_json?.['serverVersion'] === 'number' ? Number(row.payload_json['serverVersion']) : null,
+          serverOpenedAt: typeof row.payload_json?.['serverOpenedAt'] === 'string' ? String(row.payload_json['serverOpenedAt']) : null,
+          serverClosedAt: typeof row.payload_json?.['serverClosedAt'] === 'string' ? String(row.payload_json['serverClosedAt']) : null,
+          serverExpectedUsd: typeof row.payload_json?.['serverExpectedUsd'] === 'number' ? Number(row.payload_json['serverExpectedUsd']) : null,
+          serverExpectedCdf: typeof row.payload_json?.['serverExpectedCdf'] === 'number' ? Number(row.payload_json['serverExpectedCdf']) : null,
+          serverDeclaredUsd: typeof row.payload_json?.['serverDeclaredUsd'] === 'number' ? Number(row.payload_json['serverDeclaredUsd']) : null,
+          serverDeclaredCdf: typeof row.payload_json?.['serverDeclaredCdf'] === 'number' ? Number(row.payload_json['serverDeclaredCdf']) : null,
+          serverDifferenceUsd: typeof row.payload_json?.['serverDifferenceUsd'] === 'number' ? Number(row.payload_json['serverDifferenceUsd']) : null,
+          serverDifferenceCdf: typeof row.payload_json?.['serverDifferenceCdf'] === 'number' ? Number(row.payload_json['serverDifferenceCdf']) : null,
         }
       : null;
   }
 
   async recordProcessedOperation(user: AuthUser, params: {
     operationId: string;
-    localSaleId: string;
+    localEntityId: string;
     operationType: string;
     payload: unknown;
-    serverSaleId: string;
+    serverSaleId?: string | null;
     serverSaleNumber: string | null;
+    serverCashSessionId?: string | null;
+    serverSessionReference?: string | null;
+    serverMovementId?: string | null;
+    serverVersion?: number | null;
+    serverOpenedAt?: string | null;
+    serverClosedAt?: string | null;
+    serverExpectedUsd?: number | null;
+    serverExpectedCdf?: number | null;
+    serverDeclaredUsd?: number | null;
+    serverDeclaredCdf?: number | null;
+    serverDifferenceUsd?: number | null;
+    serverDifferenceCdf?: number | null;
   }) {
     await this.db.query(
       `
@@ -879,16 +905,31 @@ export class PosSyncRepository {
         user.siteId ?? null,
         user.userId,
         params.operationId,
-        params.localSaleId,
+        params.localEntityId,
         params.operationType,
-        JSON.stringify(params.payload),
-        params.serverSaleId,
+        JSON.stringify({
+          ...(typeof params.payload === 'object' && params.payload ? params.payload as Record<string, unknown> : {}),
+          serverCashSessionId: params.serverCashSessionId ?? null,
+          serverSessionReference: params.serverSessionReference ?? null,
+          serverMovementId: params.serverMovementId ?? null,
+          serverVersion: params.serverVersion ?? null,
+          serverOpenedAt: params.serverOpenedAt ?? null,
+          serverClosedAt: params.serverClosedAt ?? null,
+          serverExpectedUsd: params.serverExpectedUsd ?? null,
+          serverExpectedCdf: params.serverExpectedCdf ?? null,
+          serverDeclaredUsd: params.serverDeclaredUsd ?? null,
+          serverDeclaredCdf: params.serverDeclaredCdf ?? null,
+          serverDifferenceUsd: params.serverDifferenceUsd ?? null,
+          serverDifferenceCdf: params.serverDifferenceCdf ?? null,
+        }),
+        params.serverSaleId ?? null,
         params.serverSaleNumber,
       ],
       );
   }
 
-  async getOperationAllocationStates(user: AuthUser, operation: SubmitPosSaleValidateOperation) {
+  async getOperationAllocationStates(user: AuthUser, operation: { operationType: string; items?: SubmitPosSaleValidateOperation['items'] }) {
+    if (operation.operationType !== 'SALE_VALIDATE' || !operation.items) return [];
     const allocationIds = operation.items.flatMap((item) => item.lotAllocations.map((allocation) => allocation.allocationId));
     if (!allocationIds.length) return [];
 
@@ -938,6 +979,9 @@ export class PosSyncRepository {
     serverContext?: unknown;
     severity?: 'INFO' | 'WARNING' | 'CRITICAL';
   }) {
+    const normalizedConflictCode = /^[A-Z0-9_]+$/.test(params.conflictCode) && params.conflictCode.length <= 80
+      ? params.conflictCode
+      : 'POS_SYNC_REPLAY_FAILED';
     await this.db.query(
       `
       INSERT INTO pos_sync_conflicts (
@@ -978,8 +1022,8 @@ export class PosSyncRepository {
         params.operationId,
         params.localSaleId,
         params.offlineReference ?? null,
-        params.conflictCode,
-        params.severity ?? inferConflictSeverity(params.conflictCode),
+        normalizedConflictCode,
+        params.severity ?? inferConflictSeverity(normalizedConflictCode),
         params.message,
         JSON.stringify(params.localPayload ?? {}),
         JSON.stringify(params.serverContext ?? {}),
@@ -1270,9 +1314,10 @@ export class PosSyncRepository {
         cs.workstation_id,
         cs.status,
         cs.opened_at,
-        cs.opening_balance_usd,
-        cs.opening_balance_cdf,
-        cs.updated_at
+        cs.opening_balance,
+        cs.counted_closing_balance_usd,
+        cs.counted_closing_balance_cdf,
+        COALESCE(cs.validated_at, cs.closed_at, cs.opened_at) AS updated_at
       FROM cash_sessions cs
       WHERE cs.tenant_id = $1
         AND cs.user_id = $2
@@ -1294,8 +1339,8 @@ export class PosSyncRepository {
       workstationId: row.workstation_id,
       status: row.status === 'OPEN' ? 'OPEN' : 'CLOSED',
       openedAt: row.opened_at.toISOString(),
-      openingBalanceUsd: Number(row.opening_balance_usd ?? 0),
-      openingBalanceCdf: Number(row.opening_balance_cdf ?? 0),
+      openingBalanceUsd: Number(row.opening_balance ?? row.counted_closing_balance_usd ?? 0),
+      openingBalanceCdf: Number(row.counted_closing_balance_cdf ?? 0),
       serverVersion: row.updated_at ? new Date(row.updated_at).getTime() : new Date(row.opened_at).getTime(),
       updatedAt: row.updated_at ? row.updated_at.toISOString() : null,
     };

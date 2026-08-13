@@ -21,6 +21,7 @@ import {
   buildOfflineCashSettlement,
   finalizeOfflineCashSale,
 } from './offline-sale';
+import { canAttachOfflineCashSale } from './offline-cash';
 import { notifyOfflineSaleQueued, runSync } from './sync-engine';
 import {
   calculateAuthorizationState,
@@ -144,8 +145,7 @@ export function OfflinePosPage() {
     !!cart
     && cart.items.length > 0
     && cart.status !== 'BLOCKED'
-    && !!snapshot.cashSession
-    && snapshot.cashSession.status === 'OPEN'
+    && canAttachOfflineCashSale(snapshot.cashSession)
     && (settlementPreview.amountPaidUsd > 0 || settlementPreview.amountPaidCdf > 0)
     && settlementPreview.settlementDifferenceUsd >= -0.02;
 
@@ -318,6 +318,9 @@ export function OfflinePosPage() {
           </Link>
           <Link className="ghost-button compact-button" to="/offline/sales">
             Ventes offline
+          </Link>
+          <Link className="ghost-button compact-button" to="/offline/cash">
+            Caisse offline
           </Link>
         </div>
       </header>
@@ -552,13 +555,16 @@ export function OfflinePosPage() {
           <section className="card offline-panel">
             <h3>Caisse offline</h3>
             <div className="detail-grid compact-detail-grid">
-              <div><span>Session</span><strong>{snapshot.cashSession?.status === 'OPEN' ? 'Ouverte' : 'Indisponible'}</strong></div>
-              <div><span>Session ID</span><strong>{snapshot.cashSession?.cashSessionId ?? '-'}</strong></div>
+              <div><span>Session</span><strong>{canAttachOfflineCashSale(snapshot.cashSession) ? 'Ouverte' : 'Indisponible'}</strong></div>
+              <div><span>Reference</span><strong>{snapshot.cashSession?.offlineCashReference ?? '-'}</strong></div>
               <div><span>Ouverte le</span><strong>{formatDateTime(snapshot.cashSession?.openedAt)}</strong></div>
               <div><span>Solde USD</span><strong>{snapshot.cashSession ? formatMoney(snapshot.cashSession.openingBalanceUsd, 'USD') : '-'}</strong></div>
             </div>
             {!snapshot.cashSession ? (
-              <p className="offline-warning-text">Aucune session caisse synchronisee n est disponible pour ce poste. Reconnectez le poste avant d encaisser hors ligne.</p>
+              <div className="offline-panel-actions">
+                <p className="offline-warning-text">Aucune session caisse locale n est ouverte pour ce poste.</p>
+                <Link className="button compact-button" to="/offline/cash">Ouvrir la caisse</Link>
+              </div>
             ) : null}
           </section>
 

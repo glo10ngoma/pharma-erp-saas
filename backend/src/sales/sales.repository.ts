@@ -854,7 +854,7 @@ export class SalesRepository {
           amountPaidCdf: operation.payment.amountPaidCdf,
           amountReturnedUsd: operation.payment.amountReturnedUsd,
           amountReturnedCdf: operation.payment.amountReturnedCdf,
-          cashSessionId: operation.cashSessionId,
+          cashSessionId: operation.cashSessionId ?? undefined,
           saleMode: operation.saleMode,
           settlementDifferenceNote: operation.note ?? undefined,
         },
