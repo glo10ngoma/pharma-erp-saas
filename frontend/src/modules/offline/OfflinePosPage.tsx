@@ -34,6 +34,7 @@ import { type OfflineCart, type OfflinePosCustomer, type OfflineSale } from './o
 import { useSyncEngine } from './useSyncEngine';
 
 type OfflinePageModel = Awaited<ReturnType<typeof getOfflineCartPageModel>>;
+type OfflinePosInitState = 'LOADING' | 'SETUP_REQUIRED' | 'READY' | 'RECOVERY_REQUIRED' | 'ERROR';
 
 const emptyViewModel: OfflineSnapshotViewModel = {
   snapshot: {
@@ -60,6 +61,8 @@ export function OfflinePosPage() {
   const selectedCartId = searchParams.get('draft');
   const [viewModel, setViewModel] = useState<OfflineSnapshotViewModel>(emptyViewModel);
   const [pageModel, setPageModel] = useState<OfflinePageModel | null>(null);
+  const [initState, setInitState] = useState<OfflinePosInitState>('LOADING');
+  const [initError, setInitError] = useState('');
   const [articleQuery, setArticleQuery] = useState('');
   const [customerQuery, setCustomerQuery] = useState('');
   const [articleOpen, setArticleOpen] = useState(false);
@@ -78,19 +81,43 @@ export function OfflinePosPage() {
   const syncEngine = useSyncEngine();
 
   async function refresh(cartId?: string | null) {
-    const [localView, cartView] = await Promise.all([
-      loadLocalSnapshot(),
-      getOfflineCartPageModel(cartId ?? selectedCartId),
-    ]);
-    setViewModel(localView);
-    setPageModel(cartView);
-    setNoteDraft(cartView.cart.note ?? '');
-    setSaveLabel('SAVED');
-    const nextCartId = cartView.cart.cartId;
-    if (nextCartId !== selectedCartId) {
-      const nextParams = new URLSearchParams(searchParams);
-      nextParams.set('draft', nextCartId);
-      setSearchParams(nextParams, { replace: true });
+    setInitState('LOADING');
+    setInitError('');
+    try {
+      const [localView, cartView] = await Promise.all([
+        loadLocalSnapshot(),
+        getOfflineCartPageModel(cartId ?? selectedCartId),
+      ]);
+      setViewModel(localView);
+      setPageModel(cartView);
+      setNoteDraft(cartView.cart.note ?? '');
+      setSaveLabel('SAVED');
+      setInitState('READY');
+      const nextCartId = cartView.cart.cartId;
+      if (nextCartId !== selectedCartId) {
+        const nextParams = new URLSearchParams(searchParams);
+        nextParams.set('draft', nextCartId);
+        setSearchParams(nextParams, { replace: true });
+      }
+    } catch (error) {
+      setPageModel(null);
+      try {
+        const localView = await loadLocalSnapshot();
+        setViewModel(localView);
+        const needsSetup = !localView.snapshot.workstation?.workstationId
+          || !localView.snapshot.auth
+          || !localView.snapshot.settings
+          || localView.snapshot.articles.length === 0;
+        const recoveryRequired = localView.snapshotStatus === 'REVOKED'
+          || localView.snapshot.syncState?.snapshotStatus === 'REVOKED'
+          || String(error instanceof Error ? error.message : error).includes('RECOVERY_REQUIRED');
+        setInitState(recoveryRequired ? 'RECOVERY_REQUIRED' : needsSetup ? 'SETUP_REQUIRED' : 'ERROR');
+        setInitError(mapOfflineSellerMessage(error));
+      } catch (snapshotError) {
+        setViewModel(emptyViewModel);
+        setInitState('ERROR');
+        setInitError(mapOfflineSellerMessage(snapshotError));
+      }
     }
   }
 
@@ -314,16 +341,54 @@ export function OfflinePosPage() {
   }
 
   if (!pageModel || !cart) {
+    const setupRequired = initState === 'SETUP_REQUIRED';
+    const recoveryRequired = initState === 'RECOVERY_REQUIRED';
+    const hasError = initState === 'ERROR';
     return (
       <section className="offline-page">
         <header className="page-heading">
           <div>
             <span className="breadcrumb">Offline</span>
             <h1>POS Offline</h1>
-            <p>Chargement du snapshot local et des brouillons persistants.</p>
+            <p>
+              {setupRequired
+                ? 'Ce poste doit etre prepare avant d utiliser le POS Offline.'
+                : recoveryRequired
+                  ? 'Une verification locale est requise avant de continuer les ventes hors ligne.'
+                  : hasError
+                    ? 'Impossible d initialiser le POS Offline.'
+                    : 'Chargement du snapshot local et des brouillons persistants.'}
+            </p>
           </div>
         </header>
-        <p className="loading-state">Chargement du POS Offline...</p>
+        {initState === 'LOADING' ? (
+          <p className="loading-state">Chargement du POS Offline...</p>
+        ) : (
+          <section className="card offline-panel offline-setup-required">
+            <h2>
+              {setupRequired
+                ? 'Poste non prepare'
+                : recoveryRequired
+                  ? 'Verification requise'
+                  : 'Initialisation impossible'}
+            </h2>
+            <p>
+              {setupRequired
+                ? 'Ce poste doit etre prepare avant d utiliser le POS Offline.'
+                : recoveryRequired
+                  ? 'Ouvrez la page Poste pour verifier le stockage local, le snapshot et les donnees en attente.'
+                  : initError || 'Une erreur locale empeche le demarrage du POS Offline.'}
+            </p>
+            <div className="offline-panel-actions">
+              <Link className="button compact-button" to="/offline/poste">
+                Preparer ce poste
+              </Link>
+              <button className="ghost-button compact-button" type="button" onClick={() => void refresh(selectedCartId)}>
+                Reessayer
+              </button>
+            </div>
+          </section>
+        )}
       </section>
     );
   }
