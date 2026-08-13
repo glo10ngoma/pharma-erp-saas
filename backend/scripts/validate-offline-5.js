@@ -1367,6 +1367,10 @@ function createCashSyncHarness() {
       '../../services/posSync.service': posSyncServiceStub,
       './offline-storage': storageStub,
       './offline-bootstrap': bootstrapStub,
+      './offline-config': {
+        OFFLINE_APP_VERSION: 'web',
+        OFFLINE_DB_VERSION: 6,
+      },
     },
     sourceTransform,
   );

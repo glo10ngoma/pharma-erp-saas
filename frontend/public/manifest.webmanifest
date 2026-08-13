@@ -1,0 +1,12 @@
+{
+  "name": "PharmaERP POS",
+  "short_name": "PharmaERP POS",
+  "description": "Poste POS offline PharmaERP",
+  "start_url": "/offline/pos",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f766e",
+  "orientation": "landscape-primary",
+  "categories": ["business", "productivity"]
+}

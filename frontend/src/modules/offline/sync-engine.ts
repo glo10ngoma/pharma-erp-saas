@@ -12,6 +12,7 @@ import {
   writeOfflineSyncState,
 } from './offline-storage';
 import { applyChanges, getStableDeviceId, pingPosSync } from './offline-bootstrap';
+import { OFFLINE_APP_VERSION, OFFLINE_DB_VERSION } from './offline-config';
 import { type OfflineCashExpenseOperation, type OfflineCashSessionCloseOperation, type OfflineSaleValidateOperation, type OfflineSyncOperationPayload, type OfflineSyncQueueEntry } from './offline-types';
 
 const AUTO_SYNC_INTERVAL_MS = 60_000;
@@ -96,8 +97,8 @@ async function syncHeartbeat() {
     await posSyncService.heartbeat({
       workstationId: snapshot.workstation.workstationId,
       deviceId: snapshot.workstation.deviceId ?? getStableDeviceId(),
-      appVersion: snapshot.workstation.appVersion ?? import.meta.env.VITE_APP_VERSION ?? 'web',
-      localDbVersion: '4',
+      appVersion: snapshot.workstation.appVersion ?? OFFLINE_APP_VERSION,
+      localDbVersion: String(OFFLINE_DB_VERSION),
       syncCursor: snapshot.syncState?.syncCursor ?? null,
       pendingCount: state.pendingCount,
       conflictCount: state.conflictCount,

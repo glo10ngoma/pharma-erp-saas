@@ -8,6 +8,7 @@ import {
   type OfflineCashSessionSnapshot,
   type OfflineDraftReservation,
   type OfflineLocalSnapshot,
+  type OfflineMetadataRecord,
   type OfflinePayment,
   type OfflinePosArticle,
   type OfflinePosCustomer,
@@ -29,9 +30,8 @@ import {
 } from './offline-types';
 import { normalizeAllocationStatus } from './offline-fefo';
 import { type PosSyncOperationAllocationAck, type PosSyncOperationResult } from '../../services/posSync.service';
+import { OFFLINE_APP_VERSION, OFFLINE_DB_NAME, OFFLINE_DB_VERSION, OFFLINE_SNAPSHOT_SCHEMA_VERSION } from './offline-config';
 
-const DB_NAME = 'PharmaErpPosDb';
-const DB_VERSION = 5;
 const ARTICLES_STORE = 'offline_articles';
 const LOTS_STORE = 'offline_lots';
 const ALLOCATIONS_STORE = 'offline_allocations';
@@ -53,6 +53,7 @@ const ACTIVITY_LOG_STORE = 'offline_activity_log';
 const OFFLINE_SALES_STORE = 'offline_sales';
 const OFFLINE_PAYMENTS_STORE = 'offline_payments';
 const OFFLINE_PENDING_CONSUMPTIONS_STORE = 'offline_pending_consumptions';
+const OFFLINE_METADATA_STORE = 'offline_metadata';
 
 export async function readOfflineArticles() {
   const db = await openOfflineDatabase();
@@ -177,6 +178,19 @@ export async function readOfflinePayments() {
 export async function readOfflinePendingConsumptions() {
   const db = await openOfflineDatabase();
   return readAll<OfflinePendingConsumption>(db, OFFLINE_PENDING_CONSUMPTIONS_STORE);
+}
+
+export async function readOfflineMetadata() {
+  const db = await openOfflineDatabase();
+  const rows = await readAll<OfflineMetadataRecord>(db, OFFLINE_METADATA_STORE);
+  return rows[0] ?? createDefaultOfflineMetadata();
+}
+
+export async function writeOfflineMetadata(metadata: OfflineMetadataRecord) {
+  const db = await openOfflineDatabase();
+  const tx = db.transaction(OFFLINE_METADATA_STORE, 'readwrite');
+  await replaceAll(tx.objectStore(OFFLINE_METADATA_STORE), [metadata]);
+  await txDone(tx);
 }
 
 export async function writeOfflineDraftReservations(rows: OfflineDraftReservation[]) {
@@ -1119,7 +1133,7 @@ export async function seedOfflineAllocationFixtures(rows: OfflineStockAllocation
 async function openOfflineDatabase() {
   if (typeof indexedDB === 'undefined') throw new Error('IndexedDB not available');
   return new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    const request = indexedDB.open(OFFLINE_DB_NAME, OFFLINE_DB_VERSION);
     request.onerror = () => reject(request.error ?? new Error('Offline DB open failed'));
     request.onupgradeneeded = () => {
       const db = request.result;
@@ -1145,6 +1159,7 @@ async function openOfflineDatabase() {
       ensureObjectStore(db, upgradeTransaction, OFFLINE_SALES_STORE, 'localSaleId', [['byStatus', 'status'], ['bySyncStatus', 'syncStatus'], ['byValidatedAt', 'validatedAt']]);
       ensureObjectStore(db, upgradeTransaction, OFFLINE_PAYMENTS_STORE, 'offlinePaymentId', [['bySale', 'localSaleId'], ['byStatus', 'status']]);
       ensureObjectStore(db, upgradeTransaction, OFFLINE_PENDING_CONSUMPTIONS_STORE, 'pendingConsumptionId', [['bySale', 'localSaleId'], ['byOperation', 'operationId'], ['byAllocation', 'allocationId'], ['byStatus', 'status']]);
+      ensureObjectStore(db, upgradeTransaction, OFFLINE_METADATA_STORE, 'id');
     };
     request.onsuccess = () => resolve(request.result);
   });
@@ -1353,6 +1368,20 @@ export function createDefaultSyncState(overrides: Partial<OfflineSyncState> = {}
     networkStatus: 'OFFLINE',
     lastErrorCode: null,
     lastErrorMessage: null,
+    ...overrides,
+  };
+}
+
+export function createDefaultOfflineMetadata(overrides: Partial<OfflineMetadataRecord> = {}): OfflineMetadataRecord {
+  return {
+    id: 'metadata',
+    applicationVersion: OFFLINE_APP_VERSION,
+    offlineDbVersion: OFFLINE_DB_VERSION,
+    snapshotSchemaVersion: OFFLINE_SNAPSHOT_SCHEMA_VERSION,
+    lastMigrationAt: new Date().toISOString(),
+    lastRecoveryCheckAt: null,
+    recoveryStatus: 'HEALTHY',
+    recoveryReason: null,
     ...overrides,
   };
 }

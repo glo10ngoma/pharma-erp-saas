@@ -575,6 +575,10 @@ function createHarness(options = {}) {
       '../../services/posSync.service': posSyncServiceStub,
       './offline-storage': storageStub,
       './offline-bootstrap': offlineBootstrapStub,
+      './offline-config': {
+        OFFLINE_APP_VERSION: 'web',
+        OFFLINE_DB_VERSION: 6,
+      },
     },
     transformSyncEngineSource,
   );

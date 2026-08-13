@@ -6676,6 +6676,61 @@ details.nav-group .nav-link {
   margin: 0;
 }
 
+.offline-health-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.offline-health-card {
+  background: color-mix(in srgb, var(--card) 92%, var(--primary) 8%);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+}
+
+.offline-health-card span,
+.offline-health-card small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.offline-health-card strong {
+  color: var(--text);
+  font-size: 1.05rem;
+}
+
+.offline-health-healthy {
+  border-left: 4px solid var(--success);
+}
+
+.offline-health-degraded,
+.offline-health-warning {
+  border-left: 4px solid var(--warning);
+}
+
+.offline-health-recovery_required,
+.offline-health-blocked,
+.offline-health-critical {
+  border-left: 4px solid var(--danger);
+}
+
+.offline-health-unknown {
+  border-left: 4px solid var(--info);
+}
+
+.offline-action-message {
+  background: color-mix(in srgb, var(--primary) 8%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--primary) 20%, var(--border));
+  border-radius: 8px;
+  color: var(--text);
+  margin: 0;
+  padding: 8px 10px;
+}
+
 .offline-policy-list {
   color: var(--muted);
   display: grid;

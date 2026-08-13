@@ -2,6 +2,9 @@ export type OfflineAllocationStatus = 'ACTIVE' | 'EXHAUSTED' | 'SUSPENDED' | 'RE
 export type OfflineNetworkStatus = 'ONLINE' | 'DEGRADED' | 'OFFLINE';
 export type OfflineSnapshotStatus = 'FRESH' | 'STALE' | 'EXPIRED' | 'REVOKED' | 'UNKNOWN';
 export type OfflineAuthorizationState = 'VALID' | 'EXPIRING' | 'EXPIRED';
+export type OfflineRecoveryStatus = 'HEALTHY' | 'DEGRADED' | 'RECOVERY_REQUIRED' | 'BLOCKED';
+export type OfflineStorageStatus = 'HEALTHY' | 'WARNING' | 'CRITICAL' | 'UNKNOWN';
+export type OfflineIntegrityIssueLevel = 'INFO' | 'WARNING' | 'CRITICAL';
 export type OfflineCartStatus = 'DRAFT' | 'READY' | 'BLOCKED' | 'CANCELLED';
 export type OfflineCartSaveState = 'IDLE' | 'SAVING' | 'SAVED' | 'ERROR';
 export type OfflinePriceSource = 'ARTICLE_DEFAULT' | 'LOT_FEFO';
@@ -301,6 +304,17 @@ export interface OfflineSyncState {
   networkStatus: OfflineNetworkStatus;
   lastErrorCode: string | null;
   lastErrorMessage: string | null;
+}
+
+export interface OfflineMetadataRecord {
+  id: 'metadata';
+  applicationVersion: string;
+  offlineDbVersion: number;
+  snapshotSchemaVersion: number;
+  lastMigrationAt: string;
+  lastRecoveryCheckAt: string | null;
+  recoveryStatus: OfflineRecoveryStatus;
+  recoveryReason: string | null;
 }
 
 export interface OfflineSyncQueueEntry {
