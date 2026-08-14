@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, Navigate, Outlet, useNavigate } from 'react-router-dom';
+import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { canReadNotifications, readNotificationState, useGeneratedNotifications } from '../modules/notifications/notifications-data';
+import { formatDateTime } from '../utils/date';
 
 type NavLinkItem = [to: string, label: string, permission?: string];
 type NavGroup = { title: string; icon: string; links: NavLinkItem[] };
 
 export function DashboardLayout() {
   const navigate = useNavigate();
-  const { accessToken, currentUser, permissions, loading, logout: clearAuth } = useAuth();
+  const location = useLocation();
+  const { accessToken, currentUser, permissions, loading, offlineAuthenticated, offlineSessionExpiresAt, logout: clearAuth } = useAuth();
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
   const [notificationState, setNotificationState] = useState(() => readNotificationState());
   const canSeeNotifications = canReadNotifications(permissions, currentUser?.role);
@@ -189,8 +191,11 @@ export function DashboardLayout() {
   }, []);
 
   if (loading) return <main className="content"><p className="loading-state">Chargement du profil...</p></main>;
-  if (!accessToken) return <Navigate to="/login" replace />;
+  if (!accessToken && !offlineAuthenticated) return <Navigate to="/login" replace />;
   if (!currentUser) return <Navigate to="/login" replace />;
+  if (!accessToken && offlineAuthenticated && !location.pathname.startsWith('/offline/')) {
+    return <Navigate to="/offline/pos" replace />;
+  }
 
   function logout() {
     clearAuth();
@@ -240,6 +245,14 @@ export function DashboardLayout() {
             {unreadCount > 0 && <strong>{unreadCount}</strong>}
           </Link>
         </div>
+        {offlineAuthenticated ? (
+          <section className="card compact-card">
+            <p className="muted">
+              Session hors ligne restauree.
+              {offlineSessionExpiresAt ? ` Autorisation valable jusqu au ${formatDateTime(offlineSessionExpiresAt)}.` : ''}
+            </p>
+          </section>
+        ) : null}
         <Outlet />
       </main>
     </div>

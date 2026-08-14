@@ -192,6 +192,7 @@ export function OfflinePosPage() {
     !!cart
     && cart.items.length > 0
     && cart.status !== 'BLOCKED'
+    && authorizationState !== 'EXPIRED'
     && canAttachOfflineCashSale(snapshot.cashSession)
     && (settlementPreview.amountPaidUsd > 0 || settlementPreview.amountPaidCdf > 0)
     && settlementPreview.settlementDifferenceUsd >= -0.02;

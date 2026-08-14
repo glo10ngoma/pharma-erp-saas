@@ -233,7 +233,10 @@ export function App() {
 }
 
 function HomeRedirect() {
-  const { currentUser } = useAuth();
+  const { accessToken, currentUser, offlineAuthenticated } = useAuth();
+  if (offlineAuthenticated && !accessToken) {
+    return <Navigate to="/offline/pos" replace />;
+  }
   return <Navigate to={landingPathForUser(currentUser)} replace />;
 }
 

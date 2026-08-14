@@ -1,7 +1,9 @@
-import { FormEvent, useState } from 'react';
+import axios from 'axios';
+import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
 import { landingPathForUser } from '../../auth/landing';
+import { formatDateTime } from '../../utils/date';
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -9,18 +11,77 @@ export function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
   const [loading, setLoading] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+
+  useEffect(() => {
+    if (auth.offlineAuthenticated && !auth.accessToken) {
+      navigate('/offline/pos', { replace: true });
+      return;
+    }
+
+    if (auth.loading || auth.accessToken || auth.offlineAuthenticated) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function tryOfflineRestore() {
+      const candidate = await auth.inspectOfflineRestore();
+      if (cancelled) return;
+      if (!candidate.allowed) {
+        if (!navigator.onLine) {
+          setInfo(candidate.reason === 'AUTH_EXPIRED'
+            ? 'L autorisation hors ligne de ce poste a expire. Reconnectez-vous a Internet.'
+            : 'Connexion Internet requise pour vous connecter sur ce poste.');
+        }
+        return;
+      }
+
+      setRestoring(true);
+      const user = await auth.restoreOfflineSession();
+      if (cancelled) return;
+      setRestoring(false);
+      if (user) {
+        navigate('/offline/pos', { replace: true });
+      }
+    }
+
+    if (!navigator.onLine) {
+      void tryOfflineRestore();
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auth, navigate]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
+    setInfo('');
     setLoading(true);
 
     try {
       const user = await auth.login(email, password);
       navigate(landingPathForUser(user), { replace: true });
-    } catch {
-      setError('Identifiants invalides ou utilisateur inactif.');
+    } catch (error) {
+      if (!navigator.onLine || (axios.isAxiosError(error) && !error.response)) {
+        const candidate = await auth.inspectOfflineRestore();
+        if (candidate.allowed) {
+          const restored = await auth.restoreOfflineSession();
+          if (restored) {
+            navigate('/offline/pos', { replace: true });
+            return;
+          }
+        }
+        setError(candidate.reason === 'AUTH_EXPIRED'
+          ? 'L autorisation hors ligne de ce poste a expire. Reconnectez-vous a Internet.'
+          : 'Impossible de joindre le serveur.');
+      } else {
+        setError('Identifiants invalides ou utilisateur inactif.');
+      }
     } finally {
       setLoading(false);
     }
@@ -31,6 +92,12 @@ export function LoginPage() {
       <form className="login-panel" onSubmit={handleSubmit}>
         <h1>PharmaERP SaaS</h1>
         <p className="muted">Connexion securisee a votre espace pharmacie</p>
+        {auth.offlineAuthenticated ? (
+          <p className="muted">
+            Session hors ligne restauree.
+            {auth.offlineSessionExpiresAt ? ` Autorisation valable jusqu au ${formatDateTime(auth.offlineSessionExpiresAt)}.` : ''}
+          </p>
+        ) : null}
         <label>
           Email
           <input
@@ -52,9 +119,10 @@ export function LoginPage() {
             required
           />
         </label>
+        {info && <p className="muted">{info}</p>}
         {error && <p className="form-error">{error}</p>}
-        <button className="button" disabled={loading}>
-          {loading ? 'Connexion...' : 'Se connecter'}
+        <button className="button" disabled={loading || restoring}>
+          {loading || restoring ? 'Connexion...' : 'Se connecter'}
         </button>
       </form>
     </div>

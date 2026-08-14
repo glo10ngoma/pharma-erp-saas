@@ -8,6 +8,9 @@ import {
   recalculateOfflineCashSessionTotals,
 } from './offline-cash';
 import {
+  calculateAuthorizationState,
+} from './offline-bootstrap';
+import {
   persistValidatedOfflineSale,
   readOfflineCashMovements,
   readOfflineDraftReservations,
@@ -72,6 +75,9 @@ export async function finalizeOfflineCashSale(cartId: string, input: FinalizeOff
 
   if (!snapshot.auth || !snapshot.workstation || !snapshot.settings) {
     throw new Error('CATALOG_EMPTY');
+  }
+  if (calculateAuthorizationState(snapshot.auth) === 'EXPIRED') {
+    throw new Error('OFFLINE_AUTH_EXPIRED');
   }
   if (!canAttachOfflineCashSale(snapshot.cashSession)) {
     throw new Error('CASH_SESSION_REQUIRED');
