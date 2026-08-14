@@ -1,18 +1,25 @@
-const SHELL_CACHE = 'pharmaerp-pos-shell-v1';
+const SHELL_CACHE_PREFIX = 'pharmaerp-pos-shell-';
+const SHELL_CACHE = `${SHELL_CACHE_PREFIX}v2`;
 const SHELL_ENTRY = '/';
 const STATIC_ASSET_DESTINATIONS = new Set(['script', 'style', 'font', 'image']);
 
 async function cacheShell() {
-  const cache = await caches.open(SHELL_CACHE);
   const response = await fetch(SHELL_ENTRY, { cache: 'no-store' });
   if (!response.ok) {
     throw new Error(`Shell fetch failed: ${response.status}`);
   }
 
-  await cache.put(SHELL_ENTRY, response.clone());
-  await cache.put('/index.html', response.clone());
+  await updateShellFromResponse(response);
+}
 
-  const html = await response.text();
+async function updateShellFromResponse(response) {
+  const cache = await caches.open(SHELL_CACHE);
+  const shellResponse = response.clone();
+
+  await cache.put(SHELL_ENTRY, shellResponse.clone());
+  await cache.put('/index.html', shellResponse.clone());
+
+  const html = await shellResponse.text();
   const assetPaths = Array.from(
     html.matchAll(/(?:src|href)=["']([^"'#?]+\.(?:js|css|woff2?|png|svg|ico|webmanifest))["']/gi),
     (match) => match[1],
@@ -47,7 +54,7 @@ self.addEventListener('activate', (event) => {
       const cacheNames = await caches.keys();
       await Promise.all(
         cacheNames
-          .filter((cacheName) => cacheName.startsWith('pharmaerp-pos-shell-') && cacheName !== SHELL_CACHE)
+          .filter((cacheName) => cacheName.startsWith(SHELL_CACHE_PREFIX) && cacheName !== SHELL_CACHE)
           .map((cacheName) => caches.delete(cacheName)),
       );
       await self.clients.claim();
@@ -76,7 +83,11 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       (async () => {
         try {
-          return await fetch(request);
+          const networkResponse = await fetch(request, { cache: 'no-store' });
+          if (networkResponse.ok) {
+            await updateShellFromResponse(networkResponse.clone());
+          }
+          return networkResponse;
         } catch (_) {
           const cache = await caches.open(SHELL_CACHE);
           return (await cache.match('/index.html')) || (await cache.match(SHELL_ENTRY)) || Response.error();

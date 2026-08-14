@@ -59,14 +59,20 @@ async function main() {
   assertIncludes(manifest, '"display": "standalone"', 'manifest.webmanifest');
   assertIncludes(manifest, '"start_url": "/offline/pos"', 'manifest.webmanifest');
   assertIncludes(manifest, '"scope": "/"', 'manifest.webmanifest');
-  assertIncludes(main, "navigator.serviceWorker.register('/sw.js', { scope: '/' })", 'main.tsx');
-  assertIncludes(serviceWorker, "const SHELL_CACHE = 'pharmaerp-pos-shell-v1';", 'sw.js');
-  assertIncludes(serviceWorker, "await cache.put('/index.html', response.clone());", 'sw.js');
+  assertIncludes(main, "navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' })", 'main.tsx');
+  assertIncludes(serviceWorker, "const SHELL_CACHE_PREFIX = 'pharmaerp-pos-shell-';", 'sw.js');
+  assertIncludes(serviceWorker, "const SHELL_CACHE = `${SHELL_CACHE_PREFIX}v2`;", 'sw.js');
+  assertIncludes(serviceWorker, 'await updateShellFromResponse(response);', 'sw.js');
+  assertIncludes(serviceWorker, "await cache.put('/index.html', shellResponse.clone());", 'sw.js');
   assertIncludes(serviceWorker, "if (url.pathname.startsWith('/api/')) {", 'sw.js');
   assertIncludes(serviceWorker, 'event.respondWith(fetch(request));', 'sw.js');
+  assertIncludes(serviceWorker, "const networkResponse = await fetch(request, { cache: 'no-store' });", 'sw.js');
+  assertIncludes(serviceWorker, 'await updateShellFromResponse(networkResponse.clone());', 'sw.js');
   assertIncludes(serviceWorker, "return (await cache.match('/index.html')) || (await cache.match(SHELL_ENTRY)) || Response.error();", 'sw.js');
   assert(!serviceWorker.includes('skipWaiting'), 'sw.js should not call skipWaiting');
+  assert(!serviceWorker.includes('window.location.reload'), 'sw.js should not trigger reloads');
   assert(!serviceWorker.includes('indexedDB.deleteDatabase'), 'sw.js must not touch IndexedDB');
+  assert(!serviceWorker.includes("caches.delete(cacheName))\n      );\n      await self.clients.claim();\n    })(),\n  );\n});\n\nself.addEventListener('fetch'"), 'sw.js should not clear unrelated caches');
   assertIncludes(checklist, 'FIELD_READY = NO', 'POS_OFFLINE_FIELD_TEST_CHECKLIST.md');
   assertIncludes(checklist, 'NON TESTE', 'POS_OFFLINE_FIELD_TEST_CHECKLIST.md');
 
