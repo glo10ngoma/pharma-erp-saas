@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { formatDateTime } from '../../utils/date';
 import { formatMoney } from '../../utils/money';
+import { canAttachOfflineCashSale } from './offline-cash';
 import { type OfflineSnapshotViewModel } from './offline-bootstrap';
 import { type OfflineCashSessionSnapshot, type OfflineSale } from './offline-types';
 import { type useSyncEngine } from './useSyncEngine';
@@ -66,7 +67,7 @@ export function OfflineSellerHeader(props: {
     : syncEngine?.pendingCount
       ? `${syncEngine.pendingCount} en attente`
       : 'Synchronise';
-  const cashText = props.cashSession ? 'Caisse ouverte' : 'Caisse fermee';
+  const cashText = canAttachOfflineCashSale(props.cashSession ?? null) ? 'Caisse ouverte' : 'Caisse fermee';
 
   return (
     <section className="offline-seller-header">

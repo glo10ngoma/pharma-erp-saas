@@ -643,9 +643,13 @@ export function OfflinePosPage() {
               <div><span>Ouverte le</span><strong>{formatDateTime(snapshot.cashSession?.openedAt)}</strong></div>
               <div><span>Solde USD</span><strong>{snapshot.cashSession ? formatMoney(snapshot.cashSession.openingBalanceUsd, 'USD') : '-'}</strong></div>
             </div>
-            {!snapshot.cashSession ? (
+            {!canAttachOfflineCashSale(snapshot.cashSession) ? (
               <div className="offline-panel-actions">
-                <p className="offline-warning-text">Ouvrez la caisse avant d encaisser une vente.</p>
+                <p className="offline-warning-text">
+                  {snapshot.cashSession
+                    ? 'La session locale restauree n est pas encore utilisable pour encaisser. Ouvrez ou reprenez une caisse offline active.'
+                    : 'Ouvrez la caisse avant d encaisser une vente.'}
+                </p>
                 <Link className="button compact-button" to="/offline/cash">Ouvrir la caisse</Link>
               </div>
             ) : null}

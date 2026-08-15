@@ -1205,10 +1205,10 @@ function normalizeAllocation(row: OfflineStockAllocation): OfflineStockAllocatio
 
 function selectActiveOfflineCashSession(rows: OfflineCashSessionSnapshot[]) {
   const priority: OfflineCashSessionSnapshot['status'][] = [
-    'LOCAL_CLOSING',
     'LOCAL_OPEN',
     'OPEN_PENDING_SYNC',
     'OPEN_SYNCED',
+    'LOCAL_CLOSING',
     'CLOSED_PENDING_SYNC',
     'CLOSED_SYNCED',
     'CONFLICT',
