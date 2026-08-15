@@ -24,7 +24,7 @@ import {
 } from './offline-sale';
 import { canAttachOfflineCashSale } from './offline-cash';
 import { notifyOfflineSaleQueued, runSync } from './sync-engine';
-import { OfflineNetworkBanner, OfflineReceiptTicket, OfflineSellerHeader, OfflineSellerNav, mapOfflineSellerMessage } from './offline-ui';
+import { OfflineNetworkBanner, OfflineReceiptTicket, OfflineSellerHeader, OfflineSellerNav, mapOfflineSellerMessage, printOfflineReceipt } from './offline-ui';
 import {
   calculateAuthorizationState,
   calculateSnapshotFreshness,
@@ -322,7 +322,12 @@ export function OfflinePosPage() {
       });
       setMessage(`Vente offline ${result.sale.offlineReference} validee localement. Ticket pret a imprimer.`);
       try {
-        window.print();
+        printOfflineReceipt({
+          sale: result.sale,
+          siteName: workstation?.siteName ?? null,
+          sellerName: auth?.displayName ?? null,
+          workstationName: workstation?.workstationName ?? null,
+        });
       } catch {
         setMessage('Vente enregistree. Impression impossible. Vous pouvez reimprimer le ticket.');
       }
@@ -338,7 +343,12 @@ export function OfflinePosPage() {
   function handlePrintReceipt() {
     if (!lastReceiptSale) return;
     try {
-      window.print();
+      printOfflineReceipt({
+        sale: lastReceiptSale,
+        siteName: workstation?.siteName ?? null,
+        sellerName: auth?.displayName ?? null,
+        workstationName: workstation?.workstationName ?? null,
+      });
     } catch {
       setMessage('Vente enregistree. Impression impossible. Vous pouvez reimprimer le ticket.');
     }

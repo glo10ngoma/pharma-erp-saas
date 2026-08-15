@@ -44,7 +44,7 @@ async function main() {
   assertIncludes(pos, 'OfflineReceiptTicket', 'OfflinePosPage.tsx');
   assertIncludes(pos, 'flushSync', 'OfflinePosPage.tsx');
   assertIncludes(pos, 'setLastReceiptSale(result.sale);', 'OfflinePosPage.tsx');
-  assertIncludes(pos, 'window.print();', 'OfflinePosPage.tsx');
+  assertIncludes(pos, 'printOfflineReceipt({', 'OfflinePosPage.tsx');
   assertIncludes(pos, "authorizationState !== 'EXPIRED'", 'OfflinePosPage.tsx');
   assert(!pos.includes('allocationId}</td>'), 'OfflinePosPage.tsx should not render allocationId in the main cart table');
   assertIncludes(cash, 'gapLabel', 'OfflineCashPage.tsx');
@@ -58,6 +58,8 @@ async function main() {
   assertIncludes(authContext, 'offlineAuthenticated', 'AuthContext.tsx');
   assertIncludes(ui, 'mapOfflineSellerMessage', 'offline-ui.tsx');
   assertIncludes(ui, 'INTERNAL_SERVER_ERROR', 'offline-ui.tsx');
+  assertIncludes(ui, 'buildOfflineReceiptHtml', 'offline-ui.tsx');
+  assertIncludes(ui, 'window.open', 'offline-ui.tsx');
   assertIncludes(cart, 'Ouvrez la caisse avant d encaisser une vente.', 'offline-cart.ts');
   assertIncludes(sale, "throw new Error('OFFLINE_AUTH_EXPIRED');", 'offline-sale.ts');
   assertIncludes(config, 'OFFLINE_DB_VERSION = 6', 'offline-config.ts');

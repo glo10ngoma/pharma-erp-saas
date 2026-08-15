@@ -6,7 +6,7 @@ import { formatMoney } from '../../utils/money';
 import { loadLocalSnapshot, type OfflineSnapshotViewModel } from './offline-bootstrap';
 import { listOfflineSalesHistory } from './offline-sale';
 import { processPendingOfflineQueue } from './sync-engine';
-import { OfflineReceiptTicket, OfflineSellerHeader, OfflineSellerNav } from './offline-ui';
+import { OfflineReceiptTicket, OfflineSellerHeader, OfflineSellerNav, printOfflineReceipt } from './offline-ui';
 import { type OfflineSale } from './offline-types';
 
 const emptyViewModel: OfflineSnapshotViewModel = {
@@ -64,7 +64,12 @@ export function OfflineSalesPage() {
     flushSync(() => {
       setSelectedSale(sale);
     });
-    window.print();
+    printOfflineReceipt({
+      sale,
+      siteName: viewModel.snapshot.workstation?.siteName ?? null,
+      sellerName: viewModel.snapshot.auth?.displayName ?? null,
+      workstationName: viewModel.snapshot.workstation?.workstationName ?? null,
+    });
   }
 
   return (

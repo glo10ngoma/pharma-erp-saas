@@ -158,3 +158,142 @@ export function OfflineReceiptTicket(props: {
     </div>
   );
 }
+
+function escapeReceiptHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+export function buildOfflineReceiptHtml(params: {
+  sale: OfflineSale;
+  siteName?: string | null;
+  sellerName?: string | null;
+  workstationName?: string | null;
+}) {
+  const { sale } = params;
+  const rate = sale.exchangeRateSnapshot ?? null;
+  const totalCdf = rate ? Math.round(sale.total * rate) : null;
+  const paidUsd = sale.items.length > 0 ? sale.total : 0;
+  const rows = sale.items.map((item) => `
+    <tr>
+      <td>${escapeReceiptHtml(item.articleName)}</td>
+      <td>${escapeReceiptHtml(String(item.quantity))}</td>
+      <td>${escapeReceiptHtml(formatMoney(item.unitPriceSnapshot, 'USD'))}</td>
+      <td>${escapeReceiptHtml(formatMoney(item.lineTotal, 'USD'))}</td>
+    </tr>
+  `).join('');
+
+  return `<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <title>Ticket ${escapeReceiptHtml(sale.offlineReference)}</title>
+    <style>
+      body {
+        color: #111;
+        font-family: Arial, sans-serif;
+        font-size: 12px;
+        line-height: 1.35;
+        margin: 0;
+        padding: 8px;
+        width: 72mm;
+      }
+      h1 {
+        font-size: 16px;
+        margin: 0 0 4px;
+        text-align: center;
+      }
+      p {
+        margin: 2px 0;
+      }
+      table {
+        border-collapse: collapse;
+        margin: 8px 0;
+        width: 100%;
+      }
+      th, td {
+        border-bottom: 1px solid #ddd;
+        padding: 3px 2px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th:nth-child(2),
+      th:nth-child(3),
+      th:nth-child(4),
+      td:nth-child(2),
+      td:nth-child(3),
+      td:nth-child(4) {
+        text-align: right;
+      }
+      .receipt-block {
+        margin-top: 8px;
+      }
+      .receipt-footer {
+        margin-top: 8px;
+      }
+      @page {
+        margin: 6mm;
+        size: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>PharmaERP POS</h1>
+      <p>${escapeReceiptHtml(params.siteName ?? '-')}</p>
+    </header>
+    <section class="receipt-block">
+      <strong>VENTE</strong>
+      <p>Reference offline : ${escapeReceiptHtml(sale.offlineReference)}</p>
+      <p>Reference serveur : ${escapeReceiptHtml(sale.serverSaleNumber ?? 'En attente')}</p>
+      <p>Date : ${escapeReceiptHtml(formatDateTime(sale.validatedAt))}</p>
+      <p>Vendeur : ${escapeReceiptHtml(params.sellerName ?? '-')}</p>
+      <p>Poste : ${escapeReceiptHtml(params.workstationName ?? sale.workstationId)}</p>
+    </section>
+    <table>
+      <thead>
+        <tr><th>Article</th><th>Qte</th><th>PU</th><th>Total</th></tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <footer class="receipt-footer">
+      <p>Total USD : ${escapeReceiptHtml(formatMoney(sale.total, 'USD'))}</p>
+      <p>Total CDF : ${escapeReceiptHtml(totalCdf !== null ? `${totalCdf.toLocaleString('fr-FR')} FC` : '-')}</p>
+      <p>Paye : ${escapeReceiptHtml(formatMoney(paidUsd, 'USD'))}</p>
+      <p>Statut : ${escapeReceiptHtml(sale.syncStatus === 'SYNCED' ? 'Synchronisee' : 'Vente enregistree hors ligne')}</p>
+      ${rate ? `<p>Taux utilise : 1 USD = ${escapeReceiptHtml(Number(rate).toLocaleString('fr-FR'))} FC</p>` : ''}
+    </footer>
+  </body>
+</html>`;
+}
+
+export function printOfflineReceipt(params: {
+  sale: OfflineSale | null;
+  siteName?: string | null;
+  sellerName?: string | null;
+  workstationName?: string | null;
+}) {
+  if (!params.sale) {
+    throw new Error('OFFLINE_RECEIPT_MISSING');
+  }
+  const receiptHtml = buildOfflineReceiptHtml({
+    sale: params.sale,
+    siteName: params.siteName,
+    sellerName: params.sellerName,
+    workstationName: params.workstationName,
+  });
+  const printWindow = window.open('', '_blank', 'width=420,height=720');
+  if (!printWindow) {
+    throw new Error('PRINT_WINDOW_BLOCKED');
+  }
+  printWindow.document.open();
+  printWindow.document.write(receiptHtml);
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.print();
+  printWindow.close();
+}
