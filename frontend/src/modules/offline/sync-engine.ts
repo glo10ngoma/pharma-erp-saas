@@ -16,6 +16,7 @@ import { OFFLINE_APP_VERSION, OFFLINE_DB_VERSION } from './offline-config';
 import { type OfflineCashExpenseOperation, type OfflineCashSessionCloseOperation, type OfflineSaleValidateOperation, type OfflineSyncOperationPayload, type OfflineSyncQueueEntry } from './offline-types';
 
 const AUTO_SYNC_INTERVAL_MS = 60_000;
+const PENDING_RECOVERY_INTERVAL_MS = 10_000;
 const BACKOFF_STEPS_MS = [60_000, 120_000, 300_000, 600_000, 1_800_000] as const;
 
 type SyncEngineState = {
@@ -176,7 +177,7 @@ export async function runSync(trigger: 'manual' | 'timer' | 'online' | 'visibili
     if (ping.networkStatus === 'OFFLINE') {
       setState({ currentStatus: 'OFFLINE' });
       await updateSyncStateError('OFFLINE', 'Navigateur hors ligne.', 'OFFLINE');
-      scheduleNext();
+      scheduleNext(state.pendingCount > 0 || state.syncingCount > 0 ? PENDING_RECOVERY_INTERVAL_MS : AUTO_SYNC_INTERVAL_MS);
       return state;
     }
 
@@ -408,13 +409,13 @@ async function startInternal() {
   isRunning = true;
   await resetStaleSyncingQueueEntries();
   await refreshCounters();
-  scheduleNext();
   if (heartbeatTimer) window.clearInterval(heartbeatTimer);
   heartbeatTimer = window.setInterval(() => {
     void syncHeartbeat();
   }, AUTO_SYNC_INTERVAL_MS);
 
   onlineHandler = () => {
+    backoffIndex = 0;
     void runSync('online');
   };
   visibilityHandler = () => {
@@ -427,6 +428,13 @@ async function startInternal() {
   };
   window.addEventListener('online', onlineHandler);
   document.addEventListener('visibilitychange', visibilityHandler);
+
+  if (state.pendingCount > 0 || state.syncingCount > 0) {
+    void runSync('timer');
+    return;
+  }
+
+  scheduleNext();
 }
 
 function stopInternal() {

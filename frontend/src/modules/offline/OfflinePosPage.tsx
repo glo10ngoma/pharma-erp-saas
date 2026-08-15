@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { Link, useSearchParams } from 'react-router-dom';
 import { FloatingSearchPopover } from '../../components/FloatingSearchPopover';
 import { formatDate, formatDateTime } from '../../utils/date';
@@ -316,15 +317,17 @@ export function OfflinePosPage() {
       await notifyOfflineSaleQueued();
       setAmountPaidUsd('');
       setAmountPaidCdf('');
-      setLastReceiptSale(result.sale);
+      flushSync(() => {
+        setLastReceiptSale(result.sale);
+      });
       setMessage(`Vente offline ${result.sale.offlineReference} validee localement. Ticket pret a imprimer.`);
-      await refresh(null);
-      setTimeout(() => articleInputRef.current?.focus(), 0);
       try {
         window.print();
       } catch {
         setMessage('Vente enregistree. Impression impossible. Vous pouvez reimprimer le ticket.');
       }
+      await refresh(null);
+      setTimeout(() => articleInputRef.current?.focus(), 0);
     } catch (error) {
       setMessage(mapOfflineSellerMessage(error));
     } finally {

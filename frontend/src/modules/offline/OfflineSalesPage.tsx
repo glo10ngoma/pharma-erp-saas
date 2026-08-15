@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { formatDateTime } from '../../utils/date';
 import { formatMoney } from '../../utils/money';
@@ -60,8 +61,10 @@ export function OfflineSalesPage() {
   }
 
   function handlePrint(sale: OfflineSale) {
-    setSelectedSale(sale);
-    window.setTimeout(() => window.print(), 0);
+    flushSync(() => {
+      setSelectedSale(sale);
+    });
+    window.print();
   }
 
   return (

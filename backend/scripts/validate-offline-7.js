@@ -32,6 +32,7 @@ async function main() {
   const main = read('frontend/src/main.tsx');
   const serviceWorker = read('frontend/public/sw.js');
   const checklist = read('docs/POS_OFFLINE_FIELD_TEST_CHECKLIST.md');
+  const syncEngine = read('frontend/src/modules/offline/sync-engine.ts');
 
   assertIncludes(layout, "title: 'POS Offline'", 'DashboardLayout.tsx');
   assertIncludes(layout, "title: 'Admin Offline'", 'DashboardLayout.tsx');
@@ -41,10 +42,14 @@ async function main() {
   assertIncludes(pos, 'ENCAISSER', 'OfflinePosPage.tsx');
   assertIncludes(pos, 'Scannez ou recherchez un article pour commencer.', 'OfflinePosPage.tsx');
   assertIncludes(pos, 'OfflineReceiptTicket', 'OfflinePosPage.tsx');
+  assertIncludes(pos, 'flushSync', 'OfflinePosPage.tsx');
+  assertIncludes(pos, 'setLastReceiptSale(result.sale);', 'OfflinePosPage.tsx');
+  assertIncludes(pos, 'window.print();', 'OfflinePosPage.tsx');
   assertIncludes(pos, "authorizationState !== 'EXPIRED'", 'OfflinePosPage.tsx');
   assert(!pos.includes('allocationId}</td>'), 'OfflinePosPage.tsx should not render allocationId in the main cart table');
   assertIncludes(cash, 'gapLabel', 'OfflineCashPage.tsx');
   assertIncludes(sales, 'Reimprimer ticket', 'OfflineSalesPage.tsx');
+  assertIncludes(sales, 'flushSync', 'OfflineSalesPage.tsx');
   assertIncludes(workstation, 'Assistant premier demarrage', 'OfflineWorkstationPage.tsx');
   assertIncludes(login, 'Impossible de joindre le serveur.', 'LoginPage.tsx');
   assertIncludes(login, 'Connexion Internet requise pour vous connecter sur ce poste.', 'LoginPage.tsx');
@@ -69,6 +74,10 @@ async function main() {
   assertIncludes(serviceWorker, "const networkResponse = await fetch(request, { cache: 'no-store' });", 'sw.js');
   assertIncludes(serviceWorker, 'await updateShellFromResponse(networkResponse.clone());', 'sw.js');
   assertIncludes(serviceWorker, "return (await cache.match('/index.html')) || (await cache.match(SHELL_ENTRY)) || Response.error();", 'sw.js');
+  assertIncludes(syncEngine, 'const PENDING_RECOVERY_INTERVAL_MS = 10_000;', 'sync-engine.ts');
+  assertIncludes(syncEngine, "scheduleNext(state.pendingCount > 0 || state.syncingCount > 0 ? PENDING_RECOVERY_INTERVAL_MS : AUTO_SYNC_INTERVAL_MS);", 'sync-engine.ts');
+  assertIncludes(syncEngine, "if (state.pendingCount > 0 || state.syncingCount > 0) {", 'sync-engine.ts');
+  assertIncludes(syncEngine, "void runSync('timer');", 'sync-engine.ts');
   assert(!serviceWorker.includes('skipWaiting'), 'sw.js should not call skipWaiting');
   assert(!serviceWorker.includes('window.location.reload'), 'sw.js should not trigger reloads');
   assert(!serviceWorker.includes('indexedDB.deleteDatabase'), 'sw.js must not touch IndexedDB');
@@ -89,6 +98,8 @@ async function main() {
     OFFLINE_7_SELLER_MESSAGES: 'PASS',
     OFFLINE_7_TICKET_FORMATTING: 'PASS',
     OFFLINE_7_WORKSTATION_SETUP_UX: 'PASS',
+    OFFLINE_7_AUTOSYNC_RECOVERY_GUARDS: 'PASS',
+    OFFLINE_7_TICKET_RENDER_GUARDS: 'PASS',
     OFFLINE_7_MANUAL_TESTS: manualRequired.map((name) => ({ name, status: 'MANUAL_REQUIRED' })),
     FIELD_READY: 'NO',
   }, null, 2));
