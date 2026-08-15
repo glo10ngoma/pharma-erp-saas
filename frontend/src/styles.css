@@ -205,7 +205,7 @@ details.nav-group .nav-link {
 
 .button:disabled {
   opacity: .65;
-  cursor: wait;
+  cursor: not-allowed;
 }
 
 .ghost-button {
