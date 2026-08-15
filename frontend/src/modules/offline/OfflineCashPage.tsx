@@ -16,7 +16,7 @@ import {
 } from './offline-storage';
 import { loadLocalSnapshot, type OfflineSnapshotViewModel } from './offline-bootstrap';
 import { runSync } from './sync-engine';
-import { OfflineSellerHeader, OfflineSellerNav, mapOfflineSellerMessage } from './offline-ui';
+import { OfflineWorkspaceLayout, mapOfflineSellerMessage } from './offline-ui';
 import { type OfflineCashCount, type OfflineCashMovement, type OfflineCashReconciliationEvent, type OfflineCashSessionSnapshot } from './offline-types';
 
 const emptyViewModel: OfflineSnapshotViewModel = {
@@ -174,25 +174,18 @@ export function OfflineCashPage() {
   }
 
   return (
-    <section className="offline-page">
-      <OfflineSellerHeader viewModel={viewModel} cashSession={activeSession} />
-      <OfflineSellerNav />
-      <header className="page-heading offline-heading">
-        <div>
-          <span className="breadcrumb">Offline</span>
-          <h1>Caisse offline</h1>
-          <p>Ouverture locale, depenses, comptage et fermeture avant replay serveur.</p>
-        </div>
-        <div className="page-heading-actions">
-          <button className="ghost-button compact-button" type="button" onClick={() => void handleSync()} disabled={busy !== null}>
-            Synchroniser
-          </button>
-          <Link className="ghost-button compact-button" to="/offline/pos">
-            Retour POS
-          </Link>
-        </div>
-      </header>
-
+    <OfflineWorkspaceLayout
+      mode="seller"
+      viewModel={viewModel}
+      cashSession={activeSession}
+      title="Caisse offline"
+      subtitle="Ouverture locale, depenses, comptage et fermeture avant replay serveur."
+      topActions={(
+        <button className="ghost-button compact-button" type="button" onClick={() => void handleSync()} disabled={busy !== null}>
+          Synchroniser
+        </button>
+      )}
+    >
       <section className="offline-kpis">
         <div className="card offline-kpi"><span>Sessions</span><strong>{sessions.length}</strong></div>
         <div className="card offline-kpi"><span>Ouvertes</span><strong>{sessions.filter((row) => canAttachOfflineCashSale(row)).length}</strong></div>
@@ -200,7 +193,7 @@ export function OfflineCashPage() {
         <div className="card offline-kpi"><span>Conflits</span><strong>{sessions.filter((row) => row.status === 'CONFLICT').length}</strong></div>
       </section>
 
-      <section className="offline-pos-grid">
+      <section className="offline-pos-grid offline-cash-grid-premium">
         <div className="offline-pos-left">
           <section className="card offline-panel offline-pos-context">
             <div className="offline-pos-context-grid">
@@ -392,7 +385,7 @@ export function OfflineCashPage() {
           </section>
         </aside>
       </section>
-    </section>
+    </OfflineWorkspaceLayout>
   );
 }
 

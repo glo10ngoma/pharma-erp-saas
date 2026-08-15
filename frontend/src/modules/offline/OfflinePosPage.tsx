@@ -24,7 +24,7 @@ import {
 } from './offline-sale';
 import { canAttachOfflineCashSale } from './offline-cash';
 import { notifyOfflineSaleQueued, runSync } from './sync-engine';
-import { OfflineNetworkBanner, OfflineReceiptTicket, OfflineSellerHeader, OfflineSellerNav, mapOfflineSellerMessage, printOfflineReceipt } from './offline-ui';
+import { OfflineNetworkBanner, OfflineReceiptTicket, OfflineWorkspaceLayout, mapOfflineSellerMessage, printOfflineReceipt } from './offline-ui';
 import {
   calculateAuthorizationState,
   calculateSnapshotFreshness,
@@ -408,18 +408,15 @@ export function OfflinePosPage() {
   }
 
   return (
-    <section className="offline-page offline-pos-page">
-      <OfflineSellerHeader viewModel={viewModel} syncEngine={syncEngine} cashSession={snapshot.cashSession} />
-      <OfflineSellerNav />
-      <OfflineNetworkBanner viewModel={viewModel} syncEngine={syncEngine} />
-
-      <header className="page-heading offline-heading offline-pos-title">
-        <div>
-          <span className="breadcrumb">Offline</span>
-          <h1>POS</h1>
-          <p>Scannez, ajoutez, encaissez. Les ventes hors ligne se synchronisent automatiquement.</p>
-        </div>
-        <div className="page-heading-actions">
+    <OfflineWorkspaceLayout
+      mode="seller"
+      viewModel={viewModel}
+      syncEngine={syncEngine}
+      cashSession={snapshot.cashSession}
+      title="POS"
+      subtitle="Caisse rapide hors ligne, scanner-ready et synchronisation automatique au retour du reseau."
+      topActions={(
+        <>
           <button className="ghost-button compact-button" type="button" onClick={() => void handleNewDraft()} disabled={busyAction !== null}>
             Nouvelle vente
           </button>
@@ -427,23 +424,27 @@ export function OfflinePosPage() {
             Synchroniser
           </button>
           <Link className="ghost-button compact-button" to="/offline/drafts">
-            Voir brouillons
+            Brouillons
           </Link>
-          <Link className="ghost-button compact-button" to="/offline/sales">
-            Ventes offline
-          </Link>
-          <Link className="ghost-button compact-button" to="/offline/cash">
-            Caisse offline
-          </Link>
-        </div>
-      </header>
+        </>
+      )}
+    >
+      <OfflineNetworkBanner viewModel={viewModel} syncEngine={syncEngine} />
 
-      <section className="offline-pos-grid">
+      <section className="offline-kpis offline-kpis-compact">
+        <div className="card offline-kpi"><span>Statut</span><strong>{formatOfflineCartStatus(cart.status)}</strong></div>
+        <div className="card offline-kpi"><span>Articles</span><strong>{cart.itemCount}</strong></div>
+        <div className="card offline-kpi"><span>Quantite</span><strong>{cart.quantityTotal}</strong></div>
+        <div className="card offline-kpi"><span>Total USD</span><strong>{formatMoney(cart.total, 'USD')}</strong></div>
+        <div className="card offline-kpi"><span>Total FC</span><strong>{settings?.exchangeRate?.rate ? `${Math.round(cart.total * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong></div>
+      </section>
+
+      <section className="offline-pos-grid offline-pos-grid-premium">
         <div className="offline-pos-left">
-          <section className="card offline-panel offline-pos-context">
+          <section className="card offline-panel offline-pos-context offline-pos-context-premium">
             <div className="offline-pos-context-grid">
               <div>
-                <span className="offline-caption">Brouillon</span>
+                <span className="offline-caption">Vente</span>
                 <strong>{cart.offlineReference}</strong>
               </div>
               <div>
@@ -482,7 +483,7 @@ export function OfflinePosPage() {
             ) : null}
           </section>
 
-          <section className="card offline-panel">
+          <section className="card offline-panel offline-search-card">
             <div className="offline-panel-heading">
               <h3>Recherche article</h3>
               <span className="offline-row-meta">Scannez ou tapez un nom/code/barcode. F2 ramene le focus ici.</span>
@@ -539,7 +540,7 @@ export function OfflinePosPage() {
             ) : null}
           </section>
 
-          <section className="card offline-panel">
+          <section className="card offline-panel offline-client-card">
             <div className="offline-panel-heading">
               <h3>Client local</h3>
               <button className="ghost-button compact-button" type="button" onClick={() => void handleSelectCustomer(draftCounterCustomer)} disabled={busyAction !== null}>
@@ -567,7 +568,7 @@ export function OfflinePosPage() {
             />
           </section>
 
-          <section className="card offline-panel offline-cart-panel">
+          <section className="card offline-panel offline-cart-panel offline-cart-panel-premium">
             <div className="offline-panel-heading">
               <h3>Panier local</h3>
               <span className="offline-row-meta">Les reservations de ce brouillon reduisent le quota des autres brouillons du meme poste.</span>
@@ -595,6 +596,11 @@ export function OfflinePosPage() {
                       <td>
                         <strong>{item.articleName}</strong>
                         <div className="offline-row-meta">{item.articleCode}</div>
+                        {item.lotAllocations[0] ? (
+                          <div className="offline-row-meta">
+                            Lot FEFO {item.lotAllocations[0].lotNumber} - exp. {formatDate(item.lotAllocations[0].expiryDate)}
+                          </div>
+                        ) : null}
                       </td>
                       <td>
                         <div className="quantity-stepper">
@@ -633,19 +639,16 @@ export function OfflinePosPage() {
           </section>
         </div>
 
-        <aside className="offline-pos-right">
-          <section className="card offline-panel offline-summary-card">
-            <h3>Total</h3>
-            <div className="offline-summary-grid">
-              <div><span>Sous-total</span><strong>{formatMoney(cart.subtotal, cart.currency)}</strong></div>
-              <div><span>Total</span><strong>{formatMoney(cart.total, cart.currency)}</strong></div>
-              <div><span>Lignes</span><strong>{cart.itemCount}</strong></div>
-              <div><span>Quantite</span><strong>{cart.quantityTotal}</strong></div>
+        <aside className="offline-pos-right offline-pos-right-premium">
+          <section className="card offline-panel offline-payment-hero">
+            <div className="offline-payment-hero-label">Total a payer</div>
+            <div className="offline-payment-hero-amount">{formatMoney(cart.total, 'USD')}</div>
+            <div className="offline-payment-hero-fc">
+              {settings?.exchangeRate?.rate ? `${Math.round(cart.total * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}
             </div>
-            {quotaAlert ? <p className="offline-warning-text">{quotaAlert}</p> : null}
           </section>
 
-          <section className="card offline-panel">
+          <section className="card offline-panel offline-cash-status-card">
             <h3>Caisse offline</h3>
             <div className="detail-grid compact-detail-grid">
               <div><span>Session</span><strong>{canAttachOfflineCashSale(snapshot.cashSession) ? 'Caisse ouverte' : 'Caisse fermee'}</strong></div>
@@ -665,8 +668,8 @@ export function OfflinePosPage() {
             ) : null}
           </section>
 
-          <section className="card offline-panel">
-            <h3>Paiement cash local</h3>
+          <section className="card offline-panel offline-payment-card">
+            <h3>Reglement</h3>
             <div className="detail-grid compact-detail-grid">
               <label>
                 <span>Paye FC</span>
@@ -677,13 +680,13 @@ export function OfflinePosPage() {
                 <input className="input compact-input" type="number" min="0" step="0.01" value={amountPaidUsd} onChange={(event) => setAmountPaidUsd(event.target.value)} />
               </label>
             </div>
-            <div className="offline-summary-grid">
+            <div className="offline-summary-grid offline-payment-summary-grid">
               <div><span>Total USD</span><strong>{formatMoney(cart.total, 'USD')}</strong></div>
-              <div><span>Total CDF</span><strong>{settings?.exchangeRate?.rate ? `${Math.round(cart.total * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong></div>
+              <div><span>Total FC</span><strong>{settings?.exchangeRate?.rate ? `${Math.round(cart.total * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong></div>
               <div><span>Rendu prop. USD</span><strong>{formatMoney(settlementPreview.suggestedChangeUsd, 'USD')}</strong></div>
-              <div><span>Rendu prop. CDF</span><strong>{`${Math.round(settlementPreview.suggestedChangeCdf).toLocaleString('fr-FR')} FC`}</strong></div>
+              <div><span>Rendu prop. FC</span><strong>{`${Math.round(settlementPreview.suggestedChangeCdf).toLocaleString('fr-FR')} FC`}</strong></div>
             </div>
-            <div className="offline-panel-actions offline-checkout-actions">
+            <div className="offline-panel-actions offline-checkout-actions offline-checkout-actions-premium">
               <button className="button compact-button offline-checkout-button" type="button" onClick={() => void handleFinalizeOfflineSale()} disabled={busyAction !== null || !canFinalizeOfflineSale}>
                 ENCAISSER
               </button>
@@ -723,22 +726,8 @@ export function OfflinePosPage() {
         sellerName={auth?.displayName ?? null}
         workstationName={workstation?.workstationName ?? null}
       />
-    </section>
+    </OfflineWorkspaceLayout>
   );
-}
-
-function networkLabel(status: OfflineSnapshotViewModel['networkStatus']) {
-  if (status === 'ONLINE') return 'En ligne';
-  if (status === 'DEGRADED') return 'Degrade';
-  return 'Hors ligne';
-}
-
-function snapshotLabel(status: OfflineSnapshotViewModel['snapshotStatus']) {
-  if (status === 'FRESH') return 'Frais';
-  if (status === 'STALE') return 'Ancien';
-  if (status === 'EXPIRED') return 'Expire';
-  if (status === 'REVOKED') return 'Revoque';
-  return 'Inconnu';
 }
 
 function authorizationLabel(status: ReturnType<typeof calculateAuthorizationState>) {

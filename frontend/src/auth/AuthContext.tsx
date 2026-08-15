@@ -53,7 +53,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    refreshUser().finally(() => setLoading(false));
+    let active = true;
+    let previewFallbackTimer: number | null = null;
+
+    if (shouldBypassProfileLoadingForLocalOfflinePreview() && readStoredUser()) {
+      previewFallbackTimer = window.setTimeout(() => {
+        if (!active) return;
+        setLoading(false);
+      }, 1200);
+    }
+
+    refreshUser().finally(() => {
+      if (previewFallbackTimer) {
+        window.clearTimeout(previewFallbackTimer);
+      }
+      if (active) {
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      active = false;
+      if (previewFallbackTimer) {
+        window.clearTimeout(previewFallbackTimer);
+      }
+    };
   }, [accessToken]);
 
   async function login(email: string, password: string) {
@@ -259,4 +283,12 @@ function isNetworkError(error: unknown) {
   if (!navigator.onLine) return true;
   if (!axios.isAxiosError(error)) return false;
   return !error.response;
+}
+
+function shouldBypassProfileLoadingForLocalOfflinePreview() {
+  if (typeof window === 'undefined') return false;
+  const isOfflineRoute = window.location.pathname.startsWith('/offline/');
+  const isLocalPreviewOrigin = ['127.0.0.1', 'localhost'].includes(window.location.hostname)
+    && ['4173', '5173'].includes(window.location.port);
+  return isOfflineRoute && isLocalPreviewOrigin;
 }

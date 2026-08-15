@@ -23,6 +23,7 @@ import {
   readOfflineSnapshot,
   seedOfflineAllocationFixtures,
 } from './offline-storage';
+import { OfflineWorkspaceLayout } from './offline-ui';
 import { type OfflineAllocationStatus, type OfflineStockAllocation } from './offline-types';
 import { runSync } from './sync-engine';
 import { useSyncEngine } from './useSyncEngine';
@@ -238,38 +239,27 @@ export function OfflineSynchronizationPage() {
   }
 
   return (
-    <section className="offline-page">
-      <header className="page-heading offline-heading">
-        <div>
-          <span className="breadcrumb">POS Offline</span>
-          <h1>Synchronisation</h1>
-          <p>Bootstrap reel, snapshot local atomique et synchronisation descendante par poste.</p>
-        </div>
-        <div className="page-heading-actions">
+    <OfflineWorkspaceLayout
+      mode="seller"
+      viewModel={viewModel}
+      syncEngine={syncEngine}
+      cashSession={viewModel.snapshot.cashSession}
+      title="Synchronisation"
+      subtitle="Centre de sante operationnel du snapshot, de la file locale et des changements descendants."
+      topActions={(
+        <>
           <button className="ghost-button compact-button" type="button" onClick={() => void refreshLocal()} disabled={loading || busyAction !== null}>
-            Actualiser local
+            Actualiser
           </button>
           <button className="ghost-button compact-button" type="button" onClick={() => void handlePing()} disabled={busyAction !== null || !canReadPosSync}>
             Ping
           </button>
           <button className="button compact-button" type="button" onClick={() => void runSync('manual')} disabled={busyAction !== null || !canExecutePosSync}>
-            Synchroniser maintenant
+            Synchroniser
           </button>
-          <button className="button compact-button" type="button" onClick={() => void handleBootstrap()} disabled={busyAction !== null || !canExecutePosSync}>
-            Bootstrap serveur
-          </button>
-          <button className="ghost-button compact-button" type="button" onClick={() => void handleChanges()} disabled={busyAction !== null || !canReadPosSync || !viewModel.snapshot.syncState?.syncCursor}>
-            Recuperer changements
-          </button>
-          <button className="ghost-button compact-button" type="button" onClick={() => void handleFixtures()} disabled={busyAction !== null}>
-            Fixtures DEV
-          </button>
-          <button className="ghost-button compact-button" type="button" onClick={() => void handleClearAllocations()} disabled={busyAction !== null}>
-            Vider allocations
-          </button>
-        </div>
-      </header>
-
+        </>
+      )}
+    >
       <section className="offline-kpis">
         <div className="card offline-kpi"><span>Reseau</span><strong>{networkLabel(viewModel.networkStatus)}</strong></div>
         <div className="card offline-kpi"><span>Snapshot</span><strong>{snapshotLabel(viewModel.snapshotStatus)}</strong></div>
@@ -312,7 +302,7 @@ export function OfflineSynchronizationPage() {
         </div>
       </section>
 
-      <section className="card offline-toolbar">
+      <section className="card offline-toolbar offline-toolbar-premium">
         <input
           className="input compact-input"
           placeholder="Rechercher article, lot, allocation ou poste"
@@ -343,6 +333,18 @@ export function OfflineSynchronizationPage() {
         />
         <button className="button compact-button" type="button" onClick={simulateFefo} disabled={!articleId}>
           Simuler FEFO
+        </button>
+        <button className="ghost-button compact-button" type="button" onClick={() => void handleBootstrap()} disabled={busyAction !== null || !canExecutePosSync}>
+          Bootstrap serveur
+        </button>
+        <button className="ghost-button compact-button" type="button" onClick={() => void handleChanges()} disabled={busyAction !== null || !canReadPosSync || !viewModel.snapshot.syncState?.syncCursor}>
+          Recuperer changements
+        </button>
+        <button className="ghost-button compact-button" type="button" onClick={() => void handleFixtures()} disabled={busyAction !== null}>
+          Fixtures DEV
+        </button>
+        <button className="ghost-button compact-button" type="button" onClick={() => void handleClearAllocations()} disabled={busyAction !== null}>
+          Vider allocations
         </button>
       </section>
 
@@ -468,7 +470,7 @@ export function OfflineSynchronizationPage() {
           </section>
         </aside>
       </section>
-    </section>
+    </OfflineWorkspaceLayout>
   );
 }
 

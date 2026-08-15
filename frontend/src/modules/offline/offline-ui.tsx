@@ -1,4 +1,6 @@
+import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useAuth } from '../../auth/AuthContext';
 import { formatDateTime } from '../../utils/date';
 import { formatMoney } from '../../utils/money';
 import { canAttachOfflineCashSale } from './offline-cash';
@@ -46,6 +48,121 @@ export function OfflineSellerNav() {
         </Link>
       ))}
     </nav>
+  );
+}
+
+type OfflineWorkspaceMode = 'seller' | 'admin';
+
+export function OfflineWorkspaceLayout(props: {
+  mode: OfflineWorkspaceMode;
+  viewModel: OfflineSnapshotViewModel;
+  syncEngine?: ReturnType<typeof useSyncEngine>;
+  cashSession?: OfflineCashSessionSnapshot | null;
+  title: string;
+  subtitle?: string;
+  primaryAction?: ReactNode;
+  topActions?: ReactNode;
+  children: ReactNode;
+}) {
+  const location = useLocation();
+  const { permissions } = useAuth();
+  const showSellerAction = props.mode === 'seller';
+  const sellerLinks = [
+    { to: '/offline/pos', label: 'POS', short: 'POS', permission: 'pos_sync.read' },
+    { to: '/offline/drafts', label: 'Brouillons', short: 'BRO', permission: 'pos_sync.read' },
+    { to: '/offline/sales', label: 'Ventes', short: 'VNT', permission: 'pos_sync.read' },
+    { to: '/offline/cash', label: 'Caisse', short: 'CSH', permission: 'pos_sync.read' },
+    { to: '/offline/synchronisation', label: 'Synchronisation', short: 'SYN', permission: 'pos_sync.read' },
+    { to: '/offline/poste', label: 'Poste', short: 'PST', permission: 'pos_sync.read' },
+  ].filter((item) => permissions.includes(item.permission));
+  const adminLinks = [
+    { to: '/offline-admin/dashboard', label: 'Dashboard', short: 'DAS', permission: 'pos_offline.admin.read' },
+    { to: '/offline-admin/workstations', label: 'Postes', short: 'WKS', permission: 'pos_offline.workstations.read' },
+    { to: '/offline-admin/allocations', label: 'Allocations', short: 'ALC', permission: 'offline_allocations.read' },
+    { to: '/offline-admin/conflicts', label: 'Conflits', short: 'CFL', permission: 'pos_sync.conflicts.read' },
+    { to: '/offline-admin/cash-sessions', label: 'Sessions caisse', short: 'SES', permission: 'pos_sync.read' },
+    { to: '/offline-admin/logs', label: 'Logs', short: 'LOG', permission: 'pos_sync.logs.read' },
+  ].filter((item) => permissions.includes(item.permission));
+  const workstation = props.viewModel.snapshot.workstation;
+  const auth = props.viewModel.snapshot.auth;
+  const networkText = props.viewModel.networkStatus === 'ONLINE'
+    ? 'En ligne'
+    : props.viewModel.networkStatus === 'DEGRADED'
+      ? 'Connexion limitee'
+      : 'Hors ligne';
+  const syncText = props.syncEngine?.conflictCount
+    ? `${props.syncEngine.conflictCount} conflit(s)`
+    : props.syncEngine?.pendingCount
+      ? `${props.syncEngine.pendingCount} en attente`
+      : 'Synchronise';
+  const cashText = canAttachOfflineCashSale(props.cashSession ?? null) ? 'Caisse ouverte' : 'Caisse fermee';
+
+  function renderNavSection(title: string, links: typeof sellerLinks) {
+    if (links.length === 0) return null;
+    return (
+      <div className="offline-sidebar-group">
+        <span className="offline-sidebar-label">{title}</span>
+        <div className="offline-sidebar-links">
+          {links.map((item) => {
+            const isActive = location.pathname === item.to || location.pathname.startsWith(`${item.to}/`);
+            return (
+              <Link key={item.to} className={`offline-sidebar-link ${isActive ? 'is-active' : ''}`} to={item.to}>
+                <span className="offline-sidebar-icon">{item.short}</span>
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <section className={`offline-workspace offline-workspace-${props.mode}`}>
+      <aside className="offline-sidebar">
+        <div className="offline-sidebar-brand">
+          <div>
+            <h1>PharmaERP Offline</h1>
+            <p>{auth?.displayName ?? 'Utilisateur local'}</p>
+          </div>
+          <div className="offline-sidebar-meta">
+            <strong>{workstation?.workstationName ?? 'Poste non prepare'}</strong>
+            <span>{workstation?.siteName ?? workstation?.siteId ?? 'Site non prepare'}</span>
+          </div>
+        </div>
+
+        {showSellerAction ? (
+          <Link className="offline-sidebar-primary" to="/offline/pos">
+            Nouvelle vente
+          </Link>
+        ) : props.primaryAction ? (
+          <div className="offline-sidebar-action">{props.primaryAction}</div>
+        ) : null}
+
+        {renderNavSection('POS Offline', sellerLinks)}
+        {renderNavSection('Admin Offline', adminLinks)}
+      </aside>
+
+      <main className="offline-workspace-main">
+        <header className="offline-workspace-topbar">
+          <div>
+            <span className="offline-workspace-kicker">{props.mode === 'seller' ? 'POS Offline' : 'Admin Offline'}</span>
+            <h2>{props.title}</h2>
+            {props.subtitle ? <p>{props.subtitle}</p> : null}
+          </div>
+          <div className="offline-workspace-topbar-right">
+            <div className="offline-topbar-badges">
+              <span className={`offline-topbar-badge status-${props.viewModel.networkStatus.toLowerCase()}`}>{networkText}</span>
+              <span className="offline-topbar-badge">{syncText}</span>
+              <span className="offline-topbar-badge">{cashText}</span>
+            </div>
+            {props.topActions ? <div className="offline-topbar-actions">{props.topActions}</div> : null}
+          </div>
+        </header>
+
+        <div className="offline-workspace-content">{props.children}</div>
+      </main>
+    </section>
   );
 }
 

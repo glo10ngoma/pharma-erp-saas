@@ -6,6 +6,7 @@ import { buildQuotaBreakdown, listOfflineDrafts } from './offline-cart';
 import { readOfflineMetadata } from './offline-storage';
 import { buildOfflineDiagnosticExport, getOfflineStorageReport, requestOfflinePersistence, runOfflineRecovery, runOfflineRetention, type OfflineRecoveryReport, type OfflineRetentionReport, type OfflineStorageReport } from './offline-recovery';
 import { runSync } from './sync-engine';
+import { OfflineWorkspaceLayout } from './offline-ui';
 import { type OfflineCart, type OfflineMetadataRecord } from './offline-types';
 
 const emptyViewModel: OfflineSnapshotViewModel = {
@@ -129,19 +130,19 @@ export function OfflineWorkstationPage() {
   }
 
   return (
-    <section className="offline-page">
-      <header className="page-heading offline-heading">
-        <div>
-          <span className="breadcrumb">Offline</span>
-          <h1>Poste</h1>
-          <p>Identite locale du poste, contexte de synchronisation et quota offline.</p>
-        </div>
-        <div className="page-heading-actions">
-          <Link className="ghost-button compact-button" to="/offline/pos">POS Offline</Link>
+    <OfflineWorkspaceLayout
+      mode="seller"
+      viewModel={viewModel}
+      cashSession={viewModel.snapshot.cashSession}
+      title="Poste"
+      subtitle="Sante locale du poste, stockage, snapshot, recovery et export diagnostic."
+      topActions={(
+        <>
+          <Link className="ghost-button compact-button" to="/offline/pos">POS</Link>
           <Link className="ghost-button compact-button" to="/offline/synchronisation">Synchronisation</Link>
-        </div>
-      </header>
-
+        </>
+      )}
+    >
       <section className="offline-kpis">
         <div className="card offline-kpi"><span>Allocations actives</span><strong>{metrics.allocations}</strong></div>
         <div className="card offline-kpi"><span>Lots disponibles</span><strong>{metrics.lots}</strong></div>
@@ -278,6 +279,6 @@ export function OfflineWorkstationPage() {
           )}
         </div>
       </section>
-    </section>
+    </OfflineWorkspaceLayout>
   );
 }

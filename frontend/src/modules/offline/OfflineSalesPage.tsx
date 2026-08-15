@@ -6,7 +6,7 @@ import { formatMoney } from '../../utils/money';
 import { loadLocalSnapshot, type OfflineSnapshotViewModel } from './offline-bootstrap';
 import { listOfflineSalesHistory } from './offline-sale';
 import { processPendingOfflineQueue } from './sync-engine';
-import { OfflineReceiptTicket, OfflineSellerHeader, OfflineSellerNav, printOfflineReceipt } from './offline-ui';
+import { OfflineReceiptTicket, OfflineWorkspaceLayout, printOfflineReceipt } from './offline-ui';
 import { type OfflineSale } from './offline-types';
 
 const emptyViewModel: OfflineSnapshotViewModel = {
@@ -73,23 +73,18 @@ export function OfflineSalesPage() {
   }
 
   return (
-    <section className="offline-page">
-      <OfflineSellerHeader viewModel={viewModel} cashSession={viewModel.snapshot.cashSession} />
-      <OfflineSellerNav />
-      <header className="page-heading offline-heading">
-        <div>
-          <span className="breadcrumb">POS Offline</span>
-          <h1>Ventes offline</h1>
-          <p>Ventes finalisees localement, tickets en attente de replay serveur ou deja synchronises.</p>
-        </div>
-        <div className="page-heading-actions">
-          <Link className="ghost-button compact-button" to="/offline/pos">Retour POS</Link>
-          <button className="button compact-button" type="button" onClick={() => void handleSync()} disabled={busy}>
-            Synchroniser ventes
-          </button>
-        </div>
-      </header>
-
+    <OfflineWorkspaceLayout
+      mode="seller"
+      viewModel={viewModel}
+      cashSession={viewModel.snapshot.cashSession}
+      title="Ventes offline"
+      subtitle="Historique local des ventes encaissees et de leur replay serveur."
+      topActions={(
+        <button className="button compact-button" type="button" onClick={() => void handleSync()} disabled={busy}>
+          Synchroniser ventes
+        </button>
+      )}
+    >
       <section className="offline-kpis">
         <div className="card offline-kpi"><span>Total</span><strong>{sales.length}</strong></div>
         <div className="card offline-kpi"><span>En attente</span><strong>{sales.filter((row) => row.syncStatus === 'PENDING' || row.syncStatus === 'FAILED').length}</strong></div>
@@ -145,6 +140,6 @@ export function OfflineSalesPage() {
         sellerName={viewModel.snapshot.auth?.displayName ?? null}
         workstationName={viewModel.snapshot.workstation?.workstationName ?? null}
       />
-    </section>
+    </OfflineWorkspaceLayout>
   );
 }

@@ -37,8 +37,7 @@ async function main() {
   assertIncludes(layout, "title: 'POS Offline'", 'DashboardLayout.tsx');
   assertIncludes(layout, "title: 'Admin Offline'", 'DashboardLayout.tsx');
   assertIncludes(app, 'path="/offline/pos"', 'App.tsx');
-  assertIncludes(pos, 'OfflineSellerHeader', 'OfflinePosPage.tsx');
-  assertIncludes(pos, 'OfflineSellerNav', 'OfflinePosPage.tsx');
+  assertIncludes(pos, 'OfflineWorkspaceLayout', 'OfflinePosPage.tsx');
   assertIncludes(pos, 'ENCAISSER', 'OfflinePosPage.tsx');
   assertIncludes(pos, 'Scannez ou recherchez un article pour commencer.', 'OfflinePosPage.tsx');
   assertIncludes(pos, 'OfflineReceiptTicket', 'OfflinePosPage.tsx');

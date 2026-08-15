@@ -9,6 +9,7 @@ import {
   listOfflineDrafts,
 } from './offline-cart';
 import { loadLocalSnapshot, type OfflineSnapshotViewModel } from './offline-bootstrap';
+import { OfflineWorkspaceLayout } from './offline-ui';
 import { type OfflineCart } from './offline-types';
 
 const emptyViewModel: OfflineSnapshotViewModel = {
@@ -82,23 +83,18 @@ export function OfflineDraftsPage() {
   const totalReserved = drafts.reduce((sum, cart) => sum + cart.quantityTotal, 0);
 
   return (
-    <section className="offline-page">
-      <header className="page-heading offline-heading">
-        <div>
-          <span className="breadcrumb">Offline</span>
-          <h1>Brouillons</h1>
-          <p>Reprise, annulation et pilotage local des reservations entre brouillons.</p>
-        </div>
-        <div className="page-heading-actions">
-          <button className="button compact-button" type="button" onClick={() => void handleCreate()} disabled={busyId !== null}>
-            Nouveau brouillon
-          </button>
-          <Link className="ghost-button compact-button" to="/offline/pos">
-            Retour POS Offline
-          </Link>
-        </div>
-      </header>
-
+    <OfflineWorkspaceLayout
+      mode="seller"
+      viewModel={viewModel}
+      cashSession={viewModel.snapshot.cashSession}
+      title="Brouillons"
+      subtitle="Reprise locale des tickets en attente et pilotage des reservations par poste."
+      topActions={(
+        <button className="button compact-button" type="button" onClick={() => void handleCreate()} disabled={busyId !== null}>
+          Nouveau brouillon
+        </button>
+      )}
+    >
       <section className="offline-kpis">
         <div className="card offline-kpi"><span>Brouillons</span><strong>{drafts.length}</strong></div>
         <div className="card offline-kpi"><span>Bloques</span><strong>{drafts.filter((cart) => cart.status === 'BLOCKED').length}</strong></div>
@@ -135,7 +131,6 @@ export function OfflineDraftsPage() {
                   <tr key={cart.cartId}>
                     <td>
                       <strong>{cart.offlineReference}</strong>
-                      <div className="offline-row-meta">{cart.workstationId}</div>
                     </td>
                     <td>{cart.customerNameSnapshot ?? 'Client comptoir'}</td>
                     <td>
@@ -173,6 +168,6 @@ export function OfflineDraftsPage() {
           <div><span>Derniere synchro</span><strong>{formatDateTime(viewModel.snapshot.syncState?.lastSuccessfulSyncAt)}</strong></div>
         </div>
       </section>
-    </section>
+    </OfflineWorkspaceLayout>
   );
 }

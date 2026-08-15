@@ -16,6 +16,7 @@ export function DashboardLayout() {
   const canSeeNotifications = canReadNotifications(permissions, currentUser?.role);
   const { notifications } = useGeneratedNotifications(notificationState, canSeeNotifications);
   const unreadCount = notifications.filter((notification) => notification.status === 'UNREAD').length;
+  const isOfflineWorkspace = location.pathname.startsWith('/offline/') || location.pathname.startsWith('/offline-admin/');
   const groups = useMemo<NavGroup[]>(() => [
     {
       title: 'Pilotage',
@@ -200,6 +201,22 @@ export function DashboardLayout() {
   function logout() {
     clearAuth();
     navigate('/login');
+  }
+
+  if (isOfflineWorkspace) {
+    return (
+      <main className="content offline-host-content">
+        {offlineAuthenticated ? (
+          <section className="card compact-card">
+            <p className="muted">
+              Session hors ligne restauree.
+              {offlineSessionExpiresAt ? ` Autorisation valable jusqu au ${formatDateTime(offlineSessionExpiresAt)}.` : ''}
+            </p>
+          </section>
+        ) : null}
+        <Outlet />
+      </main>
+    );
   }
 
   return (

@@ -18,6 +18,8 @@ import { workstationsService } from '../../services/workstations.service';
 import { SearchBox } from '../../components/SearchBox';
 import { formatDate, formatDateTime } from '../../utils/date';
 import { formatMoney } from '../../utils/money';
+import { type OfflineSnapshotViewModel } from './offline-bootstrap';
+import { OfflineWorkspaceLayout } from './offline-ui';
 import {
   readOfflineCashCounts,
   readOfflineCashMovements,
@@ -31,6 +33,26 @@ import {
   type OfflineCashSessionSnapshot,
 } from './offline-types';
 
+const emptyOfflineAdminViewModel: OfflineSnapshotViewModel = {
+  snapshot: {
+    articles: [],
+    lots: [],
+    allocations: [],
+    customers: [],
+    settings: null,
+    auth: null,
+    workstation: null,
+    cashSession: null,
+    syncState: null,
+  },
+  queue: [],
+  syncLog: [],
+  conflicts: [],
+  authorizationState: 'EXPIRED',
+  snapshotStatus: 'UNKNOWN',
+  networkStatus: 'OFFLINE',
+};
+
 function PageShell(props: {
   title: string;
   description: string;
@@ -38,17 +60,15 @@ function PageShell(props: {
   children: ReactNode;
 }) {
   return (
-    <>
-      <div className="page-heading reference-heading">
-        <div>
-          <span className="breadcrumb">Offline Admin</span>
-          <h1>{props.title}</h1>
-          <p className="muted">{props.description}</p>
-        </div>
-        <div className="reference-actions">{props.actions}</div>
-      </div>
+    <OfflineWorkspaceLayout
+      mode="admin"
+      viewModel={emptyOfflineAdminViewModel}
+      title={props.title}
+      subtitle={props.description}
+      topActions={props.actions}
+    >
       {props.children}
-    </>
+    </OfflineWorkspaceLayout>
   );
 }
 
@@ -419,15 +439,15 @@ export function OfflineAdminAllocationsPage() {
             <option value="">Poste</option>
             {(workstations.data ?? []).map((row) => <option key={row.workstationId} value={row.workstationId}>{row.workstationName}</option>)}
           </select>
-          <input className="input" placeholder="Article UUID" value={createForm.articleId} onChange={(event) => setCreateForm({ ...createForm, articleId: event.target.value })} required />
-          <input className="input" placeholder="Lot UUID" value={createForm.lotId} onChange={(event) => setCreateForm({ ...createForm, lotId: event.target.value })} required />
+          <input className="input" placeholder="Article" aria-label="Identifiant article" value={createForm.articleId} onChange={(event) => setCreateForm({ ...createForm, articleId: event.target.value })} required />
+          <input className="input" placeholder="Lot" aria-label="Identifiant lot" value={createForm.lotId} onChange={(event) => setCreateForm({ ...createForm, lotId: event.target.value })} required />
           <input className="input" placeholder="Quantite" type="number" min="0.001" step="0.001" value={createForm.quantity} onChange={(event) => setCreateForm({ ...createForm, quantity: event.target.value })} required />
           <button className="button compact-button" disabled={createMutation.isPending}>Creer</button>
         </form>
 
         <form className="card form-grid reference-form" onSubmit={submitTransfer}>
           <h3>Transferer quota</h3>
-          <input className="input" placeholder="Allocation UUID" value={transferForm.allocationId} onChange={(event) => setTransferForm({ ...transferForm, allocationId: event.target.value })} required />
+          <input className="input" placeholder="Allocation" aria-label="Identifiant allocation" value={transferForm.allocationId} onChange={(event) => setTransferForm({ ...transferForm, allocationId: event.target.value })} required />
           <select className="input" value={transferForm.sourceWorkstationId} onChange={(event) => setTransferForm({ ...transferForm, sourceWorkstationId: event.target.value })} required>
             <option value="">Poste source</option>
             {(workstations.data ?? []).map((row) => <option key={row.workstationId} value={row.workstationId}>{row.workstationName}</option>)}
@@ -446,9 +466,9 @@ export function OfflineAdminAllocationsPage() {
             <option value="">Site</option>
             {(sites.data ?? []).map((site) => <option key={site.siteId} value={site.siteId}>{site.siteName}</option>)}
           </select>
-          <input className="input" placeholder="Article UUID" value={rebalanceForm.articleId} onChange={(event) => setRebalanceForm({ ...rebalanceForm, articleId: event.target.value })} required />
-          <input className="input" placeholder="Lot UUID" value={rebalanceForm.lotId} onChange={(event) => setRebalanceForm({ ...rebalanceForm, lotId: event.target.value })} required />
-          <input className="input" placeholder="Postes UUID, separes par virgules" value={rebalanceForm.workstationIds} onChange={(event) => setRebalanceForm({ ...rebalanceForm, workstationIds: event.target.value })} required />
+          <input className="input" placeholder="Article" aria-label="Identifiant article" value={rebalanceForm.articleId} onChange={(event) => setRebalanceForm({ ...rebalanceForm, articleId: event.target.value })} required />
+          <input className="input" placeholder="Lot" aria-label="Identifiant lot" value={rebalanceForm.lotId} onChange={(event) => setRebalanceForm({ ...rebalanceForm, lotId: event.target.value })} required />
+          <input className="input" placeholder="Postes cibles, separes par virgules" aria-label="Identifiants postes cibles, separes par virgules" value={rebalanceForm.workstationIds} onChange={(event) => setRebalanceForm({ ...rebalanceForm, workstationIds: event.target.value })} required />
           <input className="input" placeholder="Quantite a repartir (optionnel)" type="number" min="0.001" step="0.001" value={rebalanceForm.quantityToAllocate} onChange={(event) => setRebalanceForm({ ...rebalanceForm, quantityToAllocate: event.target.value })} />
           <button className="button compact-button" disabled={rebalanceMutation.isPending}>Reequilibrer</button>
         </form>
