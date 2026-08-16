@@ -152,7 +152,7 @@ export function OfflineWorkspaceLayout(props: {
           <div className={isPosFullscreen ? 'offline-workspace-topbar-main' : ''}>
             {isPosFullscreen && props.exitTo ? (
               <Link className="offline-topbar-exit" to={props.exitTo}>
-                ← Quitter le POS
+                {'<'} Quitter le POS
               </Link>
             ) : null}
             <span className="offline-workspace-kicker">{props.mode === 'seller' ? 'POS Offline' : 'Admin Offline'}</span>
