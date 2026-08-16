@@ -340,6 +340,36 @@ export function OfflinePosPage() {
     }
   }
 
+  async function handleClearCart() {
+    if (!cart || cart.items.length === 0) return;
+    setBusyAction('ITEM');
+    try {
+      for (const item of cart.items) {
+        await addOrIncrementOfflineCartItem({
+          cartId: cart.cartId,
+          articleId: item.articleId,
+          replaceQuantity: 0,
+        });
+      }
+      setMessage('Panier vide localement.');
+      await refresh(cart.cartId);
+    } catch (error) {
+      setMessage(mapOfflineError(error));
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  function applyExactPayment() {
+    setAmountPaidUsd(cartTotal.toFixed(2));
+    setAmountPaidCdf('');
+  }
+
+  function addCdfShortcut(amount: number) {
+    const current = Number(amountPaidCdf || 0);
+    setAmountPaidCdf(String(current + amount));
+  }
+
   function handlePrintReceipt() {
     if (!lastReceiptSale) return;
     try {
@@ -413,15 +443,12 @@ export function OfflinePosPage() {
       viewModel={viewModel}
       syncEngine={syncEngine}
       cashSession={snapshot.cashSession}
-      title="POS"
+      title="Point de vente"
       subtitle="Caisse rapide hors ligne, scanner-ready et synchronisation automatique au retour du reseau."
       topActions={(
         <>
-          <button className="ghost-button compact-button" type="button" onClick={() => void handleNewDraft()} disabled={busyAction !== null}>
-            Nouvelle vente
-          </button>
-          <button className="ghost-button compact-button" type="button" onClick={() => void runSync('manual')}>
-            Synchroniser
+          <button className="ghost-button compact-button" type="button" onClick={() => articleInputRef.current?.focus()}>
+            Scanner
           </button>
           <Link className="ghost-button compact-button" to="/offline/drafts">
             Brouillons
@@ -432,9 +459,9 @@ export function OfflinePosPage() {
       <OfflineNetworkBanner viewModel={viewModel} syncEngine={syncEngine} />
 
       <section className="offline-kpis offline-kpis-compact">
-        <div className="card offline-kpi"><span>Statut</span><strong>{formatOfflineCartStatus(cart.status)}</strong></div>
-        <div className="card offline-kpi"><span>Articles</span><strong>{cart.itemCount}</strong></div>
-        <div className="card offline-kpi"><span>Quantite</span><strong>{cart.quantityTotal}</strong></div>
+        <div className="card offline-kpi"><span>Statut</span><strong>{formatOfflineCartStatus(cart.status)}</strong><small>Vente en cours</small></div>
+        <div className="card offline-kpi"><span>Articles</span><strong>{cart.itemCount}</strong><small>ligne(s)</small></div>
+        <div className="card offline-kpi"><span>Quantite</span><strong>{cart.quantityTotal}</strong><small>unite(s)</small></div>
         <div className="card offline-kpi"><span>Total USD</span><strong>{formatMoney(cart.total, 'USD')}</strong></div>
         <div className="card offline-kpi"><span>Total FC</span><strong>{settings?.exchangeRate?.rate ? `${Math.round(cart.total * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong></div>
       </section>
@@ -446,10 +473,6 @@ export function OfflinePosPage() {
               <div>
                 <span className="offline-caption">Vente</span>
                 <strong>{cart.offlineReference}</strong>
-              </div>
-              <div>
-                <span className="offline-caption">Client</span>
-                <strong>{cart.customerNameSnapshot ?? 'Client comptoir'}</strong>
               </div>
               <div>
                 <span className="offline-caption">Poste</span>
@@ -483,10 +506,68 @@ export function OfflinePosPage() {
             ) : null}
           </section>
 
+          <section className="offline-pos-control-grid">
+            <section className="card offline-panel offline-client-card">
+              <div className="offline-panel-heading">
+                <h3>Client</h3>
+                <button className="ghost-button compact-button" type="button" onClick={() => void handleSelectCustomer(draftCounterCustomer)} disabled={busyAction !== null}>
+                  Afficher client
+                </button>
+              </div>
+              <FloatingSearchPopover
+                columns={[
+                  { header: 'Code', render: (item: OfflinePosCustomer) => item.customerCode },
+                  { header: 'Nom', render: (item: OfflinePosCustomer) => <strong>{item.name}</strong> },
+                  { header: 'Telephone', render: (item: OfflinePosCustomer) => item.phone ?? '-' },
+                ]}
+                getKey={(item) => item.customerId}
+                inputRef={customerInputRef}
+                open={customerOpen}
+                value={customerQuery}
+                placeholder={cart.customerNameSnapshot ?? 'Client comptoir'}
+                searchPlaceholder="Nom, code ou telephone"
+                suggestions={customerResults}
+                emptyText="Aucun client local disponible"
+                onOpen={() => setCustomerOpen(true)}
+                onClose={() => setCustomerOpen(false)}
+                onChange={setCustomerQuery}
+                onSelect={(item) => void handleSelectCustomer(item)}
+              />
+            </section>
+
+            <section className="card offline-panel offline-choice-card">
+              <div className="offline-panel-heading"><h3>Type de vente</h3></div>
+              <div className="offline-segmented-control">
+                <button type="button" className="is-active">Cash</button>
+                <button type="button" disabled title="Assurance indisponible sur ce flux hors ligne">Assurance</button>
+              </div>
+            </section>
+
+            <section className="card offline-panel offline-choice-card">
+              <div className="offline-panel-heading"><h3>Mode de vente</h3></div>
+              <div className="offline-segmented-control">
+                <button type="button" className="is-active">Vente immediate</button>
+                <button type="button" disabled title="Paiement en avance indisponible sur ce flux hors ligne">Paiement en avance</button>
+              </div>
+            </section>
+
+            <section className="card offline-panel offline-choice-card">
+              <div className="offline-panel-heading"><h3>Assurance / Mutuelle</h3></div>
+              <select className="input compact-input" disabled defaultValue="">
+                <option value="">Rechercher une assurance...</option>
+              </select>
+            </section>
+          </section>
+
           <section className="card offline-panel offline-search-card">
             <div className="offline-panel-heading">
-              <h3>Recherche article</h3>
-              <span className="offline-row-meta">Scannez ou tapez un nom/code/barcode. F2 ramene le focus ici.</span>
+              <div>
+                <h3>Rechercher un article</h3>
+                <span className="offline-row-meta">Scannez un code-barres ou tapez un nom/code. F2 ramene le focus.</span>
+              </div>
+              <button className="ghost-button compact-button" type="button" onClick={() => setArticleOpen(true)}>
+                Voir tout
+              </button>
             </div>
             <FloatingSearchPopover
               columns={[
@@ -514,7 +595,7 @@ export function OfflinePosPage() {
             </div>
             {articleResults.length > 0 ? (
               <div className="offline-inline-results">
-                {articleResults.slice(0, 6).map((result) => (
+                {articleResults.slice(0, 4).map((result) => (
                   <button
                     key={result.article.articleId}
                     className={`offline-result-chip ${result.status !== 'READY' ? 'is-disabled' : ''}`}
@@ -538,108 +619,77 @@ export function OfflinePosPage() {
                 ))}
               </div>
             ) : null}
-          </section>
 
-          <section className="card offline-panel offline-client-card">
-            <div className="offline-panel-heading">
-              <h3>Client local</h3>
-              <button className="ghost-button compact-button" type="button" onClick={() => void handleSelectCustomer(draftCounterCustomer)} disabled={busyAction !== null}>
-                Client comptoir
+            <div className="offline-pos-footer-actions">
+              <button className="ghost-button compact-button offline-draft-save-button" type="button" onClick={() => setMessage('Le brouillon est deja enregistre localement.')} disabled={busyAction !== null}>
+                Enregistrer au brouillon
               </button>
-            </div>
-            <FloatingSearchPopover
-              columns={[
-                { header: 'Code', render: (item: OfflinePosCustomer) => item.customerCode },
-                { header: 'Nom', render: (item: OfflinePosCustomer) => <strong>{item.name}</strong> },
-                { header: 'Telephone', render: (item: OfflinePosCustomer) => item.phone ?? '-' },
-              ]}
-              getKey={(item) => item.customerId}
-              inputRef={customerInputRef}
-              open={customerOpen}
-              value={customerQuery}
-              placeholder="Rechercher un client local..."
-              searchPlaceholder="Nom, code ou telephone"
-              suggestions={customerResults}
-              emptyText="Aucun client local disponible"
-              onOpen={() => setCustomerOpen(true)}
-              onClose={() => setCustomerOpen(false)}
-              onChange={setCustomerQuery}
-              onSelect={(item) => void handleSelectCustomer(item)}
-            />
-          </section>
-
-          <section className="card offline-panel offline-cart-panel offline-cart-panel-premium">
-            <div className="offline-panel-heading">
-              <h3>Panier local</h3>
-              <span className="offline-row-meta">Les reservations de ce brouillon reduisent le quota des autres brouillons du meme poste.</span>
-            </div>
-            <div className="table-wrap offline-cart-table-wrap">
-              <table className="data-table offline-cart-table">
-                <thead>
-                  <tr>
-                    <th>Article</th>
-                    <th>Qte</th>
-                    <th>PU</th>
-                    <th>Total</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cart.items.length === 0 ? (
-                    <tr>
-                      <td colSpan={5}>
-                        <p className="empty-state">Scannez ou recherchez un article pour commencer.</p>
-                      </td>
-                    </tr>
-                  ) : cart.items.map((item) => (
-                    <tr key={item.localItemId}>
-                      <td>
-                        <strong>{item.articleName}</strong>
-                        <div className="offline-row-meta">{item.articleCode}</div>
-                        {item.lotAllocations[0] ? (
-                          <div className="offline-row-meta">
-                            Lot FEFO {item.lotAllocations[0].lotNumber} - exp. {formatDate(item.lotAllocations[0].expiryDate)}
-                          </div>
-                        ) : null}
-                      </td>
-                      <td>
-                        <div className="quantity-stepper">
-                          <button type="button" className="ghost-button compact-button" onClick={() => void handleQuantityChange(item, item.quantity - 1)} disabled={busyAction !== null}>-</button>
-                          <input
-                            className="input compact-input quantity-input"
-                            type="number"
-                            min="0"
-                            step="1"
-                            value={item.quantity}
-                            onChange={(event) => void handleQuantityChange(item, Number(event.target.value))}
-                          />
-                          <button type="button" className="ghost-button compact-button" onClick={() => void handleQuantityChange(item, item.quantity + 1)} disabled={busyAction !== null}>+</button>
-                        </div>
-                      </td>
-                      <td>{formatMoney(item.unitPriceSnapshot, cart.currency)}</td>
-                      <td>{formatMoney(item.lineTotal, cart.currency)}</td>
-                      <td>
-                        <details className="offline-line-details">
-                          <summary>Details</summary>
-                          {item.lotAllocations.map((allocation) => (
-                            <div key={allocation.allocationId}>
-                              {allocation.lotNumber} x {allocation.quantity} - {formatDate(allocation.expiryDate)}
-                            </div>
-                          ))}
-                          <button type="button" className="ghost-button compact-button" onClick={() => void handleQuantityChange(item, 0)} disabled={busyAction !== null}>
-                            Supprimer
-                          </button>
-                        </details>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="offline-checkout-actions offline-checkout-actions-premium">
+                <button className="ghost-button compact-button" type="button" onClick={() => void handleClearCart()} disabled={busyAction !== null || cart.items.length === 0}>
+                  Annuler la vente
+                </button>
+                <button className="button compact-button offline-checkout-button offline-checkout-button-inline" type="button" onClick={() => void handleFinalizeOfflineSale()} disabled={busyAction !== null || !canFinalizeOfflineSale}>
+                  ENCAISSER
+                </button>
+              </div>
             </div>
           </section>
         </div>
 
         <aside className="offline-pos-right offline-pos-right-premium">
+          <section className="card offline-panel offline-cart-panel offline-cart-panel-premium">
+            <div className="offline-panel-heading">
+              <h3>Panier ({cart.itemCount})</h3>
+              <button className="ghost-button compact-button offline-danger-link" type="button" onClick={() => void handleClearCart()} disabled={busyAction !== null || cart.items.length === 0}>
+                Vider
+              </button>
+            </div>
+            {cart.items.length === 0 ? (
+              <div className="offline-cart-empty-state">
+                <div className="offline-cart-empty-icon">Panier</div>
+                <strong>Aucun article dans le panier</strong>
+                <p>Scannez ou recherchez un article pour commencer.</p>
+              </div>
+            ) : (
+              <div className="table-wrap offline-cart-table-wrap">
+                <table className="data-table offline-cart-table offline-cart-table-compact">
+                  <thead>
+                    <tr>
+                      <th>Article / lot</th>
+                      <th>Qte</th>
+                      <th>PA USD</th>
+                      <th>Total USD</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cart.items.map((item) => (
+                      <tr key={item.localItemId}>
+                        <td>
+                          <strong>{item.articleName}</strong>
+                          <div className="offline-row-meta">{item.lotAllocations[0]?.lotNumber ?? item.articleCode}</div>
+                        </td>
+                        <td>{item.quantity}</td>
+                        <td>{formatMoney(item.unitPriceSnapshot, cart.currency)}</td>
+                        <td>{formatMoney(item.lineTotal, cart.currency)}</td>
+                        <td>
+                          <button
+                            className="ghost-button compact-button offline-cart-remove-button"
+                            type="button"
+                            onClick={() => void handleQuantityChange(item, 0)}
+                            disabled={busyAction !== null}
+                          >
+                            Retirer
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
           <section className="card offline-panel offline-payment-hero">
             <div className="offline-payment-hero-label">Total a payer</div>
             <div className="offline-payment-hero-amount">{formatMoney(cart.total, 'USD')}</div>
@@ -648,76 +698,56 @@ export function OfflinePosPage() {
             </div>
           </section>
 
-          <section className="card offline-panel offline-cash-status-card">
-            <h3>Caisse offline</h3>
-            <div className="detail-grid compact-detail-grid">
-              <div><span>Session</span><strong>{canAttachOfflineCashSale(snapshot.cashSession) ? 'Caisse ouverte' : 'Caisse fermee'}</strong></div>
-              <div><span>Reference</span><strong>{snapshot.cashSession?.offlineCashReference ?? '-'}</strong></div>
-              <div><span>Ouverte le</span><strong>{formatDateTime(snapshot.cashSession?.openedAt)}</strong></div>
-              <div><span>Solde USD</span><strong>{snapshot.cashSession ? formatMoney(snapshot.cashSession.openingBalanceUsd, 'USD') : '-'}</strong></div>
-            </div>
-            {!canAttachOfflineCashSale(snapshot.cashSession) ? (
-              <div className="offline-panel-actions">
-                <p className="offline-warning-text">
-                  {snapshot.cashSession
-                    ? 'La session locale restauree n est pas encore utilisable pour encaisser. Ouvrez ou reprenez une caisse offline active.'
-                    : 'Ouvrez la caisse avant d encaisser une vente.'}
-                </p>
-                <Link className="button compact-button" to="/offline/cash">Ouvrir la caisse</Link>
-              </div>
-            ) : null}
-          </section>
-
           <section className="card offline-panel offline-payment-card">
-            <h3>Reglement</h3>
+            <div className="offline-panel-heading">
+              <h3>Reglement</h3>
+              <button className="ghost-button compact-button" type="button" onClick={applyExactPayment}>
+                Paiement exact
+              </button>
+            </div>
             <div className="detail-grid compact-detail-grid">
-              <label>
-                <span>Paye FC</span>
-                <input ref={amountPaidCdfRef} className="input compact-input" type="number" min="0" step="1" value={amountPaidCdf} onChange={(event) => setAmountPaidCdf(event.target.value)} />
-              </label>
               <label>
                 <span>Paye USD</span>
                 <input className="input compact-input" type="number" min="0" step="0.01" value={amountPaidUsd} onChange={(event) => setAmountPaidUsd(event.target.value)} />
               </label>
+              <label>
+                <span>Paye FC</span>
+                <input ref={amountPaidCdfRef} className="input compact-input" type="number" min="0" step="1" value={amountPaidCdf} onChange={(event) => setAmountPaidCdf(event.target.value)} />
+              </label>
             </div>
-            <div className="offline-summary-grid offline-payment-summary-grid">
-              <div><span>Total USD</span><strong>{formatMoney(cart.total, 'USD')}</strong></div>
-              <div><span>Total FC</span><strong>{settings?.exchangeRate?.rate ? `${Math.round(cart.total * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong></div>
-              <div><span>Rendu prop. USD</span><strong>{formatMoney(settlementPreview.suggestedChangeUsd, 'USD')}</strong></div>
-              <div><span>Rendu prop. FC</span><strong>{`${Math.round(settlementPreview.suggestedChangeCdf).toLocaleString('fr-FR')} FC`}</strong></div>
+            <div className="offline-payment-shortcuts">
+              {[1, 5, 10, 20].map((amount) => (
+                <button key={amount} className="ghost-button compact-button" type="button" onClick={() => addCdfShortcut(amount * 1000)}>
+                  +{amount}
+                </button>
+              ))}
             </div>
-            <div className="offline-panel-actions offline-checkout-actions offline-checkout-actions-premium">
-              <button className="button compact-button offline-checkout-button" type="button" onClick={() => void handleFinalizeOfflineSale()} disabled={busyAction !== null || !canFinalizeOfflineSale}>
-                ENCAISSER
-              </button>
-              <button className="ghost-button compact-button" type="button" onClick={handlePrintReceipt} disabled={!lastReceiptSale}>
-                Imprimer ticket
-              </button>
-            </div>
-          </section>
-
-          <section className="card offline-panel">
-            <h3>Note locale</h3>
-            <textarea
-              className="input offline-note-input"
-              rows={4}
-              placeholder="Observation locale du brouillon"
-              value={noteDraft}
-              onChange={(event) => handleNoteChange(event.target.value)}
-            />
-          </section>
-
-          <section className="card offline-panel">
-            <h3>Etat du snapshot</h3>
             <div className="detail-grid compact-detail-grid">
-              <div><span>Utilisateur</span><strong>{auth?.displayName ?? '-'}</strong></div>
-              <div><span>Role</span><strong>{auth?.role ?? '-'}</strong></div>
-              <div><span>Device ID</span><strong>{workstation?.deviceId ?? '-'}</strong></div>
-              <div><span>Autorisation</span><strong>{authorizationLabel(authorizationState)}</strong></div>
+              <label>
+                <span>A rendre USD</span>
+                <input className="input compact-input" type="text" value={formatMoney(settlementPreview.suggestedChangeUsd, 'USD')} readOnly />
+              </label>
+              <label>
+                <span>A rendre FC</span>
+                <input className="input compact-input" type="text" value={`${Math.round(settlementPreview.suggestedChangeCdf).toLocaleString('fr-FR')} FC`} readOnly />
+              </label>
             </div>
-            <p className="offline-preview">{message}</p>
-            <p className="offline-preview muted">{renderSyncSummary(syncEngine)}</p>
+            {!canAttachOfflineCashSale(snapshot.cashSession) ? (
+              <div className="offline-warning-text">
+                {snapshot.cashSession
+                  ? 'La session locale restauree n est pas encore utilisable pour encaisser. Ouvrez ou reprenez une caisse offline active.'
+                  : 'Ouvrez la caisse avant d encaisser une vente.'}
+              </div>
+            ) : null}
+            {lastReceiptSale ? (
+              <div className="offline-panel-actions">
+                <button className="ghost-button compact-button" type="button" onClick={handlePrintReceipt}>
+                  Imprimer ticket
+                </button>
+              </div>
+            ) : null}
           </section>
+
         </aside>
       </section>
       <OfflineReceiptTicket
