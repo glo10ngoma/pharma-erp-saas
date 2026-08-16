@@ -444,17 +444,11 @@ export function OfflinePosPage() {
       syncEngine={syncEngine}
       cashSession={snapshot.cashSession}
       title="Point de vente"
-      subtitle="Caisse rapide hors ligne, scanner-ready et synchronisation automatique au retour du reseau."
       exitTo="/offline/sales"
       topActions={(
-        <>
-          <button className="ghost-button compact-button" type="button" onClick={() => articleInputRef.current?.focus()}>
-            Scanner
-          </button>
-          <Link className="ghost-button compact-button" to="/offline/drafts">
-            Brouillons
-          </Link>
-        </>
+        <Link className="ghost-button compact-button" to="/offline/drafts">
+          Brouillons
+        </Link>
       )}
     >
       <section className="offline-page offline-pos-page offline-pos-page-fixed">
@@ -490,21 +484,6 @@ export function OfflinePosPage() {
           <span className="offline-pos-summary-item offline-pos-summary-item-end">
             <strong>{cart.itemCount}</strong>
             <small>article(s)</small>
-          </span>
-          <span className="offline-pos-summary-separator" aria-hidden="true">|</span>
-          <span className="offline-pos-summary-item">
-            <strong>{cart.quantityTotal}</strong>
-            <small>unite(s)</small>
-          </span>
-          <span className="offline-pos-summary-separator" aria-hidden="true">|</span>
-          <span className="offline-pos-summary-item">
-            <strong>{formatMoney(cart.total, 'USD')}</strong>
-            <small>Total USD</small>
-          </span>
-          <span className="offline-pos-summary-separator" aria-hidden="true">|</span>
-          <span className="offline-pos-summary-item">
-            <strong>{settings?.exchangeRate?.rate ? `${Math.round(cart.total * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong>
-            <small>Total FC</small>
           </span>
         </section>
 
