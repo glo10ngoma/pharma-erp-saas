@@ -513,8 +513,9 @@ export function OfflinePosPage() {
             <section className="card offline-panel offline-cart-panel offline-cart-panel-premium offline-cart-panel-fullscreen">
               <div className="offline-panel-heading offline-cart-panel-heading">
                 <h3>Panier ({cart.itemCount})</h3>
-                <button className="ghost-button compact-button offline-danger-link" type="button" onClick={() => void handleClearCart()} disabled={busyAction !== null || cart.items.length === 0}>
-                  Vider
+                <button className="ghost-button compact-button offline-cart-clear-button" type="button" onClick={() => void handleClearCart()} disabled={busyAction !== null || cart.items.length === 0}>
+                  <TrashIcon />
+                  <span>Vider</span>
                 </button>
               </div>
               {cart.items.length === 0 ? (
@@ -540,19 +541,21 @@ export function OfflinePosPage() {
                         <tr key={item.localItemId}>
                           <td>
                             <strong>{item.articleName}</strong>
-                            <div className="offline-row-meta">{item.lotAllocations[0]?.lotNumber ?? item.articleCode}</div>
+                            <div className="offline-row-meta">{formatLotLabel(item.lotAllocations[0]?.lotNumber ?? item.articleCode)}</div>
                           </td>
                           <td>{item.quantity}</td>
                           <td>{formatMoney(item.unitPriceSnapshot, cart.currency)}</td>
                           <td>{formatMoney(item.lineTotal, cart.currency)}</td>
                           <td>
                             <button
-                              className="ghost-button compact-button offline-cart-remove-button"
+                              aria-label="Retirer l article"
+                              className="ghost-button compact-button row-action-button icon-only danger offline-cart-remove-button"
                               type="button"
                               onClick={() => void handleQuantityChange(item, 0)}
                               disabled={busyAction !== null}
+                              title="Retirer l article"
                             >
-                              Retirer
+                              <TrashIcon />
                             </button>
                           </td>
                         </tr>
@@ -591,8 +594,8 @@ export function OfflinePosPage() {
               <section className="card offline-panel offline-client-card">
                 <div className="offline-panel-heading">
                   <h3>Client</h3>
-                  <button className="ghost-button compact-button" type="button" onClick={() => void handleSelectCustomer(draftCounterCustomer)} disabled={busyAction !== null}>
-                    Afficher client
+                  <button className="ghost-button compact-button row-action-button icon-only offline-client-action-button" type="button" onClick={() => void handleSelectCustomer(draftCounterCustomer)} disabled={busyAction !== null} title="Afficher client" aria-label="Afficher client">
+                    <CustomerIcon />
                   </button>
                 </div>
                 <FloatingSearchPopover
@@ -693,7 +696,7 @@ export function OfflinePosPage() {
                               : 'Quota offline epuise'
                       }
                     >
-                      <strong>{result.article.articleCode}</strong>
+                      <strong>{formatDisplayCode(result.article.articleCode)}</strong>
                       <span>{result.article.commercialName}</span>
                       <small>{result.offlineAvailableQuantity} dispo</small>
                     </button>
@@ -705,14 +708,9 @@ export function OfflinePosPage() {
                 <button className="ghost-button compact-button offline-draft-save-button" type="button" onClick={() => setMessage('Le brouillon est deja enregistre localement.')} disabled={busyAction !== null}>
                   Enregistrer au brouillon
                 </button>
-                <div className="offline-checkout-actions offline-checkout-actions-premium">
-                  <button className="ghost-button compact-button" type="button" onClick={() => void handleClearCart()} disabled={busyAction !== null || cart.items.length === 0}>
-                    Annuler la vente
-                  </button>
-                  <button className="button compact-button offline-checkout-button offline-checkout-button-inline" type="button" onClick={() => void handleFinalizeOfflineSale()} disabled={busyAction !== null || !canFinalizeOfflineSale}>
-                    ENCAISSER
-                  </button>
-                </div>
+                <button className="ghost-button compact-button offline-cancel-button" type="button" onClick={() => void handleClearCart()} disabled={busyAction !== null || cart.items.length === 0}>
+                  Annuler la vente
+                </button>
               </div>
             </section>
           </div>
@@ -743,13 +741,6 @@ export function OfflinePosPage() {
                   <input ref={amountPaidCdfRef} className="input compact-input" type="number" min="0" step="1" value={amountPaidCdf} onChange={(event) => setAmountPaidCdf(event.target.value)} />
                 </label>
               </div>
-              <div className="offline-payment-shortcuts">
-                {[1, 5, 10, 20].map((amount) => (
-                  <button key={amount} className="ghost-button compact-button" type="button" onClick={() => addCdfShortcut(amount * 1000)}>
-                    +{amount}
-                  </button>
-                ))}
-              </div>
               <div className="detail-grid compact-detail-grid">
                 <label>
                   <span>A rendre USD</span>
@@ -774,6 +765,10 @@ export function OfflinePosPage() {
                   </button>
                 </div>
               ) : null}
+              <button className="button compact-button offline-checkout-button offline-checkout-button-inline offline-payment-checkout-button" type="button" onClick={() => void handleFinalizeOfflineSale()} disabled={busyAction !== null || !canFinalizeOfflineSale}>
+                <span>ENCAISSER</span>
+                <span className="offline-checkout-shortcut">F8</span>
+              </button>
             </section>
           </aside>
         </section>
@@ -834,4 +829,23 @@ function renderSyncSummary(syncEngine: ReturnType<typeof useSyncEngine>) {
     return `${syncEngine.pendingCount} operation(s) restent a synchroniser.`;
   }
   return 'Tout est synchronise ou pret a etre synchronise automatiquement.';
+}
+
+function formatDisplayCode(code: string) {
+  const normalized = code.replace(/^OFF-STG-(FIELD-|FLD-)?/i, '');
+  const compact = normalized.split('-').filter(Boolean).join('-');
+  return compact.length > 18 ? compact.slice(-18) : compact;
+}
+
+function formatLotLabel(value: string) {
+  const compact = value.replace(/^OFF-STG-(FIELD-|FLD-)?/i, '');
+  return `Lot ${compact.length > 16 ? compact.slice(-16) : compact}`;
+}
+
+function TrashIcon() {
+  return <svg aria-hidden="true" className="row-action-icon" focusable="false" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M9 10v8M15 10v8M6 6l1 14h10l1-14" /></svg>;
+}
+
+function CustomerIcon() {
+  return <svg aria-hidden="true" className="row-action-icon" focusable="false" viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm-7 8a7 7 0 0 1 14 0M19 7h2m-1-1v2" /></svg>;
 }
