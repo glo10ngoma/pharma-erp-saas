@@ -7058,7 +7058,11 @@ details.nav-group .nav-link {
   color: #191c1e;
   display: grid;
   grid-template-columns: 272px minmax(0, 1fr);
+  height: 100vh;
+  height: 100dvh;
   min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
 }
 
 .offline-sidebar {
@@ -7067,6 +7071,9 @@ details.nav-group .nav-link {
   display: grid;
   gap: 18px;
   grid-auto-rows: max-content;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
   padding: 22px 18px 26px;
 }
 
@@ -7169,8 +7176,11 @@ details.nav-group .nav-link {
 .offline-workspace-main {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  height: 100vh;
+  height: 100dvh;
   min-width: 0;
   overflow-x: hidden;
+  overflow-y: hidden;
 }
 
 .offline-workspace-topbar {
@@ -7245,14 +7255,31 @@ details.nav-group .nav-link {
 .offline-workspace-content {
   display: grid;
   gap: 16px;
+  min-height: 0;
   min-width: 0;
+  overflow: hidden;
   padding: 18px 22px 22px;
 }
 
 .offline-page {
   display: grid;
   gap: 16px;
+  height: 100%;
+  min-height: 0;
   min-width: 0;
+  overflow: hidden;
+}
+
+.offline-pos-page-fixed {
+  grid-template-rows: auto auto minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.offline-pos-page-fixed > .offline-seller-banner,
+.offline-pos-page-fixed > .offline-kpis {
+  margin: 0;
 }
 
 .offline-kpis {
@@ -7324,10 +7351,13 @@ details.nav-group .nav-link {
 
 .offline-pos-grid-premium,
 .offline-pos-grid {
-  align-items: start;
+  align-items: stretch;
   display: grid;
   gap: 16px;
   grid-template-columns: minmax(0, 1.68fr) minmax(300px, 0.58fr);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .offline-pos-left,
@@ -7335,14 +7365,24 @@ details.nav-group .nav-link {
 .offline-pos-context {
   display: grid;
   gap: 16px;
+  min-height: 0;
   min-width: 0;
+}
+
+.offline-pos-left {
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .offline-pos-right-premium,
 .offline-pos-right {
+  display: flex;
+  flex-direction: column;
   gap: 14px;
-  position: sticky;
-  top: 16px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  position: static;
 }
 
 .offline-pos-context-premium .offline-pos-context-grid,
@@ -7380,6 +7420,10 @@ details.nav-group .nav-link {
   display: grid;
   gap: 14px;
   grid-template-columns: minmax(0, 1.55fr) repeat(3, minmax(180px, 0.8fr));
+}
+
+.offline-pos-control-grid > .offline-panel {
+  min-height: 0;
 }
 
 .offline-choice-card {
@@ -7427,9 +7471,11 @@ details.nav-group .nav-link {
 }
 
 .offline-inline-results {
+  align-content: start;
   display: grid;
   gap: 8px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  min-height: 0;
 }
 
 .offline-result-chip {
@@ -7469,8 +7515,32 @@ details.nav-group .nav-link {
 .offline-cart-panel .table-wrap,
 .offline-drafts-table,
 .offline-cart-table-wrap {
-  max-height: 560px;
+  max-height: none;
+  min-height: 0;
   overflow: auto;
+}
+
+.offline-cart-panel-premium,
+.offline-cart-panel {
+  flex: 1 1 auto;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.offline-cart-panel-premium .offline-cart-table-wrap,
+.offline-cart-panel .offline-cart-table-wrap {
+  height: 100%;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.offline-cart-panel-premium .offline-cart-table,
+.offline-cart-panel .offline-cart-table {
+  min-width: 0;
+  table-layout: fixed;
 }
 
 .offline-cart-table th,
@@ -7515,6 +7585,13 @@ details.nav-group .nav-link {
 
 .offline-payment-card {
   grid-template-columns: minmax(0, 1fr);
+}
+
+.offline-search-card {
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .offline-payment-summary-card {
@@ -7618,9 +7695,10 @@ details.nav-group .nav-link {
 .offline-pos-footer-actions {
   align-items: center;
   display: flex;
+  flex: 0 0 auto;
   gap: 12px;
   justify-content: space-between;
-  margin-top: auto;
+  margin-top: 0;
   padding-top: 4px;
 }
 
@@ -7639,6 +7717,103 @@ details.nav-group .nav-link {
   gap: 10px 16px;
   font-size: 0.84rem;
   font-weight: 600;
+}
+
+.offline-pos-page-fixed .offline-kpi {
+  min-height: 72px;
+  padding: 10px 12px;
+}
+
+.offline-pos-page-fixed .offline-kpi strong {
+  font-size: 1.18rem;
+}
+
+.offline-pos-page-fixed .offline-kpi small {
+  font-size: 0.72rem;
+  margin-top: 4px;
+}
+
+.offline-pos-page-fixed .offline-pos-context-premium {
+  gap: 10px;
+  padding-bottom: 10px;
+  padding-top: 10px;
+}
+
+.offline-pos-page-fixed .offline-pos-context-grid strong {
+  font-size: 0.95rem;
+}
+
+.offline-pos-page-fixed .offline-panel-heading h3 {
+  font-size: 0.98rem;
+}
+
+.offline-pos-page-fixed .offline-choice-card,
+.offline-pos-page-fixed .offline-client-card,
+.offline-pos-page-fixed .offline-search-card,
+.offline-pos-page-fixed .offline-payment-card,
+.offline-pos-page-fixed .offline-cart-panel-premium,
+.offline-pos-page-fixed .offline-payment-hero {
+  padding: 10px 12px;
+}
+
+.offline-pos-page-fixed .offline-payment-hero {
+  gap: 4px;
+}
+
+.offline-pos-page-fixed .offline-payment-hero-amount {
+  font-size: clamp(1.7rem, 2.7vw, 2.4rem);
+}
+
+.offline-pos-page-fixed .offline-payment-hero-fc {
+  font-size: 1.1rem;
+}
+
+.offline-pos-page-fixed .offline-result-chip {
+  min-height: 76px;
+  padding: 8px 10px;
+}
+
+.offline-pos-page-fixed .offline-result-chip strong {
+  font-size: 0.84rem;
+  margin-bottom: 4px;
+}
+
+.offline-pos-page-fixed .offline-result-chip span {
+  font-size: 0.82rem;
+  margin-bottom: 4px;
+}
+
+.offline-pos-page-fixed .offline-result-chip small {
+  font-size: 0.74rem;
+}
+
+.offline-pos-page-fixed .offline-cart-empty-state {
+  min-height: 120px;
+  padding: 8px;
+}
+
+.offline-pos-page-fixed .offline-cart-empty-icon {
+  height: 56px;
+  padding: 0 14px;
+}
+
+.offline-pos-page-fixed .offline-cart-table-compact th,
+.offline-pos-page-fixed .offline-cart-table-compact td {
+  font-size: 0.72rem;
+  padding-bottom: 7px;
+  padding-top: 7px;
+}
+
+.offline-pos-page-fixed .offline-payment-card .compact-detail-grid {
+  gap: 8px;
+}
+
+.offline-pos-page-fixed .offline-payment-shortcuts .compact-button {
+  min-height: 34px;
+}
+
+.offline-pos-page-fixed .offline-checkout-button {
+  min-height: 50px;
 }
 
 .offline-cash-grid-premium {
@@ -7808,7 +7983,7 @@ details.nav-group .nav-link {
   .offline-pos-grid-premium,
   .offline-pos-grid {
     gap: 14px;
-    grid-template-columns: minmax(0, 1.48fr) minmax(280px, 0.72fr);
+    grid-template-columns: minmax(0, 1.42fr) 320px;
   }
 
   .offline-pos-context-premium .offline-pos-context-grid,
@@ -7823,6 +7998,177 @@ details.nav-group .nav-link {
 
   .offline-inline-results {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1366px) and (min-width: 981px) {
+  .offline-workspace {
+    grid-template-columns: 236px minmax(0, 1fr);
+  }
+
+  .offline-sidebar {
+    gap: 14px;
+    padding: 18px 14px 14px;
+  }
+
+  .offline-sidebar-brand h1 {
+    font-size: 1.8rem;
+  }
+
+  .offline-sidebar-brand p,
+  .offline-sidebar-meta span {
+    font-size: 0.82rem;
+  }
+
+  .offline-sidebar-meta strong {
+    font-size: 0.9rem;
+  }
+
+  .offline-sidebar-primary,
+  .offline-sidebar-link {
+    min-height: 40px;
+  }
+
+  .offline-sidebar-link {
+    gap: 10px;
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+
+  .offline-workspace-content {
+    gap: 12px;
+    padding: 14px 16px 16px;
+  }
+
+  .offline-workspace-topbar {
+    padding: 12px 16px;
+  }
+
+  .offline-workspace-topbar h2 {
+    font-size: 1.7rem;
+  }
+
+  .offline-pos-page-fixed {
+    gap: 12px;
+  }
+
+  .offline-pos-page-fixed .offline-seller-banner {
+    padding: 8px 10px;
+  }
+
+  .offline-pos-page-fixed .offline-pos-grid-premium {
+    gap: 12px;
+    grid-template-columns: minmax(0, 1fr) 304px;
+  }
+
+  .offline-pos-page-fixed .offline-pos-left,
+  .offline-pos-page-fixed .offline-pos-right {
+    gap: 10px;
+  }
+
+  .offline-pos-page-fixed .offline-pos-context-premium .offline-pos-context-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .offline-pos-page-fixed .offline-pos-control-grid {
+    gap: 8px;
+    grid-template-columns: minmax(0, 1.35fr) repeat(3, minmax(140px, 0.8fr));
+  }
+
+  .offline-pos-page-fixed .offline-search-card,
+  .offline-pos-page-fixed .offline-client-card,
+  .offline-pos-page-fixed .offline-choice-card,
+  .offline-pos-page-fixed .offline-cart-panel-premium,
+  .offline-pos-page-fixed .offline-payment-card,
+  .offline-pos-page-fixed .offline-payment-hero,
+  .offline-pos-page-fixed .offline-pos-context-premium {
+    gap: 8px;
+    padding: 9px 10px;
+  }
+
+  .offline-pos-page-fixed .offline-kpis {
+    gap: 10px;
+  }
+
+  .offline-pos-page-fixed .offline-kpi {
+    min-height: 66px;
+    padding: 8px 10px;
+  }
+
+  .offline-pos-page-fixed .offline-kpi span {
+    font-size: 0.68rem;
+  }
+
+  .offline-pos-page-fixed .offline-panel-heading h3 {
+    font-size: 0.92rem;
+  }
+
+  .offline-pos-page-fixed .floating-search-trigger,
+  .offline-pos-page-fixed .floating-search-input,
+  .offline-pos-page-fixed .compact-input,
+  .offline-pos-page-fixed .offline-segmented-control button {
+    min-height: 38px;
+  }
+
+  .offline-pos-page-fixed .offline-segmented-control button {
+    font-size: 0.8rem;
+    padding: 0 8px;
+  }
+
+  .offline-pos-page-fixed .offline-search-help {
+    font-size: 0.75rem;
+    gap: 4px 10px;
+  }
+
+  .offline-pos-page-fixed .offline-result-chip {
+    min-height: 64px;
+    padding: 7px 8px;
+  }
+
+  .offline-pos-page-fixed .offline-result-chip strong {
+    font-size: 0.79rem;
+  }
+
+  .offline-pos-page-fixed .offline-result-chip span {
+    font-size: 0.77rem;
+    line-height: 1.2;
+  }
+
+  .offline-pos-page-fixed .offline-result-chip small {
+    font-size: 0.7rem;
+  }
+
+  .offline-pos-page-fixed .offline-cart-panel-premium .offline-cart-table-compact th,
+  .offline-pos-page-fixed .offline-cart-panel-premium .offline-cart-table-compact td {
+    font-size: 0.68rem;
+    padding-bottom: 6px;
+    padding-top: 6px;
+  }
+
+  .offline-pos-page-fixed .offline-payment-hero-amount {
+    font-size: clamp(1.55rem, 2.3vw, 2rem);
+  }
+
+  .offline-pos-page-fixed .offline-payment-hero-fc {
+    font-size: 0.96rem;
+  }
+
+  .offline-pos-page-fixed .offline-payment-shortcuts {
+    gap: 6px;
+  }
+
+  .offline-pos-page-fixed .offline-payment-shortcuts .compact-button,
+  .offline-pos-page-fixed .offline-cart-remove-button,
+  .offline-pos-page-fixed .offline-draft-save-button,
+  .offline-pos-page-fixed .offline-checkout-actions .compact-button {
+    min-height: 32px;
+  }
+
+  .offline-pos-page-fixed .offline-checkout-button {
+    min-height: 44px;
+  }
+
+  .offline-pos-page-fixed .offline-checkout-button-inline {
+    min-width: 160px;
   }
 }
 

@@ -456,17 +456,18 @@ export function OfflinePosPage() {
         </>
       )}
     >
-      <OfflineNetworkBanner viewModel={viewModel} syncEngine={syncEngine} />
+      <section className="offline-page offline-pos-page offline-pos-page-fixed">
+        <OfflineNetworkBanner viewModel={viewModel} syncEngine={syncEngine} />
 
-      <section className="offline-kpis offline-kpis-compact">
-        <div className="card offline-kpi"><span>Statut</span><strong>{formatOfflineCartStatus(cart.status)}</strong><small>Vente en cours</small></div>
-        <div className="card offline-kpi"><span>Articles</span><strong>{cart.itemCount}</strong><small>ligne(s)</small></div>
-        <div className="card offline-kpi"><span>Quantite</span><strong>{cart.quantityTotal}</strong><small>unite(s)</small></div>
-        <div className="card offline-kpi"><span>Total USD</span><strong>{formatMoney(cart.total, 'USD')}</strong></div>
-        <div className="card offline-kpi"><span>Total FC</span><strong>{settings?.exchangeRate?.rate ? `${Math.round(cart.total * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong></div>
-      </section>
+        <section className="offline-kpis offline-kpis-compact">
+          <div className="card offline-kpi"><span>Statut</span><strong>{formatOfflineCartStatus(cart.status)}</strong><small>Vente en cours</small></div>
+          <div className="card offline-kpi"><span>Articles</span><strong>{cart.itemCount}</strong><small>ligne(s)</small></div>
+          <div className="card offline-kpi"><span>Quantite</span><strong>{cart.quantityTotal}</strong><small>unite(s)</small></div>
+          <div className="card offline-kpi"><span>Total USD</span><strong>{formatMoney(cart.total, 'USD')}</strong></div>
+          <div className="card offline-kpi"><span>Total FC</span><strong>{settings?.exchangeRate?.rate ? `${Math.round(cart.total * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong></div>
+        </section>
 
-      <section className="offline-pos-grid offline-pos-grid-premium">
+        <section className="offline-pos-grid offline-pos-grid-premium">
         <div className="offline-pos-left">
           <section className="card offline-panel offline-pos-context offline-pos-context-premium">
             <div className="offline-pos-context-grid">
@@ -749,6 +750,7 @@ export function OfflinePosPage() {
           </section>
 
         </aside>
+      </section>
       </section>
       <OfflineReceiptTicket
         sale={lastReceiptSale}
