@@ -62,10 +62,12 @@ export function OfflineWorkspaceLayout(props: {
   subtitle?: string;
   primaryAction?: ReactNode;
   topActions?: ReactNode;
+  exitTo?: string;
   children: ReactNode;
 }) {
   const location = useLocation();
   const { permissions } = useAuth();
+  const isPosFullscreen = props.mode === 'seller' && location.pathname === '/offline/pos';
   const showSellerAction = props.mode === 'seller';
   const sellerLinks = [
     { to: '/offline/pos', label: 'POS', short: 'POS', permission: 'pos_sync.read' },
@@ -118,34 +120,41 @@ export function OfflineWorkspaceLayout(props: {
   }
 
   return (
-    <section className={`offline-workspace offline-workspace-${props.mode}`}>
-      <aside className="offline-sidebar">
-        <div className="offline-sidebar-brand">
-          <div>
-            <h1>PharmaERP Offline</h1>
-            <p>{auth?.displayName ?? 'Utilisateur local'}</p>
+    <section className={`offline-workspace offline-workspace-${props.mode} ${isPosFullscreen ? 'offline-pos-fullscreen-mode' : ''}`}>
+      {!isPosFullscreen ? (
+        <aside className="offline-sidebar">
+          <div className="offline-sidebar-brand">
+            <div>
+              <h1>PharmaERP Offline</h1>
+              <p>{auth?.displayName ?? 'Utilisateur local'}</p>
+            </div>
+            <div className="offline-sidebar-meta">
+              <strong>{workstation?.workstationName ?? 'Poste non prepare'}</strong>
+              <span>{workstation?.siteName ?? workstation?.siteId ?? 'Site non prepare'}</span>
+            </div>
           </div>
-          <div className="offline-sidebar-meta">
-            <strong>{workstation?.workstationName ?? 'Poste non prepare'}</strong>
-            <span>{workstation?.siteName ?? workstation?.siteId ?? 'Site non prepare'}</span>
-          </div>
-        </div>
 
-        {showSellerAction ? (
-          <Link className="offline-sidebar-primary" to="/offline/pos">
-            Nouvelle vente
-          </Link>
-        ) : props.primaryAction ? (
-          <div className="offline-sidebar-action">{props.primaryAction}</div>
-        ) : null}
+          {showSellerAction ? (
+            <Link className="offline-sidebar-primary" to="/offline/pos">
+              Nouvelle vente
+            </Link>
+          ) : props.primaryAction ? (
+            <div className="offline-sidebar-action">{props.primaryAction}</div>
+          ) : null}
 
-        {renderNavSection('POS Offline', sellerLinks)}
-        {renderNavSection('Admin Offline', adminLinks)}
-      </aside>
+          {renderNavSection('POS Offline', sellerLinks)}
+          {renderNavSection('Admin Offline', adminLinks)}
+        </aside>
+      ) : null}
 
       <main className="offline-workspace-main">
-        <header className="offline-workspace-topbar">
-          <div>
+        <header className={`offline-workspace-topbar ${isPosFullscreen ? 'offline-workspace-topbar-pos' : ''}`}>
+          <div className={isPosFullscreen ? 'offline-workspace-topbar-main' : ''}>
+            {isPosFullscreen && props.exitTo ? (
+              <Link className="offline-topbar-exit" to={props.exitTo}>
+                ← Quitter le POS
+              </Link>
+            ) : null}
             <span className="offline-workspace-kicker">{props.mode === 'seller' ? 'POS Offline' : 'Admin Offline'}</span>
             <h2>{props.title}</h2>
             {props.subtitle ? <p>{props.subtitle}</p> : null}

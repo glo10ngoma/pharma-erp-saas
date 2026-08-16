@@ -445,6 +445,7 @@ export function OfflinePosPage() {
       cashSession={snapshot.cashSession}
       title="Point de vente"
       subtitle="Caisse rapide hors ligne, scanner-ready et synchronisation automatique au retour du reseau."
+      exitTo="/offline/sales"
       topActions={(
         <>
           <button className="ghost-button compact-button" type="button" onClick={() => articleInputRef.current?.focus()}>
@@ -459,16 +460,90 @@ export function OfflinePosPage() {
       <section className="offline-page offline-pos-page offline-pos-page-fixed">
         <OfflineNetworkBanner viewModel={viewModel} syncEngine={syncEngine} />
 
-        <section className="offline-kpis offline-kpis-compact">
-          <div className="card offline-kpi"><span>Statut</span><strong>{formatOfflineCartStatus(cart.status)}</strong><small>Vente en cours</small></div>
-          <div className="card offline-kpi"><span>Articles</span><strong>{cart.itemCount}</strong><small>ligne(s)</small></div>
-          <div className="card offline-kpi"><span>Quantite</span><strong>{cart.quantityTotal}</strong><small>unite(s)</small></div>
-          <div className="card offline-kpi"><span>Total USD</span><strong>{formatMoney(cart.total, 'USD')}</strong></div>
-          <div className="card offline-kpi"><span>Total FC</span><strong>{settings?.exchangeRate?.rate ? `${Math.round(cart.total * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong></div>
+        <section className="card offline-panel offline-pos-summary-strip">
+          <span className="offline-pos-summary-item">
+            <strong>{formatOfflineCartStatus(cart.status)}</strong>
+            <small>Vente en cours</small>
+          </span>
+          <span className="offline-pos-summary-dot" aria-hidden="true">•</span>
+          <span className="offline-pos-summary-item">
+            <strong>{cart.itemCount}</strong>
+            <small>article(s)</small>
+          </span>
+          <span className="offline-pos-summary-dot" aria-hidden="true">•</span>
+          <span className="offline-pos-summary-item">
+            <strong>{cart.quantityTotal}</strong>
+            <small>unite(s)</small>
+          </span>
+          <span className="offline-pos-summary-dot" aria-hidden="true">•</span>
+          <span className="offline-pos-summary-item">
+            <strong>{formatMoney(cart.total, 'USD')}</strong>
+            <small>Total USD</small>
+          </span>
+          <span className="offline-pos-summary-dot" aria-hidden="true">•</span>
+          <span className="offline-pos-summary-item">
+            <strong>{settings?.exchangeRate?.rate ? `${Math.round(cart.total * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong>
+            <small>Total FC</small>
+          </span>
         </section>
 
-        <section className="offline-pos-grid offline-pos-grid-premium">
-        <div className="offline-pos-left">
+        <section className="offline-pos-grid offline-pos-grid-premium offline-pos-grid-fullscreen">
+        <aside className="offline-pos-cart-column">
+          <section className="card offline-panel offline-cart-panel offline-cart-panel-premium offline-cart-panel-fullscreen">
+            <div className="offline-panel-heading offline-cart-panel-heading">
+              <h3>Panier ({cart.itemCount})</h3>
+              <button className="ghost-button compact-button offline-danger-link" type="button" onClick={() => void handleClearCart()} disabled={busyAction !== null || cart.items.length === 0}>
+                Vider
+              </button>
+            </div>
+            {cart.items.length === 0 ? (
+              <div className="offline-cart-empty-state">
+                <div className="offline-cart-empty-icon">Panier</div>
+                <strong>Aucun article dans le panier</strong>
+                <p>Scannez ou recherchez un article pour commencer.</p>
+              </div>
+            ) : (
+              <div className="table-wrap offline-cart-table-wrap offline-cart-table-wrap-fullscreen">
+                <table className="data-table offline-cart-table offline-cart-table-compact">
+                  <thead>
+                    <tr>
+                      <th>Article / lot</th>
+                      <th>Qte</th>
+                      <th>PU</th>
+                      <th>Total</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cart.items.map((item) => (
+                      <tr key={item.localItemId}>
+                        <td>
+                          <strong>{item.articleName}</strong>
+                          <div className="offline-row-meta">{item.lotAllocations[0]?.lotNumber ?? item.articleCode}</div>
+                        </td>
+                        <td>{item.quantity}</td>
+                        <td>{formatMoney(item.unitPriceSnapshot, cart.currency)}</td>
+                        <td>{formatMoney(item.lineTotal, cart.currency)}</td>
+                        <td>
+                          <button
+                            className="ghost-button compact-button offline-cart-remove-button"
+                            type="button"
+                            onClick={() => void handleQuantityChange(item, 0)}
+                            disabled={busyAction !== null}
+                          >
+                            Retirer
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </aside>
+
+        <div className="offline-pos-left offline-pos-center-column">
           <section className="card offline-panel offline-pos-context offline-pos-context-premium">
             <div className="offline-pos-context-grid">
               <div>
@@ -637,60 +712,7 @@ export function OfflinePosPage() {
           </section>
         </div>
 
-        <aside className="offline-pos-right offline-pos-right-premium">
-          <section className="card offline-panel offline-cart-panel offline-cart-panel-premium">
-            <div className="offline-panel-heading">
-              <h3>Panier ({cart.itemCount})</h3>
-              <button className="ghost-button compact-button offline-danger-link" type="button" onClick={() => void handleClearCart()} disabled={busyAction !== null || cart.items.length === 0}>
-                Vider
-              </button>
-            </div>
-            {cart.items.length === 0 ? (
-              <div className="offline-cart-empty-state">
-                <div className="offline-cart-empty-icon">Panier</div>
-                <strong>Aucun article dans le panier</strong>
-                <p>Scannez ou recherchez un article pour commencer.</p>
-              </div>
-            ) : (
-              <div className="table-wrap offline-cart-table-wrap">
-                <table className="data-table offline-cart-table offline-cart-table-compact">
-                  <thead>
-                    <tr>
-                      <th>Article / lot</th>
-                      <th>Qte</th>
-                      <th>PA USD</th>
-                      <th>Total USD</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cart.items.map((item) => (
-                      <tr key={item.localItemId}>
-                        <td>
-                          <strong>{item.articleName}</strong>
-                          <div className="offline-row-meta">{item.lotAllocations[0]?.lotNumber ?? item.articleCode}</div>
-                        </td>
-                        <td>{item.quantity}</td>
-                        <td>{formatMoney(item.unitPriceSnapshot, cart.currency)}</td>
-                        <td>{formatMoney(item.lineTotal, cart.currency)}</td>
-                        <td>
-                          <button
-                            className="ghost-button compact-button offline-cart-remove-button"
-                            type="button"
-                            onClick={() => void handleQuantityChange(item, 0)}
-                            disabled={busyAction !== null}
-                          >
-                            Retirer
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-
+        <aside className="offline-pos-right offline-pos-right-premium offline-pos-payment-column">
           <section className="card offline-panel offline-payment-hero">
             <div className="offline-payment-hero-label">Total a payer</div>
             <div className="offline-payment-hero-amount">{formatMoney(cart.total, 'USD')}</div>
