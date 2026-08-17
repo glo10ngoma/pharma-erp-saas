@@ -7461,7 +7461,7 @@ details.nav-group .nav-link {
 }
 
 .offline-pos-grid-fullscreen {
-  grid-template-columns: minmax(280px, 320px) minmax(0, 1fr) minmax(300px, 336px);
+  grid-template-columns: minmax(360px, 420px) minmax(0, 1fr) minmax(300px, 336px);
 }
 
 .offline-pos-left,
@@ -7525,7 +7525,7 @@ details.nav-group .nav-link {
   border-top: 1px solid #e6ece8;
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   padding-top: 10px;
 }
 
@@ -7554,11 +7554,58 @@ details.nav-group .nav-link {
 }
 
 .offline-payment-card-heading {
-  align-items: center;
+  align-items: start;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .offline-payment-exact-button {
   min-width: 100%;
+}
+
+.offline-payment-readonly {
+  border-top: 1px solid #e6ece8;
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.offline-payment-readonly h4 {
+  color: #34463d;
+  font-size: 0.8rem;
+  font-weight: 800;
+  margin: 0;
+}
+
+.offline-payment-readonly-row {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.offline-payment-readonly-row span {
+  color: #55665e;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.offline-payment-readonly-row strong {
+  color: #18241f;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.offline-payment-note {
+  display: grid;
+  gap: 6px;
+}
+
+.offline-payment-note > span {
+  color: #34463d;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 
 .offline-pos-context-premium .offline-pos-context-grid,
@@ -8255,7 +8302,7 @@ details.nav-group .nav-link {
   }
 
   .offline-pos-grid-fullscreen {
-    grid-template-columns: minmax(250px, 280px) minmax(0, 1fr) minmax(280px, 304px);
+    grid-template-columns: minmax(340px, 392px) minmax(0, 1fr) minmax(280px, 304px);
   }
 
   .offline-pos-context-premium .offline-pos-context-grid,
@@ -8359,7 +8406,7 @@ details.nav-group .nav-link {
   }
 
   .offline-pos-page-fixed .offline-pos-grid-fullscreen {
-    grid-template-columns: minmax(250px, 272px) minmax(0, 1fr) minmax(280px, 304px);
+    grid-template-columns: minmax(320px, 368px) minmax(0, 1fr) minmax(280px, 304px);
   }
 
   .offline-pos-page-fixed .offline-pos-left,

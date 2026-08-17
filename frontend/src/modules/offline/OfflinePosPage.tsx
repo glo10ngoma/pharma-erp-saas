@@ -471,7 +471,7 @@ export function OfflinePosPage() {
           </span>
           <span className="offline-pos-summary-field">
             <small>Site</small>
-            <strong>{workstation?.siteName ?? workstation?.siteId ?? '-'}</strong>
+            <strong>{formatSiteLabel(workstation?.siteName ?? workstation?.siteId ?? '-')}</strong>
           </span>
           <span className="offline-pos-summary-field">
             <small>Devise</small>
@@ -480,10 +480,6 @@ export function OfflinePosPage() {
           <span className="offline-pos-summary-field">
             <small>Taux local</small>
             <strong>{settings?.exchangeRate?.rate ? `1 USD = ${Number(settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong>
-          </span>
-          <span className="offline-pos-summary-item offline-pos-summary-item-end">
-            <strong>{cart.itemCount}</strong>
-            <small>article(s)</small>
           </span>
         </section>
 
@@ -549,10 +545,6 @@ export function OfflinePosPage() {
                   <span>article(s)</span>
                 </div>
                 <div>
-                  <strong>{cart.quantityTotal}</strong>
-                  <span>unite(s)</span>
-                </div>
-                <div>
                   <strong>{formatMoney(cart.total, 'USD')}</strong>
                   <span>{settings?.exchangeRate?.rate ? `${Math.round(cart.total * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</span>
                 </div>
@@ -573,9 +565,6 @@ export function OfflinePosPage() {
               <section className="card offline-panel offline-client-card">
                 <div className="offline-panel-heading">
                   <h3>Client</h3>
-                  <button className="ghost-button compact-button row-action-button icon-only offline-client-action-button" type="button" onClick={() => void handleSelectCustomer(draftCounterCustomer)} disabled={busyAction !== null} title="Afficher client" aria-label="Afficher client">
-                    <CustomerIcon />
-                  </button>
                 </div>
                 <FloatingSearchPopover
                   columns={[
@@ -705,31 +694,63 @@ export function OfflinePosPage() {
 
             <section className="card offline-panel offline-payment-card">
               <div className="offline-panel-heading offline-payment-card-heading">
-                <h3>Reglement</h3>
+                <h3>Règlement</h3>
                 <button className="ghost-button compact-button offline-payment-exact-button" type="button" onClick={applyExactPayment}>
                   Paiement exact
                 </button>
               </div>
               <div className="detail-grid compact-detail-grid">
                 <label>
-                  <span>Paye USD</span>
+                  <span>PAYÉ USD</span>
                   <input className="input compact-input" type="number" min="0" step="0.01" value={amountPaidUsd} onChange={(event) => setAmountPaidUsd(event.target.value)} />
                 </label>
                 <label>
-                  <span>Paye FC</span>
+                  <span>PAYÉ FC</span>
                   <input ref={amountPaidCdfRef} className="input compact-input" type="number" min="0" step="1" value={amountPaidCdf} onChange={(event) => setAmountPaidCdf(event.target.value)} />
                 </label>
               </div>
               <div className="detail-grid compact-detail-grid">
                 <label>
-                  <span>A rendre USD</span>
+                  <span>À RENDRE USD</span>
                   <input className="input compact-input" type="text" value={formatMoney(settlementPreview.suggestedChangeUsd, 'USD')} readOnly />
                 </label>
                 <label>
-                  <span>A rendre FC</span>
+                  <span>À RENDRE FC</span>
                   <input className="input compact-input" type="text" value={`${Math.round(settlementPreview.suggestedChangeCdf).toLocaleString('fr-FR')} FC`} readOnly />
                 </label>
               </div>
+              <div className="detail-grid compact-detail-grid">
+                <label>
+                  <span>Rendu USD</span>
+                  <input className="input compact-input" type="text" value="" readOnly />
+                </label>
+                <label>
+                  <span>Rendu FC</span>
+                  <input className="input compact-input" type="text" value="" readOnly />
+                </label>
+              </div>
+              <div className="offline-payment-readonly">
+                <h4>Informations (lecture seule)</h4>
+                <div className="offline-payment-readonly-row">
+                  <span>Part patient</span>
+                  <strong>{formatMoney(cart.total, 'USD')}</strong>
+                  <strong>{settings?.exchangeRate?.rate ? `${Math.round(cart.total * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong>
+                </div>
+                <div className="offline-payment-readonly-row">
+                  <span>Part assurance</span>
+                  <strong>{formatMoney(0, 'USD')}</strong>
+                  <strong>{settings?.exchangeRate?.rate ? '0 FC' : '-'}</strong>
+                </div>
+              </div>
+              <label className="offline-payment-note">
+                <span>NOTE</span>
+                <textarea
+                  className="input compact-input offline-note-input"
+                  rows={3}
+                  value={noteDraft}
+                  onChange={(event) => handleNoteChange(event.target.value)}
+                />
+              </label>
               {!canAttachOfflineCashSale(snapshot.cashSession) ? (
                 <div className="offline-warning-text">
                   {snapshot.cashSession
@@ -830,6 +851,6 @@ function TrashIcon() {
   return <svg aria-hidden="true" className="row-action-icon" focusable="false" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M9 10v8M15 10v8M6 6l1 14h10l1-14" /></svg>;
 }
 
-function CustomerIcon() {
-  return <svg aria-hidden="true" className="row-action-icon" focusable="false" viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm-7 8a7 7 0 0 1 14 0M19 7h2m-1-1v2" /></svg>;
+function formatSiteLabel(value: string) {
+  return value.replace(/^OFF-STG\s+/i, '');
 }
