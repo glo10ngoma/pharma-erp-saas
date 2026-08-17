@@ -515,7 +515,7 @@ export function OfflinePosPage() {
                       {cart.items.map((item) => (
                         <tr key={item.localItemId}>
                           <td>
-                            <strong>{item.articleName}</strong>
+                            <strong>{formatDisplayArticleName(item.articleName, item.articleCode)}</strong>
                             <div className="offline-row-meta">{formatLotLabel(item.lotAllocations[0]?.lotNumber ?? item.articleCode)}</div>
                           </td>
                           <td>{item.quantity}</td>
@@ -623,7 +623,7 @@ export function OfflinePosPage() {
               </div>
               <FloatingSearchPopover
                 columns={[
-                  { header: 'Article', render: (item: LocalCatalogSearchResult) => <strong>{item.article.commercialName}</strong> },
+                  { header: 'Article', render: (item: LocalCatalogSearchResult) => <strong>{formatDisplayArticleName(item.article.commercialName, item.article.articleCode)}</strong> },
                   { header: 'Code', render: (item: LocalCatalogSearchResult) => formatDisplayCode(item.article.articleCode) },
                   { header: 'Prix', render: (item: LocalCatalogSearchResult) => item.unitPrice ? formatMoney(item.unitPrice, cart.currency) : '-' },
                   { header: 'Stock poste', render: (item: LocalCatalogSearchResult) => item.offlineAvailableQuantity },
@@ -665,7 +665,7 @@ export function OfflinePosPage() {
                       }
                     >
                       <strong>{formatDisplayCode(result.article.articleCode)}</strong>
-                      <span>{result.article.commercialName}</span>
+                      <span>{formatDisplayArticleName(result.article.commercialName, result.article.articleCode)}</span>
                       <small>{result.offlineAvailableQuantity} dispo</small>
                     </button>
                   ))}
@@ -835,6 +835,12 @@ function formatDisplayCode(code: string) {
   const normalized = code.replace(/^OFF-STG-(FIELD-|FLD-)?/i, '');
   const compact = normalized.split('-').filter(Boolean).join('-');
   return compact.length > 18 ? compact.slice(-18) : compact;
+}
+
+function formatDisplayArticleName(name: string, fallbackCode?: string) {
+  const normalized = name.replace(/^OFF-STG[\s-]*(FIELD|FLD)?[\s-]*/i, '').trim();
+  if (!normalized) return fallbackCode ? formatDisplayCode(fallbackCode) : name;
+  return normalized.replace(/\s{2,}/g, ' ');
 }
 
 function formatSaleReference(reference: string) {
