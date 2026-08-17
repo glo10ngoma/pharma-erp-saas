@@ -7594,7 +7594,7 @@ details.nav-group .nav-link {
 
 .offline-pos-control-grid {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   grid-template-columns: minmax(0, 1.55fr) repeat(3, minmax(180px, 0.8fr));
 }
 
@@ -7608,8 +7608,8 @@ details.nav-group .nav-link {
 
 .offline-client-card,
 .offline-choice-card {
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 8px;
+  padding: 8px 10px;
 }
 
 .offline-segmented-control {
@@ -7625,8 +7625,8 @@ details.nav-group .nav-link {
   color: #28463b;
   font-size: 0.85rem;
   font-weight: 700;
-  min-height: 40px;
-  padding: 0 12px;
+  min-height: 38px;
+  padding: 0 10px;
 }
 
 .offline-segmented-control button.is-active {
@@ -7644,7 +7644,7 @@ details.nav-group .nav-link {
 .offline-search-card .floating-search-input,
 .offline-client-card .floating-search-trigger,
 .offline-client-card .floating-search-input {
-  min-height: 42px;
+  min-height: 40px;
 }
 
 .offline-search-card .floating-search-trigger,
@@ -7664,8 +7664,8 @@ details.nav-group .nav-link {
   background: #f9fbfa;
   border: 1px solid #dce5e0;
   border-radius: 6px;
-  min-height: 74px;
-  padding: 8px 10px;
+  min-height: 72px;
+  padding: 7px 9px;
   text-align: left;
 }
 
@@ -7735,9 +7735,23 @@ details.nav-group .nav-link {
 .offline-table th,
 .offline-table td {
   font-size: 0.82rem;
-  padding-bottom: 9px;
-  padding-top: 9px;
+  padding-bottom: 8px;
+  padding-top: 8px;
   vertical-align: top;
+}
+
+.offline-cart-table td:first-child strong {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.offline-cart-table td:first-child .offline-row-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .offline-payment-hero {
@@ -7888,7 +7902,7 @@ details.nav-group .nav-link {
 }
 
 .offline-draft-save-button {
-  min-width: 220px;
+  min-width: 208px;
 }
 
 .offline-danger-link {
@@ -7917,7 +7931,7 @@ details.nav-group .nav-link {
 .offline-cancel-button {
   border-color: rgba(220, 38, 38, .35);
   color: #b91c1c;
-  min-width: 220px;
+  min-width: 208px;
 }
 
 .offline-cancel-button:hover:not(:disabled) {

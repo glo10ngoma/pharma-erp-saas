@@ -463,7 +463,7 @@ export function OfflinePosPage() {
           </span>
           <span className="offline-pos-summary-field">
             <small>Vente</small>
-            <strong>{cart.offlineReference}</strong>
+            <strong>{formatSaleReference(cart.offlineReference)}</strong>
           </span>
           <span className="offline-pos-summary-field">
             <small>Poste</small>
@@ -635,7 +635,7 @@ export function OfflinePosPage() {
               <FloatingSearchPopover
                 columns={[
                   { header: 'Article', render: (item: LocalCatalogSearchResult) => <strong>{item.article.commercialName}</strong> },
-                  { header: 'Code', render: (item: LocalCatalogSearchResult) => item.article.articleCode },
+                  { header: 'Code', render: (item: LocalCatalogSearchResult) => formatDisplayCode(item.article.articleCode) },
                   { header: 'Prix', render: (item: LocalCatalogSearchResult) => item.unitPrice ? formatMoney(item.unitPrice, cart.currency) : '-' },
                   { header: 'Stock poste', render: (item: LocalCatalogSearchResult) => item.offlineAvailableQuantity },
                 ]}
@@ -814,6 +814,11 @@ function formatDisplayCode(code: string) {
   const normalized = code.replace(/^OFF-STG-(FIELD-|FLD-)?/i, '');
   const compact = normalized.split('-').filter(Boolean).join('-');
   return compact.length > 18 ? compact.slice(-18) : compact;
+}
+
+function formatSaleReference(reference: string) {
+  const normalized = reference.replace(/^OFF-/i, '');
+  return normalized.length > 16 ? normalized.slice(0, 16) : normalized;
 }
 
 function formatLotLabel(value: string) {
