@@ -7803,15 +7803,17 @@ details.nav-group .nav-link {
   font-size: 0.82rem;
   font-weight: 600;
   line-height: 1.2;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: normal;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   line-clamp: 2;
-  overflow: hidden;
 }
 
 .offline-cart-table td:first-child .offline-row-meta {
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
@@ -7928,6 +7930,12 @@ details.nav-group .nav-link {
   padding-top: 7px;
 }
 
+.offline-cart-table-compact th:first-child,
+.offline-cart-table-compact td:first-child {
+  text-align: left;
+  width: 52%;
+}
+
 .offline-cart-table-compact td:nth-child(2),
 .offline-cart-table-compact td:nth-child(3),
 .offline-cart-table-compact td:nth-child(4),
@@ -7935,6 +7943,32 @@ details.nav-group .nav-link {
 .offline-cart-table-compact th:nth-child(3),
 .offline-cart-table-compact th:nth-child(4) {
   text-align: right;
+}
+
+.offline-cart-table-compact th:nth-child(2),
+.offline-cart-table-compact td:nth-child(2) {
+  text-align: center;
+  white-space: nowrap;
+  width: 40px;
+}
+
+.offline-cart-table-compact th:nth-child(3),
+.offline-cart-table-compact td:nth-child(3) {
+  white-space: nowrap;
+  width: 62px;
+}
+
+.offline-cart-table-compact th:nth-child(4),
+.offline-cart-table-compact td:nth-child(4) {
+  white-space: nowrap;
+  width: 68px;
+}
+
+.offline-cart-table-compact th:nth-child(5),
+.offline-cart-table-compact td:nth-child(5) {
+  text-align: center;
+  white-space: nowrap;
+  width: 42px;
 }
 
 .offline-cart-remove-button {
