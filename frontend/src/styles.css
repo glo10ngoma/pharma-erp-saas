@@ -7484,6 +7484,7 @@ details.nav-group .nav-link {
 .offline-pos-cart-column,
 .offline-pos-center-column,
 .offline-pos-payment-column {
+  box-sizing: border-box;
   min-height: 0;
   min-width: 0;
 }
@@ -7494,6 +7495,10 @@ details.nav-group .nav-link {
   flex-direction: column;
 }
 
+.offline-pos-payment-column {
+  width: 100%;
+}
+
 .offline-pos-right-premium,
 .offline-pos-right {
   display: flex;
@@ -7501,8 +7506,10 @@ details.nav-group .nav-link {
   gap: 14px;
   height: 100%;
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
   position: static;
+  width: 100%;
 }
 
 .offline-cart-panel-fullscreen {
@@ -7812,9 +7819,14 @@ details.nav-group .nav-link {
   background:
     radial-gradient(circle at 20% 20%, rgba(255,255,255,0.07) 0, rgba(255,255,255,0.07) 1px, transparent 1px) 0 0 / 18px 18px,
     #065f46;
+  box-sizing: border-box;
   border-color: #065f46;
   color: #fff;
   gap: 6px;
+  justify-self: stretch;
+  max-width: none;
+  min-width: 0;
+  width: 100%;
 }
 
 .offline-payment-hero-label {
@@ -7837,7 +7849,12 @@ details.nav-group .nav-link {
 }
 
 .offline-payment-card {
+  box-sizing: border-box;
   grid-template-columns: minmax(0, 1fr);
+  justify-self: stretch;
+  max-width: none;
+  min-width: 0;
+  width: 100%;
 }
 
 .offline-payment-card label {
