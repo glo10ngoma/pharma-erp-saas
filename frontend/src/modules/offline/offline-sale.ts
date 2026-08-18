@@ -32,33 +32,42 @@ import {
 export type FinalizeOfflineCashSaleInput = {
   amountPaidUsd: number;
   amountPaidCdf: number;
+  amountReturnedUsd?: number;
+  amountReturnedCdf?: number;
   note?: string | null;
 };
 
 export function buildOfflineCashSettlement(params: {
-  totalUsd: number;
+  payableUsd: number;
   exchangeRate: number | null;
   amountPaidUsd: number;
   amountPaidCdf: number;
+  amountReturnedUsd?: number;
+  amountReturnedCdf?: number;
 }): OfflinePaymentSettlement {
-  const totalUsd = roundMoney(params.totalUsd);
+  const payableUsd = roundMoney(params.payableUsd);
   const rate = params.exchangeRate && params.exchangeRate > 0 ? Number(params.exchangeRate) : null;
   const amountPaidUsd = roundMoney(params.amountPaidUsd);
   const amountPaidCdf = roundMoney(params.amountPaidCdf);
-  const paidUsdEquivalent = roundMoney(amountPaidUsd + (rate ? amountPaidCdf / rate : 0));
-  const settlementDifferenceUsd = roundMoney(paidUsdEquivalent - totalUsd);
-  const suggestedChangeUsd = settlementDifferenceUsd > 0 ? settlementDifferenceUsd : 0;
+  const amountReturnedUsd = roundMoney(params.amountReturnedUsd ?? 0);
+  const amountReturnedCdf = roundMoney(params.amountReturnedCdf ?? 0);
+  const netReceivedUsd = roundMoney(amountPaidUsd - amountReturnedUsd);
+  const netReceivedCdf = roundMoney(amountPaidCdf - amountReturnedCdf);
+  const paidUsdEquivalent = roundMoney(netReceivedUsd + (rate ? netReceivedCdf / rate : 0));
+  const grossDifferenceUsd = roundMoney(roundMoney(amountPaidUsd + (rate ? amountPaidCdf / rate : 0)) - payableUsd);
+  const settlementDifferenceUsd = roundMoney(paidUsdEquivalent - payableUsd);
+  const suggestedChangeUsd = grossDifferenceUsd > 0 ? grossDifferenceUsd : 0;
   const suggestedChangeCdf = rate ? roundMoney(suggestedChangeUsd * rate) : 0;
 
   return {
     amountPaidUsd,
     amountPaidCdf,
-    amountReturnedUsd: 0,
-    amountReturnedCdf: 0,
+    amountReturnedUsd,
+    amountReturnedCdf,
     suggestedChangeUsd,
     suggestedChangeCdf,
-    netReceivedUsd: amountPaidUsd,
-    netReceivedCdf: amountPaidCdf,
+    netReceivedUsd,
+    netReceivedCdf,
     netTotalEquivalentUsd: paidUsdEquivalent,
     settlementDifferenceUsd,
   };
@@ -79,13 +88,7 @@ export async function finalizeOfflineCashSale(cartId: string, input: FinalizeOff
   if (calculateAuthorizationState(snapshot.auth) === 'EXPIRED') {
     throw new Error('OFFLINE_AUTH_EXPIRED');
   }
-  if (!canAttachOfflineCashSale(snapshot.cashSession)) {
-    throw new Error('CASH_SESSION_REQUIRED');
-  }
   const cashSessionSnapshot = snapshot.cashSession;
-  if (!cashSessionSnapshot) {
-    throw new Error('CASH_SESSION_REQUIRED');
-  }
   if (!cart.items.length || cart.status === 'BLOCKED') {
     throw new Error('CART_BLOCKED');
   }
@@ -96,18 +99,47 @@ export async function finalizeOfflineCashSale(cartId: string, input: FinalizeOff
   }
 
   const settlement = buildOfflineCashSettlement({
-    totalUsd: cart.total,
+    payableUsd: cart.patientShareUsd,
     exchangeRate: rate,
     amountPaidUsd: Number(input.amountPaidUsd ?? 0),
     amountPaidCdf: Number(input.amountPaidCdf ?? 0),
+    amountReturnedUsd: Number(input.amountReturnedUsd ?? 0),
+    amountReturnedCdf: Number(input.amountReturnedCdf ?? 0),
   });
 
-  if (settlement.amountPaidUsd <= 0 && settlement.amountPaidCdf <= 0) {
+  if (cart.saleType === 'INSURANCE' && !cart.customerId) {
+    throw new Error('CUSTOMER_REQUIRED_FOR_INSURANCE');
+  }
+  if (cart.saleType === 'INSURANCE' && !cart.membershipId) {
+    throw new Error('MEMBERSHIP_REQUIRED');
+  }
+  if (cart.patientShareUsd > 0 && settlement.amountPaidUsd <= 0 && settlement.amountPaidCdf <= 0) {
     throw new Error('PAYMENT_REQUIRED');
   }
   if (settlement.settlementDifferenceUsd < -0.02) {
     throw new Error('PAYMENT_INSUFFICIENT');
   }
+  if (
+    settlement.amountReturnedUsd > settlement.amountPaidUsd
+    || settlement.amountReturnedCdf > settlement.amountPaidCdf
+    || ((settlement.amountReturnedUsd > 0 || settlement.amountReturnedCdf > 0)
+      && settlement.amountPaidUsd <= 0
+      && settlement.amountPaidCdf <= 0)
+  ) {
+    throw new Error('INVALID_SETTLEMENT_RETURN');
+  }
+  const requiresCashSession =
+    settlement.amountPaidUsd > 0
+    || settlement.amountPaidCdf > 0
+    || settlement.amountReturnedUsd > 0
+    || settlement.amountReturnedCdf > 0;
+  if (requiresCashSession && !canAttachOfflineCashSale(snapshot.cashSession)) {
+    throw new Error('CASH_SESSION_REQUIRED');
+  }
+  if (requiresCashSession && !cashSessionSnapshot) {
+    throw new Error('CASH_SESSION_REQUIRED');
+  }
+  const ensuredCashSessionSnapshot = requiresCashSession ? cashSessionSnapshot : null;
 
   const validatedAt = new Date().toISOString();
   const operationId = crypto.randomUUID();
@@ -145,16 +177,22 @@ export async function finalizeOfflineCashSale(cartId: string, input: FinalizeOff
     workstationId: cart.workstationId,
     deviceId: cart.deviceId,
     userId: cart.userId,
-    cashSessionId: cashSessionSnapshot.serverCashSessionId,
-    localCashSessionId: cashSessionSnapshot.localCashSessionId,
-    cashSessionOpenOperationId: cashSessionSnapshot.openingOperationId,
+    cashSessionId: ensuredCashSessionSnapshot?.serverCashSessionId ?? null,
+    localCashSessionId: ensuredCashSessionSnapshot?.localCashSessionId ?? 'NO-CASH-SESSION',
+    cashSessionOpenOperationId: ensuredCashSessionSnapshot?.openingOperationId ?? null,
     customerId: cart.customerId,
+    organizationId: cart.organizationId,
+    planId: cart.planId,
+    membershipId: cart.membershipId,
+    coveragePercentSnapshot: cart.coveragePercentSnapshot,
     currency: 'USD',
     exchangeRateSnapshot: rate,
     createdAt: cart.createdAt,
     validatedAt,
-    saleMode: 'IMMEDIATE',
-    saleType: 'CASH',
+    saleMode: cart.saleMode,
+    saleType: cart.saleType,
+    patientShareUsd: cart.patientShareUsd,
+    insuranceShareUsd: cart.insuranceShareUsd,
     note: (input.note ?? cart.note ?? '').trim() || null,
     subtotal: cart.subtotal,
     total: cart.total,
@@ -184,15 +222,25 @@ export async function finalizeOfflineCashSale(cartId: string, input: FinalizeOff
     workstationId: cart.workstationId,
     deviceId: cart.deviceId,
     userId: cart.userId,
-    cashSessionId: cashSessionSnapshot.cashSessionId,
-    localCashSessionId: cashSessionSnapshot.localCashSessionId,
-    cashSessionOpenOperationId: cashSessionSnapshot.openingOperationId,
+    cashSessionId: cashSessionSnapshot?.cashSessionId ?? crypto.randomUUID(),
+    localCashSessionId: cashSessionSnapshot?.localCashSessionId ?? 'NO-CASH-SESSION',
+    cashSessionOpenOperationId: cashSessionSnapshot?.openingOperationId ?? null,
     customerId: cart.customerId,
     customerNameSnapshot: cart.customerNameSnapshot,
-    saleType: 'CASH',
-    saleMode: 'IMMEDIATE',
+    saleType: cart.saleType,
+    saleMode: cart.saleMode,
+    organizationId: cart.organizationId,
+    organizationNameSnapshot: cart.organizationNameSnapshot,
+    planId: cart.planId,
+    planNameSnapshot: cart.planNameSnapshot,
+    membershipId: cart.membershipId,
+    membershipNumberSnapshot: cart.membershipNumberSnapshot,
+    coveragePercentSnapshot: cart.coveragePercentSnapshot,
+    patientShareUsd: cart.patientShareUsd,
+    insuranceShareUsd: cart.insuranceShareUsd,
     currency: 'USD',
     exchangeRateSnapshot: rate,
+    paymentSettlement: settlement,
     note: operation.note,
     status: 'PENDING_SYNC',
     syncStatus: 'PENDING',
@@ -226,8 +274,8 @@ export async function finalizeOfflineCashSale(cartId: string, input: FinalizeOff
     tenantId: cart.tenantId,
     siteId: cart.siteId,
     workstationId: cart.workstationId,
-    cashSessionId: cashSessionSnapshot.cashSessionId,
-    localCashSessionId: cashSessionSnapshot.localCashSessionId,
+    cashSessionId: cashSessionSnapshot?.cashSessionId ?? 'NO-CASH-SESSION',
+    localCashSessionId: cashSessionSnapshot?.localCashSessionId ?? 'NO-CASH-SESSION',
     currencyCode: 'USD',
     exchangeRate: rate,
     settlement,
@@ -256,10 +304,10 @@ export async function finalizeOfflineCashSale(cartId: string, input: FinalizeOff
     },
   ];
 
-  const currentCashMovements = await readOfflineCashMovements();
-  const cashMovementUsd = settlement.netReceivedUsd > 0 ? {
+  const currentCashMovements = requiresCashSession ? await readOfflineCashMovements() : [];
+  const cashMovementUsd = requiresCashSession && settlement.netReceivedUsd > 0 ? {
     localMovementId: crypto.randomUUID(),
-    localCashSessionId: cashSessionSnapshot.localCashSessionId,
+    localCashSessionId: ensuredCashSessionSnapshot!.localCashSessionId,
     tenantId: cart.tenantId,
     siteId: cart.siteId,
     workstationId: cart.workstationId,
@@ -277,10 +325,10 @@ export async function finalizeOfflineCashSale(cartId: string, input: FinalizeOff
     syncedAt: null,
     status: 'PENDING_SYNC' as const,
   } : null;
-  const cashMovementCdf = settlement.netReceivedCdf > 0 ? {
+  const cashMovementCdf = requiresCashSession && settlement.netReceivedCdf > 0 ? {
     ...(cashMovementUsd ?? {
       localMovementId: crypto.randomUUID(),
-      localCashSessionId: cashSessionSnapshot.localCashSessionId,
+      localCashSessionId: ensuredCashSessionSnapshot!.localCashSessionId,
       tenantId: cart.tenantId,
       siteId: cart.siteId,
       workstationId: cart.workstationId,
@@ -300,17 +348,19 @@ export async function finalizeOfflineCashSale(cartId: string, input: FinalizeOff
     currency: 'CDF' as const,
     amount: settlement.netReceivedCdf,
   } : null;
-  const cashSession = recalculateOfflineCashSessionTotals(
-    {
-      ...cashSessionSnapshot,
-      updatedAt: validatedAt,
-    },
-    [
-      ...currentCashMovements,
-      ...(cashMovementUsd ? [cashMovementUsd] : []),
-      ...(cashMovementCdf ? [cashMovementCdf] : []),
-    ],
-  );
+  const cashSession = requiresCashSession && cashSessionSnapshot
+    ? recalculateOfflineCashSessionTotals(
+        {
+          ...ensuredCashSessionSnapshot!,
+          updatedAt: validatedAt,
+        },
+        [
+          ...currentCashMovements,
+          ...(cashMovementUsd ? [cashMovementUsd] : []),
+          ...(cashMovementCdf ? [cashMovementCdf] : []),
+        ],
+      )
+    : null;
 
   await persistValidatedOfflineSale({
     sale,
@@ -330,9 +380,9 @@ export async function finalizeOfflineCashSale(cartId: string, input: FinalizeOff
       payload: operation,
       status: 'PENDING',
       relatedLocalSaleId: localSaleId,
-      relatedLocalCashSessionId: cashSessionSnapshot.localCashSessionId,
-      dependsOnOperationId: cashSessionSnapshot.serverCashSessionId ? null : cashSessionSnapshot.openingOperationId,
-      dependencyGroup: `CASH_SESSION:${cashSessionSnapshot.localCashSessionId}`,
+      relatedLocalCashSessionId: ensuredCashSessionSnapshot?.localCashSessionId ?? null,
+      dependsOnOperationId: ensuredCashSessionSnapshot && !ensuredCashSessionSnapshot.serverCashSessionId ? ensuredCashSessionSnapshot.openingOperationId : null,
+      dependencyGroup: ensuredCashSessionSnapshot ? `CASH_SESSION:${ensuredCashSessionSnapshot.localCashSessionId}` : null,
       lastErrorCode: null,
       lastErrorMessage: null,
     },

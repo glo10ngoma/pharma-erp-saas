@@ -703,12 +703,19 @@ export class SalesRepository {
       );
 
       const saleNumber = `SAL-${Date.now()}`;
+      const fulfillmentStatus = operation.saleMode === 'ADVANCE' ? 'NOT_FULFILLED' : 'FULFILLED';
+      const insuranceMembership = operation.saleType === 'INSURANCE'
+        ? await this.resolveOfflineInsuranceMembership(client, user.tenantId, operation.membershipId ?? null, operation.customerId ?? null)
+        : null;
+      const saleCoveragePercent = operation.saleType === 'INSURANCE'
+        ? Number(insuranceMembership?.coveragePercent ?? operation.coveragePercentSnapshot ?? 0)
+        : 0;
       const created = await client.query<{ sale_id: string }>(
         `INSERT INTO sales (
            tenant_id, sale_number, site_id, customer_id, currency_id, exchange_rate,
            sale_type, sale_mode, fulfillment_status, created_by
          )
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'FULFILLED',$9)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
          RETURNING sale_id`,
         [
           user.tenantId,
@@ -719,13 +726,13 @@ export class SalesRepository {
           operation.exchangeRateSnapshot ?? 1,
           operation.saleType,
           operation.saleMode,
+          fulfillmentStatus,
           user.userId,
         ],
       );
       const saleId = created.rows[0]?.sale_id;
       if (!saleId) throw new Error('POS_SYNC_CREATE_FAILED');
 
-      const saleCoveragePercent = 0;
       const effectiveValidationDate = this.toCivilDateString(operation.validatedAt);
       if (!effectiveValidationDate) throw new Error('LOT_EXPIRY_DATE_INVALID');
 
@@ -733,6 +740,7 @@ export class SalesRepository {
 
       for (const item of operation.items) {
         await this.assertArticle(user, item.articleId);
+        let advanceArticleQuantity = 0;
         for (const allocation of item.lotAllocations) {
           const lockedAllocation = await client.query<OfflineAllocationLockRow>(
             `SELECT allocation_id, workstation_id, site_id, article_id, lot_id,
@@ -785,25 +793,35 @@ export class SalesRepository {
           if (lotExpiryDate <= effectiveValidationDate) throw new Error('LOT_EXPIRED_AT_OFFLINE_SALE');
           if (lotRow.is_blocked) throw new Error('LOT_BLOCKED_AFTER_OFFLINE_SALE');
 
-          const lineTotal = this.roundMoney(allocation.quantity * Number(item.unitPriceSnapshot ?? 0));
-          await client.query(
-            `INSERT INTO sale_items (
-               tenant_id, sale_id, article_id, lot_id, quantity, ordered_quantity, fulfilled_quantity,
-               unit_price, coverage_percent, covered_amount, patient_amount, line_total
-             )
-             VALUES ($1,$2,$3,$4,$5,$5,$5,$6,$7,0,$8,$9)`,
-            [
-              user.tenantId,
-              saleId,
-              item.articleId,
-              allocation.lotId,
-              allocation.quantity,
-              item.unitPriceSnapshot,
-              saleCoveragePercent,
-              lineTotal,
-              lineTotal,
-            ],
-          );
+          advanceArticleQuantity = this.roundMoney(advanceArticleQuantity + allocation.quantity);
+          if (operation.saleMode === 'IMMEDIATE') {
+            const lineTotal = this.roundMoney(allocation.quantity * Number(item.unitPriceSnapshot ?? 0));
+            const coveredAmount = operation.saleType === 'INSURANCE'
+              ? this.roundMoney(lineTotal * saleCoveragePercent / 100)
+              : 0;
+            const patientAmount = operation.saleType === 'INSURANCE'
+              ? this.roundMoney(lineTotal - coveredAmount)
+              : lineTotal;
+            await client.query(
+              `INSERT INTO sale_items (
+                 tenant_id, sale_id, article_id, lot_id, quantity, ordered_quantity, fulfilled_quantity,
+                 unit_price, coverage_percent, covered_amount, patient_amount, line_total
+               )
+               VALUES ($1,$2,$3,$4,$5,$5,$5,$6,$7,$8,$9,$10)`,
+              [
+                user.tenantId,
+                saleId,
+                item.articleId,
+                allocation.lotId,
+                allocation.quantity,
+                item.unitPriceSnapshot,
+                saleCoveragePercent,
+                coveredAmount,
+                patientAmount,
+                lineTotal,
+              ],
+            );
+          }
 
           const nextConsumedQuantity = this.roundMoney(
             Number(allocationRow.consumed_quantity ?? 0) + allocation.quantity,
@@ -840,9 +858,46 @@ export class SalesRepository {
             status: nextStatus,
           });
         }
+
+        if (operation.saleMode === 'ADVANCE' && advanceArticleQuantity > 0) {
+          const lineTotal = this.roundMoney(advanceArticleQuantity * Number(item.unitPriceSnapshot ?? 0));
+          const coveredAmount = operation.saleType === 'INSURANCE'
+            ? this.roundMoney(lineTotal * saleCoveragePercent / 100)
+            : 0;
+          const patientAmount = operation.saleType === 'INSURANCE'
+            ? this.roundMoney(lineTotal - coveredAmount)
+            : lineTotal;
+          await client.query(
+            `INSERT INTO sale_items (
+               tenant_id, sale_id, article_id, lot_id, quantity, ordered_quantity, fulfilled_quantity,
+               unit_price, coverage_percent, covered_amount, patient_amount, line_total
+             )
+             VALUES ($1,$2,$3,NULL,$4,$4,0,$5,$6,$7,$8,$9)`,
+            [
+              user.tenantId,
+              saleId,
+              item.articleId,
+              advanceArticleQuantity,
+              item.unitPriceSnapshot,
+              saleCoveragePercent,
+              coveredAmount,
+              patientAmount,
+              lineTotal,
+            ],
+          );
+        }
       }
 
       await this.recalculateTotal(user, saleId, operation.saleType, client);
+      if (insuranceMembership) {
+        await client.query(
+          `UPDATE sales
+           SET organization_id=$3,
+               membership_id=$4
+           WHERE tenant_id=$1 AND sale_id=$2`,
+          [user.tenantId, saleId, insuranceMembership.organizationId, insuranceMembership.membershipId],
+        );
+      }
       const sale = await this.getSaleForValidation(client, user, saleId, operation.siteId);
       await this.finalizePreparedSale(
         client,
@@ -1062,6 +1117,43 @@ export class SalesRepository {
     );
     if (!result.rows[0]) throw new Error('PAYMENT_METHOD_NOT_FOUND');
     return result.rows[0];
+  }
+
+  private async resolveOfflineInsuranceMembership(
+    client: Queryable,
+    tenantId: string,
+    membershipId: string | null,
+    customerId: string | null,
+  ) {
+    if (!membershipId || !customerId) throw new Error('MEMBERSHIP_NOT_ACTIVE');
+    const result = await client.query<{
+      membership_id: string;
+      organization_id: string;
+      plan_id: string | null;
+      coverage_percent: string | null;
+    }>(
+      `SELECT cm.membership_id, cm.organization_id, cm.plan_id, ip.coverage_percent
+       FROM customer_memberships cm
+       JOIN organizations o ON o.organization_id=cm.organization_id AND o.tenant_id=cm.tenant_id
+       LEFT JOIN insurance_plans ip ON ip.plan_id=cm.plan_id AND ip.organization_id=cm.organization_id
+       WHERE cm.tenant_id=$1
+         AND cm.membership_id=$2
+         AND cm.customer_id=$3
+         AND cm.is_active=true
+         AND o.is_active=true
+         AND (cm.valid_from IS NULL OR cm.valid_from <= CURRENT_DATE)
+         AND (cm.valid_to IS NULL OR cm.valid_to >= CURRENT_DATE)
+       LIMIT 1`,
+      [tenantId, membershipId, customerId],
+    );
+    const membership = result.rows[0];
+    if (!membership) throw new Error('MEMBERSHIP_NOT_ACTIVE');
+    return {
+      membershipId: membership.membership_id,
+      organizationId: membership.organization_id,
+      planId: membership.plan_id,
+      coveragePercent: Number(membership.coverage_percent ?? 0),
+    };
   }
 
   private async currencyIdsByCode(client: { query: (sql: string, params?: unknown[]) => Promise<{ rows: Array<{ currency_id: string; currency_code: string }> }> }) {

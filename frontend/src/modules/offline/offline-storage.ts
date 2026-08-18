@@ -10,10 +10,13 @@ import {
   type OfflineLocalSnapshot,
   type OfflineMetadataRecord,
   type OfflinePayment,
+  type OfflineInsuranceOrganization,
+  type OfflineInsurancePlan,
   type OfflinePosArticle,
   type OfflinePosCustomer,
   type OfflinePosLot,
   type OfflinePosSettings,
+  type OfflineCustomerMembership,
   type OfflinePendingConsumption,
   type OfflineSale,
   type OfflineSaleValidateOperation,
@@ -36,6 +39,9 @@ const ARTICLES_STORE = 'offline_articles';
 const LOTS_STORE = 'offline_lots';
 const ALLOCATIONS_STORE = 'offline_allocations';
 const CUSTOMERS_STORE = 'offline_customers';
+const ORGANIZATIONS_STORE = 'offline_organizations';
+const INSURANCE_PLANS_STORE = 'offline_insurance_plans';
+const MEMBERSHIPS_STORE = 'offline_memberships';
 const SETTINGS_STORE = 'offline_settings';
 const AUTH_STORE = 'auth_snapshot';
 const WORKSTATION_STORE = 'workstation';
@@ -74,6 +80,21 @@ export async function readOfflineAllocations(): Promise<OfflineStockAllocation[]
 export async function readOfflineCustomers() {
   const db = await openOfflineDatabase();
   return readAll<OfflinePosCustomer>(db, CUSTOMERS_STORE);
+}
+
+export async function readOfflineOrganizations() {
+  const db = await openOfflineDatabase();
+  return readAll<OfflineInsuranceOrganization>(db, ORGANIZATIONS_STORE);
+}
+
+export async function readOfflineInsurancePlans() {
+  const db = await openOfflineDatabase();
+  return readAll<OfflineInsurancePlan>(db, INSURANCE_PLANS_STORE);
+}
+
+export async function readOfflineMemberships() {
+  const db = await openOfflineDatabase();
+  return readAll<OfflineCustomerMembership>(db, MEMBERSHIPS_STORE);
 }
 
 export async function readOfflineSettings() {
@@ -213,6 +234,9 @@ export async function readOfflineSnapshot(): Promise<OfflineLocalSnapshot> {
     lots,
     allocations,
     customers,
+    organizations,
+    insurancePlans,
+    memberships,
     settings,
     auth,
     workstation,
@@ -223,6 +247,9 @@ export async function readOfflineSnapshot(): Promise<OfflineLocalSnapshot> {
     readOfflineLots(),
     readOfflineAllocations(),
     readOfflineCustomers(),
+    readOfflineOrganizations(),
+    readOfflineInsurancePlans(),
+    readOfflineMemberships(),
     readOfflineSettings(),
     readAuthSnapshot(),
     readWorkstationSnapshot(),
@@ -230,7 +257,20 @@ export async function readOfflineSnapshot(): Promise<OfflineLocalSnapshot> {
     readSyncState(),
   ]);
 
-  return { articles, lots, allocations, customers, settings, auth, workstation, cashSession, syncState };
+  return {
+    articles,
+    lots,
+    allocations,
+    customers,
+    organizations,
+    insurancePlans,
+    memberships,
+    settings,
+    auth,
+    workstation,
+    cashSession,
+    syncState,
+  };
 }
 
 export async function writeOfflineAllocations(rows: OfflineStockAllocation[]) {
@@ -259,6 +299,9 @@ export async function clearOfflineSnapshot() {
       LOTS_STORE,
       ALLOCATIONS_STORE,
       CUSTOMERS_STORE,
+      ORGANIZATIONS_STORE,
+      INSURANCE_PLANS_STORE,
+      MEMBERSHIPS_STORE,
       SETTINGS_STORE,
       AUTH_STORE,
       WORKSTATION_STORE,
@@ -275,6 +318,9 @@ export async function clearOfflineSnapshot() {
     LOTS_STORE,
     ALLOCATIONS_STORE,
     CUSTOMERS_STORE,
+    ORGANIZATIONS_STORE,
+    INSURANCE_PLANS_STORE,
+    MEMBERSHIPS_STORE,
     SETTINGS_STORE,
     AUTH_STORE,
     WORKSTATION_STORE,
@@ -852,6 +898,9 @@ export async function persistBootstrapSnapshot(
       LOTS_STORE,
       ALLOCATIONS_STORE,
       CUSTOMERS_STORE,
+      ORGANIZATIONS_STORE,
+      INSURANCE_PLANS_STORE,
+      MEMBERSHIPS_STORE,
       SETTINGS_STORE,
       AUTH_STORE,
       WORKSTATION_STORE,
@@ -926,6 +975,56 @@ export async function persistBootstrapSnapshot(
     lastSyncedAt: payload.serverTime,
   } satisfies OfflinePosCustomer)));
 
+  await replaceAll(tx.objectStore(ORGANIZATIONS_STORE), payload.organizations.map((row) => ({
+    localKey: `${payload.tenant.tenantId}:${row.organizationId}`,
+    tenantId: payload.tenant.tenantId,
+    organizationId: row.organizationId,
+    organizationCode: row.organizationCode,
+    organizationName: row.organizationName,
+    organizationType: row.organizationType,
+    isActive: row.isActive,
+    updatedAt: row.updatedAt,
+    lastSyncedAt: payload.serverTime,
+  } satisfies OfflineInsuranceOrganization)));
+
+  await replaceAll(tx.objectStore(INSURANCE_PLANS_STORE), payload.insurancePlans.map((row) => ({
+    localKey: `${payload.tenant.tenantId}:${row.planId}`,
+    tenantId: payload.tenant.tenantId,
+    organizationId: row.organizationId,
+    planId: row.planId,
+    planCode: row.planCode,
+    planName: row.planName,
+    coveragePercent: row.coveragePercent,
+    patientCopayPercent: row.patientCopayPercent,
+    monthlyLimit: row.monthlyLimit,
+    annualLimit: row.annualLimit,
+    requiresAuthorization: row.requiresAuthorization,
+    isActive: row.isActive,
+    updatedAt: row.updatedAt,
+    lastSyncedAt: payload.serverTime,
+  } satisfies OfflineInsurancePlan)));
+
+  await replaceAll(tx.objectStore(MEMBERSHIPS_STORE), payload.memberships.map((row) => ({
+    localKey: `${payload.tenant.tenantId}:${row.membershipId}`,
+    tenantId: payload.tenant.tenantId,
+    customerId: row.customerId,
+    customerName: row.customerName,
+    organizationId: row.organizationId,
+    organizationName: row.organizationName,
+    planId: row.planId,
+    planName: row.planName,
+    membershipId: row.membershipId,
+    memberNumber: row.memberNumber,
+    employeeNumber: row.employeeNumber,
+    relationshipType: row.relationshipType,
+    coveragePercent: row.coveragePercent,
+    validFrom: row.validFrom,
+    validTo: row.validTo,
+    isActive: row.isActive,
+    updatedAt: row.updatedAt,
+    lastSyncedAt: payload.serverTime,
+  } satisfies OfflineCustomerMembership)));
+
   await replaceAll(tx.objectStore(SETTINGS_STORE), [{
     key: 'pos-settings',
     tenantId: payload.tenant.tenantId,
@@ -961,7 +1060,7 @@ export async function applyPosChanges(
 ) {
   const db = await openOfflineDatabase();
   const tx = db.transaction(
-    [ARTICLES_STORE, LOTS_STORE, ALLOCATIONS_STORE, CUSTOMERS_STORE, SETTINGS_STORE, CASH_SESSION_STORE, SYNC_STATE_STORE],
+    [ARTICLES_STORE, LOTS_STORE, ALLOCATIONS_STORE, CUSTOMERS_STORE, ORGANIZATIONS_STORE, INSURANCE_PLANS_STORE, MEMBERSHIPS_STORE, SETTINGS_STORE, CASH_SESSION_STORE, SYNC_STATE_STORE],
     'readwrite',
   );
 
@@ -969,6 +1068,9 @@ export async function applyPosChanges(
   const lotStore = tx.objectStore(LOTS_STORE);
   const allocationStore = tx.objectStore(ALLOCATIONS_STORE);
   const customerStore = tx.objectStore(CUSTOMERS_STORE);
+  const organizationStore = tx.objectStore(ORGANIZATIONS_STORE);
+  const insurancePlanStore = tx.objectStore(INSURANCE_PLANS_STORE);
+  const membershipsStore = tx.objectStore(MEMBERSHIPS_STORE);
   const settingsStore = tx.objectStore(SETTINGS_STORE);
   const cashSessionStore = tx.objectStore(CASH_SESSION_STORE);
   const conflictsStore = tx.objectStore(SYNC_CONFLICTS_STORE);
@@ -977,6 +1079,9 @@ export async function applyPosChanges(
   const currentLots = new Map((await readAllFromTransaction<OfflinePosLot>(lotStore)).map((row) => [row.lotId, row]));
   const currentAllocations = new Map((await readAllFromTransaction<OfflineStockAllocation>(allocationStore)).map((row) => [row.allocationId, row]));
   const currentCustomers = new Map((await readAllFromTransaction<OfflinePosCustomer>(customerStore)).map((row) => [row.customerId, row]));
+  const currentOrganizations = new Map((await readAllFromTransaction<OfflineInsuranceOrganization>(organizationStore)).map((row) => [row.organizationId, row]));
+  const currentInsurancePlans = new Map((await readAllFromTransaction<OfflineInsurancePlan>(insurancePlanStore)).map((row) => [row.planId, row]));
+  const currentMemberships = new Map((await readAllFromTransaction<OfflineCustomerMembership>(membershipsStore)).map((row) => [row.membershipId, row]));
   const currentSettings = (await readAllFromTransaction<OfflinePosSettings>(settingsStore))[0] ?? null;
   const currentConflicts = new Map((await readAllFromTransaction<OfflineSyncConflictEntry>(conflictsStore)).map((row) => [row.conflictId ?? row.localId, row]));
 
@@ -1053,6 +1158,62 @@ export async function applyPosChanges(
     });
   }
 
+  for (const row of changesPayload.changes.organizations ?? []) {
+    currentOrganizations.set(row.organizationId, {
+      localKey: `${context.tenantId}:${row.organizationId}`,
+      tenantId: context.tenantId,
+      organizationId: row.organizationId,
+      organizationCode: row.organizationCode,
+      organizationName: row.organizationName,
+      organizationType: row.organizationType,
+      isActive: row.operation === 'DEACTIVATE' ? false : row.isActive,
+      updatedAt: row.updatedAt,
+      lastSyncedAt: changesPayload.serverTime,
+    });
+  }
+
+  for (const row of changesPayload.changes.insurancePlans ?? []) {
+    currentInsurancePlans.set(row.planId, {
+      localKey: `${context.tenantId}:${row.planId}`,
+      tenantId: context.tenantId,
+      organizationId: row.organizationId,
+      planId: row.planId,
+      planCode: row.planCode,
+      planName: row.planName,
+      coveragePercent: row.coveragePercent,
+      patientCopayPercent: row.patientCopayPercent,
+      monthlyLimit: row.monthlyLimit,
+      annualLimit: row.annualLimit,
+      requiresAuthorization: row.requiresAuthorization,
+      isActive: row.operation === 'DEACTIVATE' ? false : row.isActive,
+      updatedAt: row.updatedAt,
+      lastSyncedAt: changesPayload.serverTime,
+    });
+  }
+
+  for (const row of changesPayload.changes.memberships ?? []) {
+    currentMemberships.set(row.membershipId, {
+      localKey: `${context.tenantId}:${row.membershipId}`,
+      tenantId: context.tenantId,
+      customerId: row.customerId,
+      customerName: row.customerName,
+      organizationId: row.organizationId,
+      organizationName: row.organizationName,
+      planId: row.planId,
+      planName: row.planName,
+      membershipId: row.membershipId,
+      memberNumber: row.memberNumber,
+      employeeNumber: row.employeeNumber ?? null,
+      relationshipType: row.relationshipType ?? null,
+      coveragePercent: row.coveragePercent,
+      validFrom: row.validFrom,
+      validTo: row.validTo,
+      isActive: row.operation === 'DEACTIVATE' ? false : row.isActive,
+      updatedAt: row.updatedAt,
+      lastSyncedAt: changesPayload.serverTime,
+    });
+  }
+
   for (const row of changesPayload.changes.conflicts ?? []) {
     const conflictKey = row.conflictId;
     if (row.operation === 'RESOLVE') {
@@ -1111,6 +1272,9 @@ export async function applyPosChanges(
   await replaceAll(lotStore, Array.from(currentLots.values()));
   await replaceAll(allocationStore, Array.from(currentAllocations.values()).map(normalizeAllocation));
   await replaceAll(customerStore, Array.from(currentCustomers.values()));
+  await replaceAll(organizationStore, Array.from(currentOrganizations.values()));
+  await replaceAll(insurancePlanStore, Array.from(currentInsurancePlans.values()));
+  await replaceAll(membershipsStore, Array.from(currentMemberships.values()));
   await replaceAll(conflictsStore, Array.from(currentConflicts.values()));
   await replaceAll(tx.objectStore(SYNC_STATE_STORE), [{
     ...context.syncState,
@@ -1142,6 +1306,9 @@ async function openOfflineDatabase() {
       ensureObjectStore(db, upgradeTransaction, LOTS_STORE, 'localKey', [['byTenant', 'tenantId'], ['byLot', 'lotId'], ['byArticle', 'articleId']]);
       ensureObjectStore(db, upgradeTransaction, ALLOCATIONS_STORE, 'localId', [['byTenant', 'tenantId'], ['bySite', 'siteId'], ['byWorkstation', 'workstationId'], ['byArticle', 'articleId'], ['byLot', 'lotId'], ['byStatus', 'allocationStatus']]);
       ensureObjectStore(db, upgradeTransaction, CUSTOMERS_STORE, 'localKey', [['byTenant', 'tenantId'], ['byCustomer', 'customerId']]);
+      ensureObjectStore(db, upgradeTransaction, ORGANIZATIONS_STORE, 'localKey', [['byTenant', 'tenantId'], ['byOrganization', 'organizationId']]);
+      ensureObjectStore(db, upgradeTransaction, INSURANCE_PLANS_STORE, 'localKey', [['byTenant', 'tenantId'], ['byOrganization', 'organizationId'], ['byPlan', 'planId']]);
+      ensureObjectStore(db, upgradeTransaction, MEMBERSHIPS_STORE, 'localKey', [['byTenant', 'tenantId'], ['byMembership', 'membershipId'], ['byCustomer', 'customerId'], ['byOrganization', 'organizationId'], ['byPlan', 'planId']]);
       ensureObjectStore(db, upgradeTransaction, SETTINGS_STORE, 'key');
       ensureObjectStore(db, upgradeTransaction, AUTH_STORE, 'id');
       ensureObjectStore(db, upgradeTransaction, WORKSTATION_STORE, 'id');

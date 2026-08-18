@@ -157,11 +157,38 @@ export class SubmitPosSaleValidateOperationDto {
   @IsString()
   validatedAt: string;
 
-  @IsEnum(['IMMEDIATE'])
-  saleMode: 'IMMEDIATE';
+  @IsEnum(['IMMEDIATE', 'ADVANCE'])
+  saleMode: 'IMMEDIATE' | 'ADVANCE';
 
-  @IsEnum(['CASH'])
-  saleType: 'CASH';
+  @IsEnum(['CASH', 'INSURANCE'])
+  saleType: 'CASH' | 'INSURANCE';
+
+  @IsOptional()
+  @IsUUID()
+  organizationId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  planId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  membershipId?: string | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  coveragePercentSnapshot?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  patientShareUsd?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  insuranceShareUsd?: number;
 
   @IsOptional()
   @IsString()

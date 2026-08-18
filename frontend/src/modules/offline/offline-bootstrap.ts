@@ -277,7 +277,15 @@ export function validateBootstrapPayload(payload: PosSyncBootstrapPayload) {
   if (!payload?.site?.siteId) throw new Error('INVALID_POS_BOOTSTRAP_SITE');
   if (!payload?.workstation?.workstationId) throw new Error('INVALID_POS_BOOTSTRAP_WORKSTATION');
   if (!Array.isArray(payload.permissions)) throw new Error('INVALID_POS_BOOTSTRAP_PERMISSIONS');
-  if (!Array.isArray(payload.articles) || !Array.isArray(payload.lots) || !Array.isArray(payload.offlineAllocations)) {
+  if (
+    !Array.isArray(payload.articles)
+    || !Array.isArray(payload.lots)
+    || !Array.isArray(payload.offlineAllocations)
+    || !Array.isArray(payload.customers)
+    || !Array.isArray(payload.organizations)
+    || !Array.isArray(payload.insurancePlans)
+    || !Array.isArray(payload.memberships)
+  ) {
     throw new Error('INVALID_POS_BOOTSTRAP_COLLECTIONS');
   }
 

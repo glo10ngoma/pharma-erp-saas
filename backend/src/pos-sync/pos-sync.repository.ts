@@ -83,6 +83,47 @@ type CustomerBootstrapRow = {
   created_at: Date | null;
 };
 
+type OrganizationBootstrapRow = {
+  organization_id: string;
+  organization_code: string;
+  organization_name: string;
+  organization_type: string;
+  is_active: boolean;
+  created_at: Date | null;
+};
+
+type InsurancePlanBootstrapRow = {
+  plan_id: string;
+  organization_id: string;
+  plan_code: string;
+  plan_name: string;
+  coverage_percent: string;
+  patient_copay_percent: string;
+  monthly_limit: string | null;
+  annual_limit: string | null;
+  requires_authorization: boolean;
+  is_active: boolean;
+  created_at: Date | null;
+};
+
+type MembershipBootstrapRow = {
+  membership_id: string;
+  customer_id: string;
+  customer_name: string | null;
+  organization_id: string;
+  organization_name: string | null;
+  plan_id: string | null;
+  plan_name: string | null;
+  coverage_percent: string | null;
+  member_number: string | null;
+  employee_number: string | null;
+  relationship_type: string | null;
+  valid_from: string | null;
+  valid_to: string | null;
+  is_active: boolean;
+  created_at: Date | null;
+};
+
 type TenantRow = {
   tenant_id: string;
   tenant_code: string;
@@ -183,6 +224,9 @@ type TimestampedArticleChange = ArticleBootstrapRow & { operation: 'UPSERT' | 'D
 type TimestampedLotChange = LotBootstrapRow & { operation: 'UPSERT' | 'REVOKE'; changed_at: Date | null };
 type TimestampedAllocationChange = AllocationBootstrapRow & { operation: 'UPSERT' | 'REVOKE'; changed_at: Date | null };
 type TimestampedCustomerChange = CustomerBootstrapRow & { operation: 'UPSERT' | 'DEACTIVATE'; changed_at: Date | null };
+type TimestampedOrganizationChange = OrganizationBootstrapRow & { operation: 'UPSERT' | 'DEACTIVATE'; changed_at: Date | null };
+type TimestampedInsurancePlanChange = InsurancePlanBootstrapRow & { operation: 'UPSERT' | 'DEACTIVATE'; changed_at: Date | null };
+type TimestampedMembershipChange = MembershipBootstrapRow & { operation: 'UPSERT' | 'DEACTIVATE'; changed_at: Date | null };
 type TimestampedSettingsChange = { operation: 'UPSERT'; changed_at: Date | null; rate: string | null; updated_at: Date | null };
 
 const DEFAULT_OFFLINE_AUTHORIZATION_HOURS = 24;
@@ -257,7 +301,7 @@ export class PosSyncRepository {
   async buildBootstrap(user: AuthUser, query: BootstrapPosDto) {
     this.assertOfflinePermissions(user);
     const workstation = await this.resolveWorkstation(user, query);
-    const [tenant, site, exchangeRate, settings, cashSession, articles, lots, allocations, customers] = await Promise.all([
+    const [tenant, site, exchangeRate, settings, cashSession, articles, lots, allocations, customers, organizations, insurancePlans, memberships] = await Promise.all([
       this.getTenant(user),
       this.getSite(user, workstation.siteId),
       this.getExchangeRate(user),
@@ -267,6 +311,9 @@ export class PosSyncRepository {
       this.getBootstrapLots(user, workstation),
       this.getBootstrapAllocations(user, workstation),
       this.getBootstrapCustomers(user),
+      this.getBootstrapOrganizations(user),
+      this.getBootstrapInsurancePlans(user),
+      this.getBootstrapMemberships(user),
     ]);
 
     const serverTime = new Date().toISOString();
@@ -302,6 +349,9 @@ export class PosSyncRepository {
       lots,
       offlineAllocations: allocations,
       customers,
+      organizations,
+      insurancePlans,
+      memberships,
     };
   }
 
@@ -309,11 +359,14 @@ export class PosSyncRepository {
     this.assertOfflinePermissions(user);
     const workstation = await this.resolveWorkstation(user, query);
     const since = decodeCursor(query.cursor);
-    const [articles, lots, allocations, customers, settings, conflicts] = await Promise.all([
+    const [articles, lots, allocations, customers, organizations, insurancePlans, memberships, settings, conflicts] = await Promise.all([
       this.getArticleChanges(user, workstation, since),
       this.getLotChanges(user, workstation, since),
       this.getAllocationChanges(user, workstation, since),
       this.getCustomerChanges(user, since),
+      this.getOrganizationChanges(user, since),
+      this.getInsurancePlanChanges(user, since),
+      this.getMembershipChanges(user, since),
       this.getSettingsChanges(user, since),
       this.listConflictChanges(user, { workstationId: workstation.workstationId, since }),
     ]);
@@ -323,7 +376,7 @@ export class PosSyncRepository {
       previousCursor: query.cursor ?? null,
       nextCursor: encodeCursor(serverTime),
       hasMore: false,
-      changes: { articles, lots, allocations, customers, settings, conflicts, cashSession: null },
+      changes: { articles, lots, allocations, customers, organizations, insurancePlans, memberships, settings, conflicts, cashSession: null },
     };
   }
 
@@ -1479,6 +1532,117 @@ export class PosSyncRepository {
     }));
   }
 
+  private async getBootstrapOrganizations(user: AuthUser) {
+    const result = await this.db.query<OrganizationBootstrapRow>(
+      `
+      SELECT organization_id, organization_code, organization_name, organization_type, is_active, created_at
+      FROM organizations
+      WHERE tenant_id = $1
+        AND is_active = true
+      ORDER BY organization_name ASC
+      `,
+      [user.tenantId],
+    );
+    return result.rows.map((row) => ({
+      organizationId: row.organization_id,
+      organizationCode: row.organization_code,
+      organizationName: row.organization_name,
+      organizationType: row.organization_type,
+      isActive: row.is_active,
+      updatedAt: row.created_at ? row.created_at.toISOString() : null,
+    }));
+  }
+
+  private async getBootstrapInsurancePlans(user: AuthUser) {
+    const result = await this.db.query<InsurancePlanBootstrapRow>(
+      `
+      SELECT
+        ip.plan_id,
+        ip.organization_id,
+        ip.plan_code,
+        ip.plan_name,
+        ip.coverage_percent,
+        ip.patient_copay_percent,
+        ip.monthly_limit,
+        ip.annual_limit,
+        ip.requires_authorization,
+        ip.is_active,
+        ip.created_at
+      FROM insurance_plans ip
+      JOIN organizations o ON o.organization_id = ip.organization_id AND o.tenant_id = $1
+      WHERE ip.is_active = true
+        AND o.is_active = true
+      ORDER BY ip.plan_name ASC
+      `,
+      [user.tenantId],
+    );
+    return result.rows.map((row) => ({
+      planId: row.plan_id,
+      organizationId: row.organization_id,
+      planCode: row.plan_code,
+      planName: row.plan_name,
+      coveragePercent: Number(row.coverage_percent),
+      patientCopayPercent: Number(row.patient_copay_percent),
+      monthlyLimit: row.monthly_limit === null ? null : Number(row.monthly_limit),
+      annualLimit: row.annual_limit === null ? null : Number(row.annual_limit),
+      requiresAuthorization: row.requires_authorization,
+      isActive: row.is_active,
+      updatedAt: row.created_at ? row.created_at.toISOString() : null,
+    }));
+  }
+
+  private async getBootstrapMemberships(user: AuthUser) {
+    const result = await this.db.query<MembershipBootstrapRow>(
+      `
+      SELECT
+        cm.membership_id,
+        cm.customer_id,
+        c.customer_name,
+        cm.organization_id,
+        o.organization_name,
+        cm.plan_id,
+        ip.plan_name,
+        ip.coverage_percent,
+        cm.member_number,
+        cm.employee_number,
+        cm.relationship_type,
+        cm.valid_from,
+        cm.valid_to,
+        cm.is_active,
+        cm.created_at
+      FROM customer_memberships cm
+      JOIN customers c ON c.customer_id = cm.customer_id AND c.tenant_id = cm.tenant_id
+      JOIN organizations o ON o.organization_id = cm.organization_id AND o.tenant_id = cm.tenant_id
+      LEFT JOIN insurance_plans ip ON ip.plan_id = cm.plan_id AND ip.organization_id = cm.organization_id
+      WHERE cm.tenant_id = $1
+        AND cm.is_active = true
+        AND c.is_active = true
+        AND o.is_active = true
+        AND (cm.valid_from IS NULL OR cm.valid_from <= CURRENT_DATE)
+        AND (cm.valid_to IS NULL OR cm.valid_to >= CURRENT_DATE)
+      ORDER BY c.customer_name ASC, o.organization_name ASC, ip.plan_name ASC NULLS LAST
+      `,
+      [user.tenantId],
+    );
+    return result.rows.map((row) => ({
+      membershipId: row.membership_id,
+      customerId: row.customer_id,
+      customerName: row.customer_name,
+      organizationId: row.organization_id,
+      organizationName: row.organization_name,
+      planId: row.plan_id,
+      planName: row.plan_name,
+      coveragePercent: row.coverage_percent === null ? null : Number(row.coverage_percent),
+      memberNumber: row.member_number,
+      employeeNumber: row.employee_number,
+      relationshipType: row.relationship_type,
+      validFrom: row.valid_from,
+      validTo: row.valid_to,
+      isActive: row.is_active,
+      updatedAt: row.created_at ? row.created_at.toISOString() : null,
+    }));
+  }
+
   private async getArticleChanges(user: AuthUser, workstation: { workstationId: string }, since: Date | null) {
     const result = await this.db.query<TimestampedArticleChange>(
       `
@@ -1629,6 +1793,130 @@ export class PosSyncRepository {
       phone: row.phone,
       isActive: row.is_active,
       updatedAt: row.created_at ? row.created_at.toISOString() : null,
+    }));
+  }
+
+  private async getOrganizationChanges(user: AuthUser, since: Date | null) {
+    const result = await this.db.query<TimestampedOrganizationChange>(
+      `
+      SELECT
+        organization_id,
+        organization_code,
+        organization_name,
+        organization_type,
+        is_active,
+        created_at,
+        CASE WHEN is_active THEN 'UPSERT' ELSE 'DEACTIVATE' END AS operation,
+        created_at AS changed_at
+      FROM organizations
+      WHERE tenant_id = $1
+        AND ($2::timestamptz IS NULL OR created_at > $2::timestamptz)
+      ORDER BY created_at ASC, organization_name ASC
+      LIMIT 100
+      `,
+      [user.tenantId, since ? since.toISOString() : null],
+    );
+    return result.rows.map((row) => ({
+      operation: row.operation,
+      organizationId: row.organization_id,
+      organizationCode: row.organization_code,
+      organizationName: row.organization_name,
+      organizationType: row.organization_type,
+      isActive: row.is_active,
+      updatedAt: row.changed_at ? row.changed_at.toISOString() : null,
+    }));
+  }
+
+  private async getInsurancePlanChanges(user: AuthUser, since: Date | null) {
+    const result = await this.db.query<TimestampedInsurancePlanChange>(
+      `
+      SELECT
+        plan_id,
+        organization_id,
+        plan_code,
+        plan_name,
+        coverage_percent,
+        patient_copay_percent,
+        monthly_limit,
+        annual_limit,
+        requires_authorization,
+        is_active,
+        created_at,
+        CASE WHEN is_active THEN 'UPSERT' ELSE 'DEACTIVATE' END AS operation,
+        created_at AS changed_at
+      FROM insurance_plans
+      WHERE tenant_id = $1
+        AND ($2::timestamptz IS NULL OR created_at > $2::timestamptz)
+      ORDER BY created_at ASC, plan_name ASC
+      LIMIT 200
+      `,
+      [user.tenantId, since ? since.toISOString() : null],
+    );
+    return result.rows.map((row) => ({
+      operation: row.operation,
+      planId: row.plan_id,
+      organizationId: row.organization_id,
+      planCode: row.plan_code,
+      planName: row.plan_name,
+      coveragePercent: Number(row.coverage_percent ?? 0),
+      patientCopayPercent: Number(row.patient_copay_percent ?? 0),
+      monthlyLimit: row.monthly_limit === null ? null : Number(row.monthly_limit),
+      annualLimit: row.annual_limit === null ? null : Number(row.annual_limit),
+      requiresAuthorization: row.requires_authorization,
+      isActive: row.is_active,
+      updatedAt: row.changed_at ? row.changed_at.toISOString() : null,
+    }));
+  }
+
+  private async getMembershipChanges(user: AuthUser, since: Date | null) {
+    const result = await this.db.query<TimestampedMembershipChange>(
+      `
+      SELECT
+        cm.membership_id,
+        cm.customer_id,
+        c.customer_name,
+        cm.organization_id,
+        o.organization_name,
+        cm.plan_id,
+        ip.plan_name,
+        COALESCE(cm.coverage_override_percent, ip.coverage_percent) AS coverage_percent,
+        cm.member_number,
+        cm.employee_number,
+        cm.relationship_type,
+        cm.valid_from::text AS valid_from,
+        cm.valid_to::text AS valid_to,
+        cm.is_active,
+        cm.created_at,
+        CASE WHEN cm.is_active THEN 'UPSERT' ELSE 'DEACTIVATE' END AS operation,
+        cm.created_at AS changed_at
+      FROM customer_memberships cm
+      JOIN customers c ON c.customer_id = cm.customer_id AND c.tenant_id = cm.tenant_id
+      JOIN organizations o ON o.organization_id = cm.organization_id AND o.tenant_id = cm.tenant_id
+      LEFT JOIN insurance_plans ip ON ip.plan_id = cm.plan_id AND ip.organization_id = cm.organization_id
+      WHERE cm.tenant_id = $1
+        AND ($2::timestamptz IS NULL OR cm.created_at > $2::timestamptz)
+      ORDER BY cm.created_at ASC, cm.membership_id ASC
+      LIMIT 300
+      `,
+      [user.tenantId, since ? since.toISOString() : null],
+    );
+    return result.rows.map((row) => ({
+      operation: row.operation,
+      membershipId: row.membership_id,
+      customerId: row.customer_id,
+      customerName: row.customer_name,
+      organizationId: row.organization_id,
+      organizationName: row.organization_name,
+      planId: row.plan_id,
+      planName: row.plan_name,
+      coveragePercent: row.coverage_percent === null ? null : Number(row.coverage_percent),
+      memberNumber: row.member_number,
+      employeeNumber: row.employee_number,
+      relationshipType: row.relationship_type,
+      validFrom: row.valid_from,
+      validTo: row.valid_to,
+      isActive: row.is_active,
+      updatedAt: row.changed_at ? row.changed_at.toISOString() : null,
     }));
   }
 

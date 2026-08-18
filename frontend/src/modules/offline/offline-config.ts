@@ -1,6 +1,6 @@
 export const OFFLINE_DB_NAME = 'PharmaErpPosDb';
-export const OFFLINE_DB_VERSION = 6;
-export const OFFLINE_SNAPSHOT_SCHEMA_VERSION = 2;
+export const OFFLINE_DB_VERSION = 7;
+export const OFFLINE_SNAPSHOT_SCHEMA_VERSION = 3;
 export const OFFLINE_APP_VERSION = import.meta.env.VITE_APP_VERSION ?? 'web';
 
 export const OFFLINE_STORAGE_THRESHOLDS = {

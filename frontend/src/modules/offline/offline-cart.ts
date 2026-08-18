@@ -26,8 +26,11 @@ import {
   type OfflineCartStatus,
   type OfflineDraftReservation,
   type OfflineLocalSnapshot,
+  type OfflineSaleMode,
+  type OfflineSaleType,
   type OfflinePosArticle,
   type OfflinePosCustomer,
+  type OfflineCustomerMembership,
   type OfflineSaleDraftOperation,
   type OfflineStockAllocation,
 } from './offline-types';
@@ -137,6 +140,17 @@ export async function ensureOfflineCart(options?: { cartId?: string | null }) {
     userId: auth.userId,
     customerId: null,
     customerNameSnapshot: findCounterCustomer(context.snapshot)?.name ?? 'Client comptoir',
+    saleType: 'CASH',
+    saleMode: 'IMMEDIATE',
+    organizationId: null,
+    organizationNameSnapshot: null,
+    planId: null,
+    planNameSnapshot: null,
+    membershipId: null,
+    membershipNumberSnapshot: null,
+    coveragePercentSnapshot: null,
+    patientShareUsd: 0,
+    insuranceShareUsd: 0,
     currency: settings.defaultCurrency,
     exchangeRateSnapshot: settings.exchangeRate?.rate ?? null,
     status: 'DRAFT',
@@ -180,6 +194,17 @@ export async function createNewOfflineCart() {
     userId: auth.userId,
     customerId: null,
     customerNameSnapshot: findCounterCustomer(context.snapshot)?.name ?? 'Client comptoir',
+    saleType: 'CASH',
+    saleMode: 'IMMEDIATE',
+    organizationId: null,
+    organizationNameSnapshot: null,
+    planId: null,
+    planNameSnapshot: null,
+    membershipId: null,
+    membershipNumberSnapshot: null,
+    coveragePercentSnapshot: null,
+    patientShareUsd: 0,
+    insuranceShareUsd: 0,
     currency: settings.defaultCurrency,
     exchangeRateSnapshot: settings.exchangeRate?.rate ?? null,
     status: 'DRAFT',
@@ -240,24 +265,72 @@ export async function cancelOfflineCart(cartId: string) {
 }
 
 export async function updateOfflineCartCustomer(cartId: string, customer: OfflinePosCustomer | null) {
-  const [cart, reservations] = await Promise.all([requireCart(cartId), readOfflineDraftReservations()]);
+  const [cart, reservations, snapshot] = await Promise.all([requireCart(cartId), readOfflineDraftReservations(), readOfflineSnapshot()]);
+  const currentMembership = resolveMembershipById(snapshot, cart.membershipId);
+  const keepMembership = currentMembership && currentMembership.customerId === customer?.customerId;
   const updated = recalculateCart({
     ...cart,
     customerId: customer?.customerId ?? null,
     customerNameSnapshot: customer?.name ?? 'Client comptoir',
+    ...(keepMembership
+      ? {}
+      : {
+          organizationId: null,
+          organizationNameSnapshot: null,
+          planId: null,
+          planNameSnapshot: null,
+          membershipId: null,
+          membershipNumberSnapshot: null,
+          coveragePercentSnapshot: null,
+        }),
     updatedAt: new Date().toISOString(),
-  });
+  }, snapshot);
   await saveOfflineCart(updated, reservations.filter((entry) => entry.cartId === cartId), []);
   return updated;
 }
 
 export async function setOfflineCartNote(cartId: string, note: string) {
-  const [cart, reservations] = await Promise.all([requireCart(cartId), readOfflineDraftReservations()]);
+  const [cart, reservations, snapshot] = await Promise.all([requireCart(cartId), readOfflineDraftReservations(), readOfflineSnapshot()]);
   const updated = recalculateCart({
     ...cart,
     note: note.trim() || null,
     updatedAt: new Date().toISOString(),
-  });
+  }, snapshot);
+  await saveOfflineCart(updated, reservations.filter((entry) => entry.cartId === cartId), []);
+  return updated;
+}
+
+export async function updateOfflineCartSaleConfiguration(
+  cartId: string,
+  updates: {
+    saleType?: OfflineSaleType;
+    saleMode?: OfflineSaleMode;
+    membershipId?: string | null;
+  },
+) {
+  const [cart, reservations, snapshot] = await Promise.all([
+    requireCart(cartId),
+    readOfflineDraftReservations(),
+    readOfflineSnapshot(),
+  ]);
+  const nextSaleType = updates.saleType ?? cart.saleType;
+  const selectedMembership =
+    nextSaleType === 'INSURANCE'
+      ? resolveMembershipById(snapshot, updates.membershipId === undefined ? cart.membershipId : updates.membershipId)
+      : null;
+  const updated = recalculateCart({
+    ...cart,
+    saleType: nextSaleType,
+    saleMode: updates.saleMode ?? cart.saleMode,
+    organizationId: selectedMembership?.organizationId ?? null,
+    organizationNameSnapshot: selectedMembership?.organizationName ?? null,
+    planId: selectedMembership?.planId ?? null,
+    planNameSnapshot: selectedMembership?.planName ?? null,
+    membershipId: selectedMembership?.membershipId ?? null,
+    membershipNumberSnapshot: selectedMembership?.memberNumber ?? null,
+    coveragePercentSnapshot: selectedMembership?.coveragePercent ?? null,
+    updatedAt: new Date().toISOString(),
+  }, snapshot);
   await saveOfflineCart(updated, reservations.filter((entry) => entry.cartId === cartId), []);
   return updated;
 }
@@ -340,6 +413,14 @@ export function buildOfflineSaleDraftOperation(cart: OfflineCart): OfflineSaleDr
     deviceId: cart.deviceId,
     userId: cart.userId,
     customerId: cart.customerId,
+    saleType: cart.saleType,
+    saleMode: cart.saleMode,
+    organizationId: cart.organizationId,
+    planId: cart.planId,
+    membershipId: cart.membershipId,
+    coveragePercentSnapshot: cart.coveragePercentSnapshot,
+    patientShareUsd: cart.patientShareUsd,
+    insuranceShareUsd: cart.insuranceShareUsd,
     currency: cart.currency,
     exchangeRateSnapshot: cart.exchangeRateSnapshot,
     createdAt: cart.createdAt,
@@ -374,6 +455,10 @@ export function mapOfflineError(error: unknown) {
     CASH_SESSION_REQUIRED: 'Ouvrez la caisse avant d encaisser une vente.',
     PAYMENT_REQUIRED: 'Saisissez un montant USD ou CDF avant de valider hors ligne.',
     PAYMENT_INSUFFICIENT: 'Le paiement saisi est insuffisant pour finaliser la vente offline.',
+    INVALID_SETTLEMENT_RETURN: 'Le rendu saisi est incoherent avec le montant paye.',
+    CUSTOMER_REQUIRED_FOR_INSURANCE: 'Selectionnez un client assure avant de finaliser une vente assurance hors ligne.',
+    MEMBERSHIP_REQUIRED: 'Choisissez une mutuelle active du client avant de finaliser la vente assurance.',
+    MEMBERSHIP_NOT_ACTIVE: 'La mutuelle selectionnee n est plus valide dans le snapshot local.',
     EXCHANGE_RATE_REQUIRED: 'Un taux local valide est requis pour accepter un paiement en CDF hors ligne.',
     LOCAL_STORAGE_ERROR: 'Impossible d enregistrer localement ce brouillon.',
     OFFLINE_AUTH_EXPIRED: 'L autorisation hors ligne de ce poste a expire. Reconnectez-vous a Internet.',
@@ -612,6 +697,16 @@ function validateOfflineCart(cart: OfflineCart, context: OfflineCartContext): Of
   const lotMap = new Map(context.snapshot.lots.map((item) => [item.lotId, item]));
   const quota = buildQuotaBreakdown(context.snapshot, context.reservations, cart.cartId);
   const quotaByAllocation = new Map(quota.map((item) => [item.allocationId, item]));
+  const selectedMembership = resolveMembershipById(context.snapshot, cart.membershipId);
+
+  if (cart.saleType === 'INSURANCE') {
+    if (!cart.customerId) reasons.add('CUSTOMER_REQUIRED_FOR_INSURANCE');
+    if (!selectedMembership) reasons.add('MEMBERSHIP_REQUIRED');
+    else {
+      if (!selectedMembership.isActive) reasons.add('MEMBERSHIP_NOT_ACTIVE');
+      if (selectedMembership.customerId !== cart.customerId) reasons.add('MEMBERSHIP_REQUIRED');
+    }
+  }
 
   for (const item of cart.items) {
     const article = articleMap.get(item.articleId);
@@ -654,18 +749,35 @@ function validateOfflineCart(cart: OfflineCart, context: OfflineCartContext): Of
     ...cart,
     status: reasons.size > 0 ? 'BLOCKED' : cart.items.length > 0 ? 'READY' : 'DRAFT',
     blockedReasons: Array.from(reasons).map(mapOfflineError),
-  });
+  }, context.snapshot);
 }
 
-function recalculateCart(cart: OfflineCart): OfflineCart {
+function recalculateCart(cart: OfflineCart, snapshot?: OfflineLocalSnapshot): OfflineCart {
   const subtotal = roundMoney(cart.items.reduce((sum, item) => sum + Number(item.lineTotal ?? 0), 0));
   const quantityTotal = cart.items.reduce((sum, item) => sum + Number(item.quantity ?? 0), 0);
+  const selectedMembership = snapshot ? resolveMembershipById(snapshot, cart.membershipId) : null;
+  const effectiveCoveragePercent = cart.saleType === 'INSURANCE'
+    ? Number(selectedMembership?.coveragePercent ?? cart.coveragePercentSnapshot ?? 0)
+    : 0;
+  const insuranceShareUsd = cart.saleType === 'INSURANCE'
+    ? roundMoney(subtotal * Math.max(0, Math.min(100, effectiveCoveragePercent)) / 100)
+    : 0;
+  const patientShareUsd = roundMoney(subtotal - insuranceShareUsd);
   return {
     ...cart,
+    coveragePercentSnapshot: cart.saleType === 'INSURANCE' ? effectiveCoveragePercent : null,
+    organizationId: cart.saleType === 'INSURANCE' ? (selectedMembership?.organizationId ?? cart.organizationId) : null,
+    organizationNameSnapshot: cart.saleType === 'INSURANCE' ? (selectedMembership?.organizationName ?? cart.organizationNameSnapshot) : null,
+    planId: cart.saleType === 'INSURANCE' ? (selectedMembership?.planId ?? cart.planId) : null,
+    planNameSnapshot: cart.saleType === 'INSURANCE' ? (selectedMembership?.planName ?? cart.planNameSnapshot) : null,
+    membershipId: cart.saleType === 'INSURANCE' ? cart.membershipId : null,
+    membershipNumberSnapshot: cart.saleType === 'INSURANCE' ? (selectedMembership?.memberNumber ?? cart.membershipNumberSnapshot) : null,
     subtotal,
     total: subtotal,
     itemCount: cart.items.length,
     quantityTotal,
+    patientShareUsd,
+    insuranceShareUsd,
   };
 }
 
@@ -705,6 +817,11 @@ function createActivityLog(type: OfflineActivityLogEntry['type'], cartId: string
     message,
     createdAt: new Date().toISOString(),
   };
+}
+
+function resolveMembershipById(snapshot: OfflineLocalSnapshot, membershipId: string | null | undefined) {
+  if (!membershipId) return null;
+  return snapshot.memberships.find((membership) => membership.membershipId === membershipId) ?? null;
 }
 
 function isAllocationVendableForCart(allocation: OfflineStockAllocation, quotaRows: OfflineCartQuotaBreakdown[]) {

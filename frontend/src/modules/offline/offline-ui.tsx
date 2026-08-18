@@ -241,9 +241,7 @@ export function OfflineReceiptTicket(props: {
 }) {
   const sale = props.sale;
   if (!sale) return null;
-  const rate = sale.exchangeRateSnapshot ?? null;
-  const totalCdf = rate ? Math.round(sale.total * rate) : null;
-  const paidUsd = sale.items.length > 0 ? sale.total : 0;
+  const receipt = buildOfflineReceiptViewModel(sale);
 
   return (
     <div className="offline-receipt-print">
@@ -258,6 +256,9 @@ export function OfflineReceiptTicket(props: {
         <p>Date : {formatDateTime(sale.validatedAt)}</p>
         <p>Vendeur : {props.sellerName ?? '-'}</p>
         <p>Poste : {props.workstationName ?? sale.workstationId}</p>
+        <p>Type : {receipt.saleTypeLabel}</p>
+        <p>Mode : {receipt.saleModeLabel}</p>
+        {receipt.membershipLabel ? <p>Assurance : {receipt.membershipLabel}</p> : null}
       </section>
       <table>
         <thead>
@@ -276,10 +277,16 @@ export function OfflineReceiptTicket(props: {
       </table>
       <footer>
         <p>Total USD : {formatMoney(sale.total, 'USD')}</p>
-        <p>Total CDF : {totalCdf !== null ? `${totalCdf.toLocaleString('fr-FR')} FC` : '-'}</p>
-        <p>Paye : {formatMoney(paidUsd, 'USD')}</p>
+        <p>Total CDF : {receipt.totalCdfLabel}</p>
+        <p>Part patient : {formatMoney(sale.patientShareUsd, 'USD')} / {receipt.patientShareCdfLabel}</p>
+        <p>Part assurance : {formatMoney(sale.insuranceShareUsd, 'USD')} / {receipt.insuranceShareCdfLabel}</p>
+        <p>Paye USD : {formatMoney(sale.paymentSettlement.amountPaidUsd, 'USD')}</p>
+        <p>Paye FC : {receipt.paidCdfLabel}</p>
+        <p>Rendu USD : {formatMoney(sale.paymentSettlement.amountReturnedUsd, 'USD')}</p>
+        <p>Rendu FC : {receipt.returnedCdfLabel}</p>
         <p>Statut : {sale.syncStatus === 'SYNCED' ? 'Synchronisee' : 'Vente enregistree hors ligne'}</p>
-        {rate ? <p>Taux utilise : 1 USD = {Number(rate).toLocaleString('fr-FR')} FC</p> : null}
+        {receipt.rateLabel ? <p>Taux utilise : {receipt.rateLabel}</p> : null}
+        {sale.note ? <p>Note : {sale.note}</p> : null}
       </footer>
     </div>
   );
@@ -301,9 +308,7 @@ export function buildOfflineReceiptHtml(params: {
   workstationName?: string | null;
 }) {
   const { sale } = params;
-  const rate = sale.exchangeRateSnapshot ?? null;
-  const totalCdf = rate ? Math.round(sale.total * rate) : null;
-  const paidUsd = sale.items.length > 0 ? sale.total : 0;
+  const receipt = buildOfflineReceiptViewModel(sale);
   const rows = sale.items.map((item) => `
     <tr>
       <td>${escapeReceiptHtml(item.articleName)}</td>
@@ -379,6 +384,9 @@ export function buildOfflineReceiptHtml(params: {
       <p>Date : ${escapeReceiptHtml(formatDateTime(sale.validatedAt))}</p>
       <p>Vendeur : ${escapeReceiptHtml(params.sellerName ?? '-')}</p>
       <p>Poste : ${escapeReceiptHtml(params.workstationName ?? sale.workstationId)}</p>
+      <p>Type : ${escapeReceiptHtml(receipt.saleTypeLabel)}</p>
+      <p>Mode : ${escapeReceiptHtml(receipt.saleModeLabel)}</p>
+      ${receipt.membershipLabel ? `<p>Assurance : ${escapeReceiptHtml(receipt.membershipLabel)}</p>` : ''}
     </section>
     <table>
       <thead>
@@ -388,13 +396,57 @@ export function buildOfflineReceiptHtml(params: {
     </table>
     <footer class="receipt-footer">
       <p>Total USD : ${escapeReceiptHtml(formatMoney(sale.total, 'USD'))}</p>
-      <p>Total CDF : ${escapeReceiptHtml(totalCdf !== null ? `${totalCdf.toLocaleString('fr-FR')} FC` : '-')}</p>
-      <p>Paye : ${escapeReceiptHtml(formatMoney(paidUsd, 'USD'))}</p>
+      <p>Total CDF : ${escapeReceiptHtml(receipt.totalCdfLabel)}</p>
+      <p>Part patient : ${escapeReceiptHtml(formatMoney(sale.patientShareUsd, 'USD'))} / ${escapeReceiptHtml(receipt.patientShareCdfLabel)}</p>
+      <p>Part assurance : ${escapeReceiptHtml(formatMoney(sale.insuranceShareUsd, 'USD'))} / ${escapeReceiptHtml(receipt.insuranceShareCdfLabel)}</p>
+      <p>Paye USD : ${escapeReceiptHtml(formatMoney(sale.paymentSettlement.amountPaidUsd, 'USD'))}</p>
+      <p>Paye FC : ${escapeReceiptHtml(receipt.paidCdfLabel)}</p>
+      <p>Rendu USD : ${escapeReceiptHtml(formatMoney(sale.paymentSettlement.amountReturnedUsd, 'USD'))}</p>
+      <p>Rendu FC : ${escapeReceiptHtml(receipt.returnedCdfLabel)}</p>
       <p>Statut : ${escapeReceiptHtml(sale.syncStatus === 'SYNCED' ? 'Synchronisee' : 'Vente enregistree hors ligne')}</p>
-      ${rate ? `<p>Taux utilise : 1 USD = ${escapeReceiptHtml(Number(rate).toLocaleString('fr-FR'))} FC</p>` : ''}
+      ${receipt.rateLabel ? `<p>Taux utilise : ${escapeReceiptHtml(receipt.rateLabel)}</p>` : ''}
+      ${sale.note ? `<p>Note : ${escapeReceiptHtml(sale.note)}</p>` : ''}
     </footer>
   </body>
 </html>`;
+}
+
+function buildOfflineReceiptViewModel(sale: OfflineSale) {
+  const rate = sale.exchangeRateSnapshot ?? null;
+  return {
+    saleTypeLabel: sale.saleType === 'INSURANCE' ? 'Assurance' : 'Cash',
+    saleModeLabel: sale.saleMode === 'ADVANCE' ? 'Paiement en avance' : 'Vente immediate',
+    membershipLabel: formatReceiptMembershipLabel(sale),
+    totalCdfLabel: formatReceiptCdf(sale.total, rate),
+    patientShareCdfLabel: formatReceiptCdf(sale.patientShareUsd, rate),
+    insuranceShareCdfLabel: formatReceiptCdf(sale.insuranceShareUsd, rate),
+    paidCdfLabel: formatReceiptMoneyValue(sale.paymentSettlement.amountPaidCdf, 'FC'),
+    returnedCdfLabel: formatReceiptMoneyValue(sale.paymentSettlement.amountReturnedCdf, 'FC'),
+    rateLabel: rate ? `1 USD = ${Number(rate).toLocaleString('fr-FR')} FC` : null,
+  };
+}
+
+function formatReceiptMembershipLabel(sale: OfflineSale) {
+  const parts = [
+    sale.organizationNameSnapshot?.trim() || sale.planNameSnapshot?.trim() || null,
+    sale.membershipNumberSnapshot?.trim() ? `#${sale.membershipNumberSnapshot.trim()}` : null,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(' - ') : null;
+}
+
+function formatReceiptCdf(amountUsd: number, rate: number | null) {
+  if (!rate) return '-';
+  return `${Math.round(amountUsd * rate).toLocaleString('fr-FR')} FC`;
+}
+
+function formatReceiptMoneyValue(amount: number, suffix: string) {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return suffix === 'FC' ? '0 FC' : `0 ${suffix}`;
+  }
+  return `${amount.toLocaleString('fr-FR', {
+    minimumFractionDigits: suffix === 'USD' ? 2 : 0,
+    maximumFractionDigits: suffix === 'USD' ? 2 : 0,
+  })} ${suffix}`;
 }
 
 export function printOfflineReceipt(params: {

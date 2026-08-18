@@ -27,7 +27,7 @@ async function main() {
   const installDoc = read('docs/POS_OFFLINE_INSTALLATION.md');
   const readinessDoc = read('docs/POS_OFFLINE_PRODUCTION_READINESS.md');
 
-  assertIncludes(config, 'OFFLINE_DB_VERSION = 6', 'offline-config.ts');
+  assertIncludes(config, 'OFFLINE_DB_VERSION = 7', 'offline-config.ts');
   assertIncludes(config, 'OFFLINE_RETENTION_DAYS', 'offline-config.ts');
   assertIncludes(storage, 'OFFLINE_METADATA_STORE', 'offline-storage.ts');
   assertIncludes(storage, 'createDefaultOfflineMetadata', 'offline-storage.ts');

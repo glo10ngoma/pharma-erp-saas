@@ -10,6 +10,8 @@ export type OfflineCartSaveState = 'IDLE' | 'SAVING' | 'SAVED' | 'ERROR';
 export type OfflinePriceSource = 'ARTICLE_DEFAULT' | 'LOT_FEFO';
 export type OfflineSaleStatus = 'LOCAL_VALIDATED' | 'PENDING_SYNC' | 'SYNCING' | 'SYNCED' | 'CONFLICT' | 'FAILED';
 export type OfflinePaymentStatus = 'CAPTURED_LOCAL' | 'SYNCED';
+export type OfflineSaleType = 'CASH' | 'INSURANCE';
+export type OfflineSaleMode = 'IMMEDIATE' | 'ADVANCE';
 export type OfflinePendingConsumptionStatus = 'PENDING' | 'SYNCED' | 'CONFLICT';
 export type OfflineSyncQueueStatus = 'PENDING' | 'SYNCING' | 'SYNCED' | 'CONFLICT' | 'FAILED';
 export type OfflineCashSessionStatus =
@@ -143,6 +145,56 @@ export interface OfflinePosCustomer {
   customerCode: string;
   name: string;
   phone: string | null;
+  isActive: boolean;
+  updatedAt: string | null;
+  lastSyncedAt: string | null;
+}
+
+export interface OfflineInsuranceOrganization {
+  localKey: string;
+  tenantId: string;
+  organizationId: string;
+  organizationCode: string;
+  organizationName: string;
+  organizationType: string;
+  isActive: boolean;
+  updatedAt: string | null;
+  lastSyncedAt: string | null;
+}
+
+export interface OfflineInsurancePlan {
+  localKey: string;
+  tenantId: string;
+  organizationId: string;
+  planId: string;
+  planCode: string;
+  planName: string;
+  coveragePercent: number;
+  patientCopayPercent: number;
+  monthlyLimit: number | null;
+  annualLimit: number | null;
+  requiresAuthorization: boolean;
+  isActive: boolean;
+  updatedAt: string | null;
+  lastSyncedAt: string | null;
+}
+
+export interface OfflineCustomerMembership {
+  localKey: string;
+  tenantId: string;
+  customerId: string;
+  customerName: string | null;
+  organizationId: string;
+  organizationName: string | null;
+  planId: string | null;
+  planName: string | null;
+  membershipId: string;
+  memberNumber: string | null;
+  employeeNumber: string | null;
+  relationshipType: string | null;
+  coveragePercent: number | null;
+  validFrom: string | null;
+  validTo: string | null;
   isActive: boolean;
   updatedAt: string | null;
   lastSyncedAt: string | null;
@@ -448,6 +500,17 @@ export interface OfflineCart {
   userId: string;
   customerId: string | null;
   customerNameSnapshot: string | null;
+  saleType: OfflineSaleType;
+  saleMode: OfflineSaleMode;
+  organizationId: string | null;
+  organizationNameSnapshot: string | null;
+  planId: string | null;
+  planNameSnapshot: string | null;
+  membershipId: string | null;
+  membershipNumberSnapshot: string | null;
+  coveragePercentSnapshot: number | null;
+  patientShareUsd: number;
+  insuranceShareUsd: number;
   currency: string;
   exchangeRateSnapshot: number | null;
   status: OfflineCartStatus;
@@ -508,6 +571,14 @@ export interface OfflineSaleDraftOperation {
   deviceId: string;
   userId: string;
   customerId: string | null;
+  saleType: OfflineSaleType;
+  saleMode: OfflineSaleMode;
+  organizationId: string | null;
+  planId: string | null;
+  membershipId: string | null;
+  coveragePercentSnapshot: number | null;
+  patientShareUsd: number;
+  insuranceShareUsd: number;
   currency: string;
   exchangeRateSnapshot: number | null;
   createdAt: string;
@@ -600,10 +671,20 @@ export interface OfflineSale {
   cashSessionOpenOperationId: string | null;
   customerId: string | null;
   customerNameSnapshot: string | null;
-  saleType: 'CASH';
-  saleMode: 'IMMEDIATE';
+  saleType: OfflineSaleType;
+  saleMode: OfflineSaleMode;
+  organizationId: string | null;
+  organizationNameSnapshot: string | null;
+  planId: string | null;
+  planNameSnapshot: string | null;
+  membershipId: string | null;
+  membershipNumberSnapshot: string | null;
+  coveragePercentSnapshot: number | null;
+  patientShareUsd: number;
+  insuranceShareUsd: number;
   currency: 'USD';
   exchangeRateSnapshot: number | null;
+  paymentSettlement: OfflinePaymentSettlement;
   note: string | null;
   status: OfflineSaleStatus;
   syncStatus: OfflineSyncQueueStatus;
@@ -633,12 +714,18 @@ export interface OfflineSaleValidateOperation {
   localCashSessionId: string;
   cashSessionOpenOperationId: string | null;
   customerId: string | null;
+  organizationId: string | null;
+  planId: string | null;
+  membershipId: string | null;
+  coveragePercentSnapshot: number | null;
   currency: 'USD';
   exchangeRateSnapshot: number | null;
   createdAt: string;
   validatedAt: string;
-  saleMode: 'IMMEDIATE';
-  saleType: 'CASH';
+  saleMode: OfflineSaleMode;
+  saleType: OfflineSaleType;
+  patientShareUsd: number;
+  insuranceShareUsd: number;
   note: string | null;
   subtotal: number;
   total: number;
@@ -816,6 +903,44 @@ export interface PosSyncBootstrapPayload {
     isActive: boolean;
     updatedAt: string | null;
   }>;
+  organizations: Array<{
+    organizationId: string;
+    organizationCode: string;
+    organizationName: string;
+    organizationType: string;
+    isActive: boolean;
+    updatedAt: string | null;
+  }>;
+  insurancePlans: Array<{
+    planId: string;
+    organizationId: string;
+    planCode: string;
+    planName: string;
+    coveragePercent: number;
+    patientCopayPercent: number;
+    monthlyLimit: number | null;
+    annualLimit: number | null;
+    requiresAuthorization: boolean;
+    isActive: boolean;
+    updatedAt: string | null;
+  }>;
+  memberships: Array<{
+    membershipId: string;
+    customerId: string;
+    customerName: string | null;
+    organizationId: string;
+    organizationName: string | null;
+    planId: string | null;
+    planName: string | null;
+    coveragePercent: number | null;
+    memberNumber: string | null;
+    employeeNumber: string | null;
+    relationshipType: string | null;
+    validFrom: string | null;
+    validTo: string | null;
+    isActive: boolean;
+    updatedAt: string | null;
+  }>;
 }
 
 export interface PosSyncChangesPayload {
@@ -828,6 +953,9 @@ export interface PosSyncChangesPayload {
     lots: Array<PosSyncBootstrapPayload['lots'][number] & { operation: 'UPSERT' | 'REVOKE' }>;
     allocations: Array<PosSyncBootstrapPayload['offlineAllocations'][number] & { operation: 'UPSERT' | 'REVOKE' }>;
     customers: Array<PosSyncBootstrapPayload['customers'][number] & { operation: 'UPSERT' | 'DEACTIVATE' }>;
+    organizations?: Array<PosSyncBootstrapPayload['organizations'][number] & { operation: 'UPSERT' | 'DEACTIVATE' }>;
+    insurancePlans?: Array<PosSyncBootstrapPayload['insurancePlans'][number] & { operation: 'UPSERT' | 'DEACTIVATE' }>;
+    memberships?: Array<PosSyncBootstrapPayload['memberships'][number] & { operation: 'UPSERT' | 'DEACTIVATE' }>;
     settings: Array<{ operation: 'UPSERT'; exchangeRate: number | null; updatedAt: string | null }>;
     conflicts: Array<{
       operation: 'UPSERT' | 'RESOLVE';
@@ -852,6 +980,9 @@ export interface OfflineLocalSnapshot {
   lots: OfflinePosLot[];
   allocations: OfflineStockAllocation[];
   customers: OfflinePosCustomer[];
+  organizations: OfflineInsuranceOrganization[];
+  insurancePlans: OfflineInsurancePlan[];
+  memberships: OfflineCustomerMembership[];
   settings: OfflinePosSettings | null;
   auth: OfflineAuthSnapshot | null;
   workstation: OfflineWorkstationSnapshot | null;

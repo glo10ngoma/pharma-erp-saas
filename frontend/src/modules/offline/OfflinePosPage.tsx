@@ -16,6 +16,7 @@ import {
   searchOfflineCustomers,
   setOfflineCartNote,
   updateOfflineCartCustomer,
+  updateOfflineCartSaleConfiguration,
   type LocalCatalogSearchResult,
 } from './offline-cart';
 import {
@@ -31,7 +32,7 @@ import {
   loadLocalSnapshot,
   type OfflineSnapshotViewModel,
 } from './offline-bootstrap';
-import { type OfflineCart, type OfflinePosCustomer, type OfflineSale } from './offline-types';
+import { type OfflineCart, type OfflineCustomerMembership, type OfflinePosCustomer, type OfflineSale } from './offline-types';
 import { useSyncEngine } from './useSyncEngine';
 
 type OfflinePageModel = Awaited<ReturnType<typeof getOfflineCartPageModel>>;
@@ -43,6 +44,9 @@ const emptyViewModel: OfflineSnapshotViewModel = {
     lots: [],
     allocations: [],
     customers: [],
+    organizations: [],
+    insurancePlans: [],
+    memberships: [],
     settings: null,
     auth: null,
     workstation: null,
@@ -74,6 +78,8 @@ export function OfflinePosPage() {
   const [noteDraft, setNoteDraft] = useState('');
   const [amountPaidUsd, setAmountPaidUsd] = useState('');
   const [amountPaidCdf, setAmountPaidCdf] = useState('');
+  const [amountReturnedUsd, setAmountReturnedUsd] = useState('');
+  const [amountReturnedCdf, setAmountReturnedCdf] = useState('');
   const [lastReceiptSale, setLastReceiptSale] = useState<OfflineSale | null>(null);
   const articleInputRef = useRef<HTMLInputElement | null>(null);
   const customerInputRef = useRef<HTMLInputElement | null>(null);
@@ -183,19 +189,42 @@ export function OfflinePosPage() {
   const quotaAlert = formatQuotaAlert(quotaSummary.totalAvailable);
   const cartTotal = cart?.total ?? 0;
   const cartExchangeRate = settings?.exchangeRate?.rate ?? cart?.exchangeRateSnapshot ?? null;
+  const insuranceMemberships = useMemo(
+    () => snapshot.memberships.filter((membership) => membership.customerId === cart?.customerId && membership.isActive),
+    [cart?.customerId, snapshot.memberships],
+  );
+  const selectedMembership = useMemo(
+    () => insuranceMemberships.find((membership) => membership.membershipId === cart?.membershipId) ?? null,
+    [cart?.membershipId, insuranceMemberships],
+  );
   const settlementPreview = buildOfflineCashSettlement({
-    totalUsd: cartTotal,
+    payableUsd: cart?.patientShareUsd ?? cartTotal,
     exchangeRate: cartExchangeRate,
     amountPaidUsd: Number(amountPaidUsd || 0),
     amountPaidCdf: Number(amountPaidCdf || 0),
+    amountReturnedUsd: Number(amountReturnedUsd || 0),
+    amountReturnedCdf: Number(amountReturnedCdf || 0),
   });
+  const requiresCashSessionForSettlement =
+    settlementPreview.amountPaidUsd > 0
+    || settlementPreview.amountPaidCdf > 0
+    || settlementPreview.amountReturnedUsd > 0
+    || settlementPreview.amountReturnedCdf > 0;
   const canFinalizeOfflineSale =
     !!cart
     && cart.items.length > 0
     && cart.status !== 'BLOCKED'
     && authorizationState !== 'EXPIRED'
-    && canAttachOfflineCashSale(snapshot.cashSession)
-    && (settlementPreview.amountPaidUsd > 0 || settlementPreview.amountPaidCdf > 0)
+    && (
+      (cart.saleType === 'INSURANCE' && (cart.patientShareUsd ?? 0) <= 0)
+      || settlementPreview.amountPaidUsd > 0
+      || settlementPreview.amountPaidCdf > 0
+    )
+    && (
+      requiresCashSessionForSettlement
+        ? canAttachOfflineCashSale(snapshot.cashSession)
+        : true
+    )
     && settlementPreview.settlementDifferenceUsd >= -0.02;
 
   async function handleSelectArticle(result: LocalCatalogSearchResult, quantityDelta = 1) {
@@ -312,11 +341,15 @@ export function OfflinePosPage() {
       const result = await finalizeOfflineCashSale(cart.cartId, {
         amountPaidUsd: Number(amountPaidUsd || 0),
         amountPaidCdf: Number(amountPaidCdf || 0),
+        amountReturnedUsd: Number(amountReturnedUsd || 0),
+        amountReturnedCdf: Number(amountReturnedCdf || 0),
         note: noteDraft,
       });
       await notifyOfflineSaleQueued();
       setAmountPaidUsd('');
       setAmountPaidCdf('');
+      setAmountReturnedUsd('');
+      setAmountReturnedCdf('');
       flushSync(() => {
         setLastReceiptSale(result.sale);
       });
@@ -361,13 +394,65 @@ export function OfflinePosPage() {
   }
 
   function applyExactPayment() {
-    setAmountPaidUsd(cartTotal.toFixed(2));
+    if (!cart) return;
+    setAmountPaidUsd((cart.patientShareUsd ?? cartTotal).toFixed(2));
     setAmountPaidCdf('');
+    setAmountReturnedUsd('');
+    setAmountReturnedCdf('');
   }
 
-  function addCdfShortcut(amount: number) {
-    const current = Number(amountPaidCdf || 0);
-    setAmountPaidCdf(String(current + amount));
+  async function handleSelectSaleType(nextSaleType: 'CASH' | 'INSURANCE') {
+    if (!cart) return;
+    if (nextSaleType === cart.saleType) return;
+    setBusyAction('CUSTOMER');
+    try {
+      const updated = await updateOfflineCartSaleConfiguration(cart.cartId, { saleType: nextSaleType });
+      setMessage(
+        nextSaleType === 'INSURANCE'
+          ? updated.customerId
+            ? 'Vente assurance active. Selectionnez une mutuelle du client.'
+            : 'Vente assurance active. Selectionnez un client assure.'
+          : 'Type de vente offline: Cash.',
+      );
+      await refresh(updated.cartId);
+    } catch (error) {
+      setMessage(mapOfflineError(error));
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleSelectSaleMode(nextSaleMode: 'IMMEDIATE' | 'ADVANCE') {
+    if (!cart) return;
+    if (nextSaleMode === cart.saleMode) return;
+    setBusyAction('CUSTOMER');
+    try {
+      const updated = await updateOfflineCartSaleConfiguration(cart.cartId, { saleMode: nextSaleMode });
+      setMessage(
+        nextSaleMode === 'ADVANCE'
+          ? 'Paiement en avance offline actif: la vente est encaissee maintenant et livree plus tard.'
+          : 'Mode de vente offline: Vente immediate.',
+      );
+      await refresh(updated.cartId);
+    } catch (error) {
+      setMessage(mapOfflineError(error));
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleSelectMembership(membershipId: string | null) {
+    if (!cart) return;
+    setBusyAction('CUSTOMER');
+    try {
+      const updated = await updateOfflineCartSaleConfiguration(cart.cartId, { membershipId });
+      setMessage(membershipId ? 'Mutuelle offline appliquee au brouillon local.' : 'Mutuelle retiree du brouillon local.');
+      await refresh(updated.cartId);
+    } catch (error) {
+      setMessage(mapOfflineError(error));
+    } finally {
+      setBusyAction(null);
+    }
   }
 
   function handlePrintReceipt() {
@@ -590,24 +675,86 @@ export function OfflinePosPage() {
               <section className="card offline-panel offline-choice-card">
                 <div className="offline-panel-heading"><h3>Type de vente</h3></div>
                 <div className="offline-segmented-control">
-                  <button type="button" className="is-active">Cash</button>
-                  <button type="button" disabled title="Assurance indisponible sur ce flux hors ligne">Assurance</button>
+                  <button
+                    type="button"
+                    className={cart.saleType === 'CASH' ? 'is-active' : ''}
+                    onClick={() => handleSelectSaleType('CASH')}
+                  >
+                    Cash
+                  </button>
+                  <button
+                    type="button"
+                    className={cart.saleType === 'INSURANCE' ? 'is-active' : ''}
+                    onClick={() => handleSelectSaleType('INSURANCE')}
+                  >
+                    Assurance
+                  </button>
                 </div>
+                <small className="offline-choice-hint">
+                  {cart.saleType === 'INSURANCE'
+                    ? selectedMembership
+                      ? `Couverture locale: ${Number(selectedMembership.coveragePercent ?? 0).toLocaleString('fr-FR')} %.`
+                      : 'Selectionnez une mutuelle active du client.'
+                    : 'Flux comptoir rapide actif sur ce brouillon.'}
+                </small>
               </section>
 
               <section className="card offline-panel offline-choice-card">
                 <div className="offline-panel-heading"><h3>Mode de vente</h3></div>
                 <div className="offline-segmented-control">
-                  <button type="button" className="is-active">Vente immediate</button>
-                  <button type="button" disabled title="Paiement en avance indisponible sur ce flux hors ligne">Paiement en avance</button>
+                  <button
+                    type="button"
+                    className={cart.saleMode === 'IMMEDIATE' ? 'is-active' : ''}
+                    onClick={() => handleSelectSaleMode('IMMEDIATE')}
+                  >
+                    Vente immediate
+                  </button>
+                  <button
+                    type="button"
+                    className={cart.saleMode === 'ADVANCE' ? 'is-active' : ''}
+                    onClick={() => handleSelectSaleMode('ADVANCE')}
+                  >
+                    Paiement en avance
+                  </button>
                 </div>
+                <small className="offline-choice-hint">
+                  {cart.saleMode === 'ADVANCE'
+                    ? 'Encaissement maintenant, stock sorti plus tard a la confirmation de retrait.'
+                    : 'Livraison immediate sur le stock local du poste.'}
+                </small>
               </section>
 
               <section className="card offline-panel offline-choice-card">
                 <div className="offline-panel-heading"><h3>Assurance / Mutuelle</h3></div>
-                <select className="input compact-input" disabled defaultValue="">
-                  <option value="">Rechercher une assurance...</option>
+                <select
+                  className="input compact-input"
+                  disabled={cart.saleType !== 'INSURANCE'}
+                  value={cart.membershipId ?? ''}
+                  title={cart.saleType !== 'INSURANCE' ? 'Passez le type de vente a Assurance pour selectionner une mutuelle.' : undefined}
+                  onChange={(event) => void handleSelectMembership(event.target.value || null)}
+                >
+                  <option value="">
+                    {cart.saleType !== 'INSURANCE'
+                      ? 'Disponible en mode Assurance'
+                      : !cart.customerId
+                        ? 'Selectionnez d abord un client'
+                        : insuranceMemberships.length === 0
+                          ? 'Aucune mutuelle locale active'
+                          : 'Selectionner une mutuelle'}
+                  </option>
+                  {insuranceMemberships.map((membership: OfflineCustomerMembership) => (
+                    <option key={membership.membershipId} value={membership.membershipId}>
+                      {formatInsuranceMembershipLabel(membership)}
+                    </option>
+                  ))}
                 </select>
+                <small className="offline-choice-hint">
+                  {cart.saleType === 'INSURANCE'
+                    ? selectedMembership
+                      ? `Part patient ${formatMoney(cart.patientShareUsd, 'USD')} / part assurance ${formatMoney(cart.insuranceShareUsd, 'USD')}.`
+                      : 'Le snapshot local embarque les mutuelles actives du client selectionne.'
+                    : 'Ce select reste inactif tant que le type Cash est choisi.'}
+                </small>
               </section>
             </section>
 
@@ -686,60 +833,60 @@ export function OfflinePosPage() {
           <aside className="offline-pos-right offline-pos-right-premium offline-pos-payment-column">
             <section className="card offline-panel offline-payment-hero">
               <div className="offline-payment-hero-label">Total a payer</div>
-              <div className="offline-payment-hero-amount">{formatMoney(cart.total, 'USD')}</div>
+              <div className="offline-payment-hero-amount">{formatMoney(cart.patientShareUsd, 'USD')}</div>
               <div className="offline-payment-hero-fc">
-                {settings?.exchangeRate?.rate ? `${Math.round(cart.total * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}
+                {settings?.exchangeRate?.rate ? `${Math.round(cart.patientShareUsd * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}
               </div>
             </section>
 
             <section className="card offline-panel offline-payment-card">
               <div className="offline-panel-heading offline-payment-card-heading">
-                <h3>Règlement</h3>
+                <h3>Reglement</h3>
                 <button className="ghost-button compact-button offline-payment-exact-button" type="button" onClick={applyExactPayment}>
                   Paiement exact
                 </button>
               </div>
               <div className="detail-grid compact-detail-grid">
                 <label>
-                  <span>PAYÉ USD</span>
+                  <span>PAYE USD</span>
                   <input className="input compact-input" type="number" min="0" step="0.01" value={amountPaidUsd} onChange={(event) => setAmountPaidUsd(event.target.value)} />
                 </label>
                 <label>
-                  <span>PAYÉ FC</span>
+                  <span>PAYE FC</span>
                   <input ref={amountPaidCdfRef} className="input compact-input" type="number" min="0" step="1" value={amountPaidCdf} onChange={(event) => setAmountPaidCdf(event.target.value)} />
                 </label>
               </div>
               <div className="detail-grid compact-detail-grid">
                 <label>
-                  <span>À RENDRE USD</span>
+                  <span>A RENDRE USD</span>
                   <input className="input compact-input" type="text" value={formatMoney(settlementPreview.suggestedChangeUsd, 'USD')} readOnly />
                 </label>
                 <label>
-                  <span>À RENDRE FC</span>
+                  <span>A RENDRE FC</span>
                   <input className="input compact-input" type="text" value={`${Math.round(settlementPreview.suggestedChangeCdf).toLocaleString('fr-FR')} FC`} readOnly />
                 </label>
               </div>
               <div className="detail-grid compact-detail-grid">
                 <label>
                   <span>Rendu USD</span>
-                  <input className="input compact-input" type="text" value="" readOnly />
+                  <input className="input compact-input" type="number" min="0" step="0.01" value={amountReturnedUsd} onChange={(event) => setAmountReturnedUsd(event.target.value)} />
                 </label>
                 <label>
                   <span>Rendu FC</span>
-                  <input className="input compact-input" type="text" value="" readOnly />
+                  <input className="input compact-input" type="number" min="0" step="1" value={amountReturnedCdf} onChange={(event) => setAmountReturnedCdf(event.target.value)} />
                 </label>
               </div>
               <div className="offline-payment-readonly">
                 <h4>Informations (lecture seule)</h4>
                 <div className="offline-payment-readonly-row">
                   <span>Part patient</span>
-                  <strong>{formatMoney(cart.total, 'USD')}</strong>
-                  <strong>{settings?.exchangeRate?.rate ? `${Math.round(cart.total * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong>
+                  <strong>{formatMoney(cart.patientShareUsd, 'USD')}</strong>
+                  <strong>{settings?.exchangeRate?.rate ? `${Math.round(cart.patientShareUsd * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong>
                 </div>
                 <div className="offline-payment-readonly-row">
                   <span>Part assurance</span>
-                  <strong>{formatMoney(0, 'USD')}</strong>
-                  <strong>{settings?.exchangeRate?.rate ? '0 FC' : '-'}</strong>
+                  <strong>{formatMoney(cart.insuranceShareUsd, 'USD')}</strong>
+                  <strong>{settings?.exchangeRate?.rate ? `${Math.round(cart.insuranceShareUsd * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong>
                 </div>
               </div>
               <label className="offline-payment-note">
@@ -751,7 +898,7 @@ export function OfflinePosPage() {
                   onChange={(event) => handleNoteChange(event.target.value)}
                 />
               </label>
-              {!canAttachOfflineCashSale(snapshot.cashSession) ? (
+              {requiresCashSessionForSettlement && !canAttachOfflineCashSale(snapshot.cashSession) ? (
                 <div className="offline-warning-text">
                   {snapshot.cashSession
                     ? 'La session locale restauree n est pas encore utilisable pour encaisser. Ouvrez ou reprenez une caisse offline active.'
@@ -835,6 +982,20 @@ function formatDisplayCode(code: string) {
   const normalized = code.replace(/^OFF-STG-(FIELD-|FLD-)?/i, '');
   const compact = normalized.split('-').filter(Boolean).join('-');
   return compact.length > 18 ? compact.slice(-18) : compact;
+}
+
+function formatInsuranceMembershipLabel(membership: OfflineCustomerMembership) {
+  const plan = membership.planName?.trim();
+  const organization = membership.organizationName?.trim();
+  const number = membership.memberNumber?.trim() || membership.employeeNumber?.trim();
+  const segments = [
+    plan || organization || 'Mutuelle',
+    number ? `#${number}` : null,
+    membership.coveragePercent !== null && membership.coveragePercent !== undefined
+      ? `${Number(membership.coveragePercent).toLocaleString('fr-FR')} %`
+      : null,
+  ].filter(Boolean);
+  return segments.join(' - ');
 }
 
 function formatDisplayArticleName(name: string, fallbackCode?: string) {

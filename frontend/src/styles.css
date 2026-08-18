@@ -7652,8 +7652,9 @@ details.nav-group .nav-link {
 
 .offline-pos-control-grid {
   display: grid;
-  gap: 10px;
-  grid-template-columns: minmax(0, 1.55fr) repeat(3, minmax(180px, 0.8fr));
+  align-items: stretch;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1.28fr) minmax(190px, 0.9fr) minmax(210px, 1fr) minmax(230px, 1.08fr);
 }
 
 .offline-pos-control-grid > .offline-panel {
@@ -7662,6 +7663,7 @@ details.nav-group .nav-link {
 
 .offline-choice-card {
   align-content: start;
+  min-width: 0;
 }
 
 .offline-client-card,
@@ -7685,6 +7687,11 @@ details.nav-group .nav-link {
   font-weight: 700;
   min-height: 38px;
   padding: 0 10px;
+  text-align: center;
+  white-space: normal;
+  width: 100%;
+  min-width: 0;
+  line-height: 1.15;
 }
 
 .offline-segmented-control button.is-active {
@@ -7693,9 +7700,26 @@ details.nav-group .nav-link {
   color: #0f7a5d;
 }
 
+.offline-segmented-control button.is-unavailable,
 .offline-segmented-control button:disabled {
   background: #f8fbf9;
+  border-color: #dce5e0;
   color: #829088;
+  cursor: not-allowed;
+}
+
+.offline-choice-card .compact-input {
+  min-width: 0;
+  width: 100%;
+}
+
+.offline-choice-hint {
+  color: var(--muted);
+  display: block;
+  font-size: 0.72rem;
+  line-height: 1.25;
+  margin-top: 2px;
+  min-height: 2.2em;
 }
 
 .offline-search-card .floating-search-trigger,

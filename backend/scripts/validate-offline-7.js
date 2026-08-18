@@ -61,7 +61,7 @@ async function main() {
   assertIncludes(ui, 'window.open', 'offline-ui.tsx');
   assertIncludes(cart, 'Ouvrez la caisse avant d encaisser une vente.', 'offline-cart.ts');
   assertIncludes(sale, "throw new Error('OFFLINE_AUTH_EXPIRED');", 'offline-sale.ts');
-  assertIncludes(config, 'OFFLINE_DB_VERSION = 6', 'offline-config.ts');
+  assertIncludes(config, 'OFFLINE_DB_VERSION = 7', 'offline-config.ts');
   assertIncludes(manifest, '"display": "standalone"', 'manifest.webmanifest');
   assertIncludes(manifest, '"start_url": "/offline/pos"', 'manifest.webmanifest');
   assertIncludes(manifest, '"scope": "/"', 'manifest.webmanifest');
