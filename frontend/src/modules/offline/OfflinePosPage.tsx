@@ -570,14 +570,14 @@ export function OfflinePosPage() {
 
         <section className="offline-pos-grid offline-pos-grid-premium offline-pos-grid-fullscreen">
           <aside className="offline-pos-cart-column">
-            <section className="card offline-panel offline-cart-panel offline-cart-panel-premium offline-cart-panel-fullscreen">
+            <section className="card offline-panel offline-cart-panel offline-cart-panel-premium offline-cart-panel-fullscreen offline-cart-panel-accent">
               <div className="offline-panel-heading offline-cart-panel-heading">
                 <h3>Panier ({cart.itemCount})</h3>
-                <button className="ghost-button compact-button offline-cart-clear-button" type="button" onClick={() => void handleClearCart()} disabled={busyAction !== null || cart.items.length === 0}>
-                  <TrashIcon />
-                  <span>Vider</span>
-                </button>
               </div>
+              <button className="ghost-button compact-button offline-cart-clear-button" type="button" onClick={() => void handleClearCart()} disabled={busyAction !== null || cart.items.length === 0}>
+                <TrashIcon />
+                <span>Vider</span>
+              </button>
               {cart.items.length === 0 ? (
                 <div className="offline-cart-empty-state">
                   <div className="offline-cart-empty-icon">Panier</div>
@@ -603,7 +603,22 @@ export function OfflinePosPage() {
                             <strong>{formatDisplayArticleName(item.articleName, item.articleCode)}</strong>
                             <div className="offline-row-meta">{formatLotLabel(item.lotAllocations[0]?.lotNumber ?? item.articleCode)}</div>
                           </td>
-                          <td>{item.quantity}</td>
+                          <td>
+                            <input
+                              aria-label={`Quantite ${formatDisplayArticleName(item.articleName, item.articleCode)}`}
+                              className="offline-cart-qty-input"
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={item.quantity}
+                              onChange={(event) => {
+                                const nextQuantity = Number.parseInt(event.target.value || '0', 10);
+                                if (Number.isFinite(nextQuantity) && nextQuantity >= 0 && nextQuantity !== item.quantity) {
+                                  void handleQuantityChange(item, nextQuantity);
+                                }
+                              }}
+                            />
+                          </td>
                           <td>{formatMoney(item.unitPriceSnapshot, cart.currency)}</td>
                           <td>{formatMoney(item.lineTotal, cart.currency)}</td>
                           <td>
@@ -758,16 +773,13 @@ export function OfflinePosPage() {
               </section>
             </section>
 
-            <section className="card offline-panel offline-search-card">
-              <div className="offline-panel-heading">
-                <div>
-                  <h3>Rechercher un article</h3>
-                  <span className="offline-row-meta">Scannez un code-barres ou tapez un nom/code. F2 ramene le focus.</span>
+              <section className="card offline-panel offline-search-card">
+                <div className="offline-panel-heading">
+                  <div>
+                    <h3>Rechercher un article</h3>
+                    <span className="offline-row-meta">Scannez un code-barres ou tapez un nom/code. F2 ramene le focus.</span>
+                  </div>
                 </div>
-                <button className="ghost-button compact-button" type="button" onClick={() => setArticleOpen(true)}>
-                  Voir tout
-                </button>
-              </div>
               <FloatingSearchPopover
                 columns={[
                   { header: 'Article', render: (item: LocalCatalogSearchResult) => <strong>{formatDisplayArticleName(item.article.commercialName, item.article.articleCode)}</strong> },
@@ -840,41 +852,43 @@ export function OfflinePosPage() {
             </section>
 
             <section className="card offline-panel offline-payment-card">
-              <div className="offline-panel-heading offline-payment-card-heading">
-                <h3>Reglement</h3>
-                <button className="ghost-button compact-button offline-payment-exact-button" type="button" onClick={applyExactPayment}>
-                  Paiement exact
-                </button>
-              </div>
-              <div className="detail-grid compact-detail-grid">
-                <label>
-                  <span>PAYE USD</span>
-                  <input className="input compact-input" type="number" min="0" step="0.01" value={amountPaidUsd} onChange={(event) => setAmountPaidUsd(event.target.value)} />
-                </label>
-                <label>
-                  <span>PAYE FC</span>
-                  <input ref={amountPaidCdfRef} className="input compact-input" type="number" min="0" step="1" value={amountPaidCdf} onChange={(event) => setAmountPaidCdf(event.target.value)} />
-                </label>
-              </div>
-              <div className="detail-grid compact-detail-grid">
-                <label>
-                  <span>A RENDRE USD</span>
-                  <input className="input compact-input" type="text" value={formatMoney(settlementPreview.suggestedChangeUsd, 'USD')} readOnly />
-                </label>
-                <label>
-                  <span>A RENDRE FC</span>
-                  <input className="input compact-input" type="text" value={`${Math.round(settlementPreview.suggestedChangeCdf).toLocaleString('fr-FR')} FC`} readOnly />
-                </label>
-              </div>
-              <div className="detail-grid compact-detail-grid">
-                <label>
-                  <span>Rendu USD</span>
-                  <input className="input compact-input" type="number" min="0" step="0.01" value={amountReturnedUsd} onChange={(event) => setAmountReturnedUsd(event.target.value)} />
-                </label>
-                <label>
-                  <span>Rendu FC</span>
-                  <input className="input compact-input" type="number" min="0" step="1" value={amountReturnedCdf} onChange={(event) => setAmountReturnedCdf(event.target.value)} />
-                </label>
+              <div className="offline-payment-settlement-card">
+                <div className="offline-panel-heading offline-payment-card-heading">
+                  <h3>Reglement</h3>
+                  <button className="ghost-button compact-button offline-payment-exact-button" type="button" onClick={applyExactPayment}>
+                    Paiement exact
+                  </button>
+                </div>
+                <div className="detail-grid compact-detail-grid">
+                  <label>
+                    <span>PAYE USD</span>
+                    <input className="input compact-input" type="number" min="0" step="0.01" value={amountPaidUsd} onChange={(event) => setAmountPaidUsd(event.target.value)} />
+                  </label>
+                  <label>
+                    <span>PAYE FC</span>
+                    <input ref={amountPaidCdfRef} className="input compact-input" type="number" min="0" step="1" value={amountPaidCdf} onChange={(event) => setAmountPaidCdf(event.target.value)} />
+                  </label>
+                </div>
+                <div className="detail-grid compact-detail-grid">
+                  <label>
+                    <span>A RENDRE USD</span>
+                    <input className="input compact-input" type="text" value={formatMoney(settlementPreview.suggestedChangeUsd, 'USD')} readOnly />
+                  </label>
+                  <label>
+                    <span>A RENDRE FC</span>
+                    <input className="input compact-input" type="text" value={`${Math.round(settlementPreview.suggestedChangeCdf).toLocaleString('fr-FR')} FC`} readOnly />
+                  </label>
+                </div>
+                <div className="detail-grid compact-detail-grid">
+                  <label>
+                    <span>Rendu USD</span>
+                    <input className="input compact-input" type="number" min="0" step="0.01" value={amountReturnedUsd} onChange={(event) => setAmountReturnedUsd(event.target.value)} />
+                  </label>
+                  <label>
+                    <span>Rendu FC</span>
+                    <input className="input compact-input" type="number" min="0" step="1" value={amountReturnedCdf} onChange={(event) => setAmountReturnedCdf(event.target.value)} />
+                  </label>
+                </div>
               </div>
               <div className="offline-payment-readonly">
                 <h4>Informations (lecture seule)</h4>

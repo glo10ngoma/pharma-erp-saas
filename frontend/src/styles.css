@@ -7464,7 +7464,7 @@ details.nav-group .nav-link {
 }
 
 .offline-pos-grid-fullscreen {
-  grid-template-columns: minmax(380px, 420px) minmax(0, 1fr) minmax(320px, 350px);
+  grid-template-columns: minmax(400px, 430px) minmax(0, 1fr) minmax(300px, 330px);
 }
 
 .offline-pos-left,
@@ -7518,6 +7518,9 @@ details.nav-group .nav-link {
 }
 
 .offline-cart-panel-heading {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
   position: sticky;
   top: 0;
   z-index: 2;
@@ -7564,9 +7567,10 @@ details.nav-group .nav-link {
 }
 
 .offline-payment-card-heading {
-  align-items: start;
-  flex-direction: column;
-  gap: 8px;
+  align-items: center;
+  flex-direction: row;
+  gap: 10px;
+  justify-content: space-between;
 }
 
 .offline-payment-exact-button {
@@ -7653,8 +7657,8 @@ details.nav-group .nav-link {
 .offline-pos-control-grid {
   display: grid;
   align-items: stretch;
-  gap: 8px;
-  grid-template-columns: minmax(0, 1.28fr) minmax(190px, 0.9fr) minmax(210px, 1fr) minmax(230px, 1.08fr);
+  gap: 10px;
+  grid-template-columns: minmax(180px, 1.1fr) minmax(190px, 1fr) minmax(210px, 1.15fr) minmax(220px, 1.15fr);
 }
 
 .offline-pos-control-grid > .offline-panel {
@@ -7669,7 +7673,7 @@ details.nav-group .nav-link {
 .offline-client-card,
 .offline-choice-card {
   gap: 8px;
-  padding: 8px 10px;
+  padding: 12px 14px;
 }
 
 .offline-segmented-control {
@@ -7681,12 +7685,12 @@ details.nav-group .nav-link {
 .offline-segmented-control button {
   background: #fff;
   border: 1px solid #dce5e0;
-  border-radius: 8px;
+  border-radius: 10px;
   color: #28463b;
   font-size: 0.85rem;
   font-weight: 700;
-  min-height: 38px;
-  padding: 0 10px;
+  min-height: 40px;
+  padding: 0 12px;
   text-align: center;
   white-space: normal;
   width: 100%;
@@ -7695,9 +7699,9 @@ details.nav-group .nav-link {
 }
 
 .offline-segmented-control button.is-active {
-  background: #edf9f3;
-  border-color: #a7d7bf;
-  color: #0f7a5d;
+  background: linear-gradient(180deg, #0c7d53 0%, #065f46 100%);
+  border-color: #065f46;
+  color: #fff;
 }
 
 .offline-segmented-control button.is-unavailable,
@@ -7714,12 +7718,7 @@ details.nav-group .nav-link {
 }
 
 .offline-choice-hint {
-  color: var(--muted);
-  display: block;
-  font-size: 0.72rem;
-  line-height: 1.25;
-  margin-top: 2px;
-  min-height: 2.2em;
+  display: none;
 }
 
 .offline-search-card .floating-search-trigger,
@@ -7745,25 +7744,25 @@ details.nav-group .nav-link {
 .offline-result-chip {
   background: #f9fbfa;
   border: 1px solid #dce5e0;
-  border-radius: 6px;
-  min-height: 72px;
-  padding: 7px 9px;
+  border-radius: 10px;
+  min-height: 98px;
+  padding: 12px 12px 10px;
   text-align: left;
 }
 
 .offline-result-chip strong {
   display: block;
-  font-size: 0.84rem;
-  margin-bottom: 4px;
+  font-size: 0.88rem;
+  margin-bottom: 10px;
 }
 
 .offline-result-chip span {
   color: #23332b;
   display: block;
-  font-size: 0.84rem;
-  font-weight: 600;
+  font-size: 0.96rem;
+  font-weight: 700;
   line-height: 1.25;
-  margin-bottom: 4px;
+  margin-bottom: 10px;
   max-height: 2.5em;
   overflow: hidden;
 }
@@ -7824,9 +7823,9 @@ details.nav-group .nav-link {
 
 .offline-cart-table td:first-child strong {
   display: -webkit-box;
-  font-size: 0.82rem;
-  font-weight: 600;
-  line-height: 1.2;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.15;
   overflow: hidden;
   text-overflow: clip;
   white-space: normal;
@@ -7836,6 +7835,9 @@ details.nav-group .nav-link {
 }
 
 .offline-cart-table td:first-child .offline-row-meta {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 0.8rem;
+  margin-top: 4px;
   overflow: visible;
   text-overflow: clip;
   white-space: nowrap;
@@ -7949,15 +7951,15 @@ details.nav-group .nav-link {
 
 .offline-cart-table-compact th,
 .offline-cart-table-compact td {
-  font-size: 0.74rem;
-  padding-bottom: 7px;
-  padding-top: 7px;
+  font-size: 0.8rem;
+  padding-bottom: 12px;
+  padding-top: 12px;
 }
 
 .offline-cart-table-compact th:first-child,
 .offline-cart-table-compact td:first-child {
   text-align: left;
-  width: 52%;
+  width: 50%;
 }
 
 .offline-cart-table-compact td:nth-child(2),
@@ -7973,33 +7975,33 @@ details.nav-group .nav-link {
 .offline-cart-table-compact td:nth-child(2) {
   text-align: center;
   white-space: nowrap;
-  width: 40px;
+  width: 52px;
 }
 
 .offline-cart-table-compact th:nth-child(3),
 .offline-cart-table-compact td:nth-child(3) {
   white-space: nowrap;
-  width: 62px;
+  width: 70px;
 }
 
 .offline-cart-table-compact th:nth-child(4),
 .offline-cart-table-compact td:nth-child(4) {
   white-space: nowrap;
-  width: 68px;
+  width: 74px;
 }
 
 .offline-cart-table-compact th:nth-child(5),
 .offline-cart-table-compact td:nth-child(5) {
   text-align: center;
   white-space: nowrap;
-  width: 42px;
+  width: 46px;
 }
 
 .offline-cart-remove-button {
   margin-top: 0;
-  min-height: 30px;
-  min-width: 30px;
-  width: 30px;
+  min-height: 36px;
+  min-width: 36px;
+  width: 36px;
 }
 
 .offline-checkout-actions {
@@ -8033,14 +8035,15 @@ details.nav-group .nav-link {
   align-items: center;
   display: flex;
   flex: 0 0 auto;
-  gap: 12px;
+  gap: 14px;
   justify-content: flex-start;
   margin-top: 0;
-  padding-top: 4px;
+  padding-top: 8px;
 }
 
 .offline-draft-save-button {
-  min-width: 208px;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .offline-danger-link {
@@ -8069,7 +8072,8 @@ details.nav-group .nav-link {
 .offline-cancel-button {
   border-color: rgba(220, 38, 38, .35);
   color: #b91c1c;
-  min-width: 208px;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .offline-cancel-button:hover:not(:disabled) {
@@ -8082,6 +8086,179 @@ details.nav-group .nav-link {
   justify-content: space-between;
   margin-top: auto;
   width: 100%;
+}
+
+.offline-cart-panel-accent {
+  background: linear-gradient(180deg, #0b774e 0%, #065f46 100%);
+  border-color: #065f46;
+  color: #fff;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+
+.offline-cart-panel-accent .offline-panel-heading h3,
+.offline-cart-panel-accent .offline-cart-footer strong,
+.offline-cart-panel-accent .offline-cart-footer span,
+.offline-cart-panel-accent .offline-cart-table th,
+.offline-cart-panel-accent .offline-cart-table td,
+.offline-cart-panel-accent .offline-cart-table td:first-child strong {
+  color: #fff;
+}
+
+.offline-cart-panel-accent .offline-cart-table th {
+  border-bottom-color: rgba(255, 255, 255, 0.18);
+}
+
+.offline-cart-panel-accent .offline-cart-table tbody tr + tr td {
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.offline-cart-panel-accent .offline-cart-table-wrap {
+  padding-right: 2px;
+}
+
+.offline-cart-panel-accent .offline-cart-clear-button {
+  align-items: center;
+  background: linear-gradient(90deg, rgba(189, 242, 208, 0.88) 0%, rgba(241, 255, 246, 0.88) 100%);
+  border: 0;
+  border-radius: 12px;
+  color: #0f5132;
+  display: inline-flex;
+  font-weight: 800;
+  justify-content: center;
+  margin-bottom: 12px;
+  min-height: 44px;
+  width: 100%;
+}
+
+.offline-cart-panel-accent .offline-cart-clear-button .row-action-icon {
+  stroke: currentColor;
+}
+
+.offline-cart-panel-accent .offline-cart-footer {
+  border-top-color: rgba(255, 255, 255, 0.16);
+  margin-top: auto;
+  padding-top: 14px;
+}
+
+.offline-cart-qty-input {
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 10px;
+  color: #0f172a;
+  font-size: 0.92rem;
+  font-weight: 700;
+  height: 38px;
+  padding: 0 8px;
+  text-align: center;
+  width: 44px;
+}
+
+.offline-cart-panel-accent .offline-cart-remove-button {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
+.offline-cart-panel-accent .offline-cart-remove-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.offline-payment-settlement-card {
+  background: linear-gradient(180deg, #0b774e 0%, #065f46 100%);
+  border: 1px solid #065f46;
+  border-radius: 14px;
+  color: #fff;
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 14px;
+}
+
+.offline-payment-settlement-card .offline-payment-card-heading h3,
+.offline-payment-settlement-card label > span {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.offline-payment-settlement-card .offline-payment-exact-button {
+  background: rgba(177, 234, 199, 0.22);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.offline-payment-settlement-card .compact-detail-grid {
+  gap: 12px;
+}
+
+.offline-payment-settlement-card .compact-input {
+  background: rgba(255, 255, 255, 0.98);
+  border: 0;
+  color: #0f172a;
+  min-height: 38px;
+}
+
+.offline-payment-card .compact-detail-grid {
+  gap: 12px;
+}
+
+.offline-payment-card .compact-detail-grid label > span {
+  color: #5f6f68;
+  font-size: 0.76rem;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.offline-payment-card .compact-detail-grid label {
+  display: grid;
+}
+
+.offline-payment-note .offline-note-input {
+  min-height: 90px;
+  resize: none;
+}
+
+.offline-pos-page-fixed .offline-choice-card,
+.offline-pos-page-fixed .offline-client-card,
+.offline-pos-page-fixed .offline-search-card,
+.offline-pos-page-fixed .offline-payment-card,
+.offline-pos-page-fixed .offline-cart-panel-premium,
+.offline-pos-page-fixed .offline-payment-hero {
+  padding: 14px 16px;
+}
+
+.offline-pos-page-fixed .offline-panel-heading h3 {
+  font-size: 1rem;
+}
+
+.offline-pos-page-fixed .offline-result-chip {
+  min-height: 96px;
+  padding: 12px;
+}
+
+.offline-pos-page-fixed .offline-result-chip strong {
+  font-size: 0.88rem;
+  margin-bottom: 10px;
+}
+
+.offline-pos-page-fixed .offline-result-chip span {
+  font-size: 0.95rem;
+  margin-bottom: 10px;
+}
+
+.offline-pos-page-fixed .offline-result-chip small {
+  font-size: 0.78rem;
+}
+
+.offline-pos-page-fixed .offline-payment-hero {
+  padding-block: 16px;
+}
+
+.offline-pos-page-fixed .offline-payment-hero-amount {
+  font-size: clamp(2.35rem, 3vw, 3.2rem);
+}
+
+.offline-pos-page-fixed .offline-payment-hero-fc {
+  font-size: 1.2rem;
 }
 
 .offline-checkout-shortcut {

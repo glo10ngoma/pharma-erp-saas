@@ -155,7 +155,9 @@ export function OfflineWorkspaceLayout(props: {
                 {'<'} Quitter le POS
               </Link>
             ) : null}
-            <span className="offline-workspace-kicker">{props.mode === 'seller' ? 'POS Offline' : 'Admin Offline'}</span>
+            {!isPosFullscreen ? (
+              <span className="offline-workspace-kicker">{props.mode === 'seller' ? 'POS Offline' : 'Admin Offline'}</span>
+            ) : null}
             <h2>{props.title}</h2>
             {props.subtitle ? <p>{props.subtitle}</p> : null}
           </div>
