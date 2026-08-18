@@ -47,7 +47,8 @@ async function main() {
   assertIncludes(cart, 'updateOfflineCartSaleConfiguration', 'offline-cart.ts');
   assertIncludes(cart, 'patientShareUsd', 'offline-cart.ts');
   assertIncludes(cart, 'insuranceShareUsd', 'offline-cart.ts');
-  assertIncludes(cart, 'MEMBERSHIP_REQUIRED', 'offline-cart.ts');
+  assert(!cart.includes("if (cart.saleType === 'INSURANCE') {\r\n    if (!cart.customerId) reasons.add('CUSTOMER_REQUIRED_FOR_INSURANCE');"), 'offline-cart.ts still blocks insurance draft without customer');
+  assert(!cart.includes("if (!selectedMembership) reasons.add('MEMBERSHIP_REQUIRED');"), 'offline-cart.ts still blocks insurance draft without membership');
 
   assertIncludes(sale, 'payableUsd: cart.patientShareUsd', 'offline-sale.ts');
   assertIncludes(sale, 'amountReturnedUsd', 'offline-sale.ts');

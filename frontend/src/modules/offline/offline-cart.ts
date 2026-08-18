@@ -697,16 +697,6 @@ function validateOfflineCart(cart: OfflineCart, context: OfflineCartContext): Of
   const lotMap = new Map(context.snapshot.lots.map((item) => [item.lotId, item]));
   const quota = buildQuotaBreakdown(context.snapshot, context.reservations, cart.cartId);
   const quotaByAllocation = new Map(quota.map((item) => [item.allocationId, item]));
-  const selectedMembership = resolveMembershipById(context.snapshot, cart.membershipId);
-
-  if (cart.saleType === 'INSURANCE') {
-    if (!cart.customerId) reasons.add('CUSTOMER_REQUIRED_FOR_INSURANCE');
-    if (!selectedMembership) reasons.add('MEMBERSHIP_REQUIRED');
-    else {
-      if (!selectedMembership.isActive) reasons.add('MEMBERSHIP_NOT_ACTIVE');
-      if (selectedMembership.customerId !== cart.customerId) reasons.add('MEMBERSHIP_REQUIRED');
-    }
-  }
 
   for (const item of cart.items) {
     const article = articleMap.get(item.articleId);
