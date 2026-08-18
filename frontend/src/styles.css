@@ -7694,6 +7694,7 @@ details.nav-group .nav-link {
   box-sizing: border-box;
   border-radius: 10px;
   color: #28463b;
+  cursor: pointer;
   font-size: 0.85rem;
   font-weight: 700;
   min-height: 42px;
@@ -7706,6 +7707,18 @@ details.nav-group .nav-link {
   width: 100%;
   min-width: 0;
   line-height: 1.15;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+
+.offline-segmented-control button:hover:not(:disabled):not(.is-active) {
+  background: #f4faf6;
+  border-color: #b8d9c7;
+  color: #1d5a46;
+}
+
+.offline-segmented-control button:focus-visible {
+  box-shadow: 0 0 0 3px rgba(12, 125, 83, 0.18);
+  outline: none;
 }
 
 .offline-choice-card .offline-segmented-control,
@@ -7738,6 +7751,11 @@ details.nav-group .nav-link {
   background: linear-gradient(180deg, #0c7d53 0%, #065f46 100%);
   border-color: #065f46;
   color: #fff;
+}
+
+.offline-segmented-control button.is-active:hover:not(:disabled) {
+  background: linear-gradient(180deg, #109162 0%, #07694f 100%);
+  border-color: #07694f;
 }
 
 .offline-segmented-control button.is-unavailable,
@@ -7781,9 +7799,21 @@ details.nav-group .nav-link {
   background: #f9fbfa;
   border: 1px solid #dce5e0;
   border-radius: 10px;
+  cursor: pointer;
   min-height: 96px;
   padding: 14px 14px 10px;
   text-align: left;
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.offline-result-chip:hover:not(:disabled):not(.is-disabled) {
+  background: #f3faf6;
+  border-color: #bfdccd;
+}
+
+.offline-result-chip:focus-visible {
+  box-shadow: 0 0 0 3px rgba(12, 125, 83, 0.14);
+  outline: none;
 }
 
 .offline-result-chip strong {
@@ -8034,6 +8064,7 @@ details.nav-group .nav-link {
 }
 
 .offline-cart-remove-button {
+  cursor: pointer;
   margin-top: 0;
   min-height: 36px;
   min-width: 36px;
@@ -8089,6 +8120,7 @@ details.nav-group .nav-link {
 .offline-cart-clear-button {
   align-items: center;
   color: #d92d20;
+  cursor: pointer;
   display: inline-flex;
   gap: 6px;
   margin-top: 0;
@@ -8118,6 +8150,7 @@ details.nav-group .nav-link {
 
 .offline-payment-checkout-button {
   align-items: center;
+  cursor: pointer;
   display: inline-flex;
   flex-shrink: 0;
   height: 44px;
@@ -8180,6 +8213,7 @@ details.nav-group .nav-link {
   border: 0;
   border-radius: 12px;
   color: #0f5132;
+  cursor: pointer;
   display: inline-flex;
   font-weight: 800;
   justify-content: center;
@@ -8199,6 +8233,9 @@ details.nav-group .nav-link {
 }
 
 .offline-cart-qty-input {
+  appearance: auto;
+  -moz-appearance: auto;
+  -webkit-appearance: auto;
   background: rgba(255, 255, 255, 0.98);
   border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: 10px;
@@ -8207,15 +8244,22 @@ details.nav-group .nav-link {
   font-size: 0.92rem;
   font-weight: 700;
   height: 38px;
-  padding: 0 8px;
+  padding: 0 6px;
   text-align: center;
-  width: 44px;
+  width: 54px;
 }
 
 .offline-cart-qty-input:focus {
   border-color: #baf2d0;
   box-shadow: 0 0 0 3px rgba(186, 242, 208, 0.22);
   outline: none;
+}
+
+.offline-cart-qty-input::-webkit-inner-spin-button,
+.offline-cart-qty-input::-webkit-outer-spin-button {
+  -webkit-appearance: auto;
+  margin: 0;
+  opacity: 1;
 }
 
 .offline-cart-panel-accent .offline-cart-remove-button {
@@ -8249,8 +8293,46 @@ details.nav-group .nav-link {
   background: linear-gradient(90deg, rgba(124, 213, 154, 0.44) 0%, rgba(115, 210, 156, 0.2) 100%);
   border-color: rgba(255, 255, 255, 0.08);
   color: #f6fff9;
+  cursor: pointer;
   min-height: 38px;
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
   width: 100%;
+}
+
+.offline-payment-settlement-card .offline-payment-exact-button:hover:not(:disabled) {
+  background: linear-gradient(90deg, rgba(144, 225, 171, 0.5) 0%, rgba(126, 218, 166, 0.26) 100%);
+}
+
+.offline-payment-settlement-card .offline-payment-exact-button:focus-visible,
+.offline-cart-clear-button:focus-visible,
+.offline-cart-remove-button:focus-visible,
+.offline-draft-save-button:focus-visible,
+.offline-cancel-button:focus-visible,
+.offline-payment-checkout-button:focus-visible,
+.offline-topbar-exit:focus-visible,
+.offline-topbar-actions .ghost-button:focus-visible {
+  box-shadow: 0 0 0 3px rgba(12, 125, 83, 0.18);
+  outline: none;
+}
+
+.offline-topbar-exit,
+.offline-topbar-actions .ghost-button,
+.offline-draft-save-button,
+.offline-cancel-button {
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+
+.offline-topbar-actions .ghost-button:disabled,
+.offline-cart-clear-button:disabled,
+.offline-cart-remove-button:disabled,
+.offline-draft-save-button:disabled,
+.offline-cancel-button:disabled,
+.offline-payment-exact-button:disabled,
+.offline-payment-checkout-button:disabled,
+.offline-segmented-control button:disabled,
+.offline-result-chip:disabled {
+  cursor: not-allowed;
 }
 
 .offline-payment-settlement-card .compact-detail-grid {
