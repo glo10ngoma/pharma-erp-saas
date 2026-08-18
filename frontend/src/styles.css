@@ -8025,7 +8025,7 @@ details.nav-group .nav-link {
 .offline-cart-table-compact th:first-child,
 .offline-cart-table-compact td:first-child {
   text-align: left;
-  width: 50%;
+  width: calc(100% - 252px);
 }
 
 .offline-cart-table-compact td:nth-child(2),
@@ -8039,28 +8039,40 @@ details.nav-group .nav-link {
 
 .offline-cart-table-compact th:nth-child(2),
 .offline-cart-table-compact td:nth-child(2) {
+  min-width: 64px;
   text-align: center;
-  white-space: nowrap;
-  width: 52px;
+  width: 64px;
+}
+
+.offline-cart-table-compact td:nth-child(2) {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
 }
 
 .offline-cart-table-compact th:nth-child(3),
 .offline-cart-table-compact td:nth-child(3) {
-  white-space: nowrap;
-  width: 70px;
+  min-width: 72px;
+  text-align: right;
+  white-space: normal;
+  width: 72px;
 }
 
 .offline-cart-table-compact th:nth-child(4),
 .offline-cart-table-compact td:nth-child(4) {
-  white-space: nowrap;
-  width: 74px;
+  min-width: 72px;
+  text-align: right;
+  white-space: normal;
+  width: 72px;
 }
 
 .offline-cart-table-compact th:nth-child(5),
 .offline-cart-table-compact td:nth-child(5) {
+  min-width: 44px;
   text-align: center;
   white-space: nowrap;
-  width: 46px;
+  width: 44px;
 }
 
 .offline-cart-remove-button {
@@ -8246,7 +8258,9 @@ details.nav-group .nav-link {
   height: 38px;
   padding: 0 6px;
   text-align: center;
-  width: 54px;
+  max-width: 52px;
+  min-width: 52px;
+  width: 52px;
 }
 
 .offline-cart-qty-input:focus {

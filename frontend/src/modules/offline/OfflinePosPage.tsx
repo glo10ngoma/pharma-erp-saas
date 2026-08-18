@@ -210,22 +210,129 @@ export function OfflinePosPage() {
     || settlementPreview.amountPaidCdf > 0
     || settlementPreview.amountReturnedUsd > 0
     || settlementPreview.amountReturnedCdf > 0;
-  const canFinalizeOfflineSale =
-    !!cart
-    && cart.items.length > 0
-    && cart.status !== 'BLOCKED'
-    && authorizationState !== 'EXPIRED'
+  const hasCart = Boolean(cart);
+  const itemCount = cart?.items.length ?? 0;
+  const cartStatus = cart?.status ?? 'DRAFT';
+  const cartBlockingReasons = cart?.blockedReasons ?? [];
+  const cashSessionStatus = snapshot.cashSession?.status ?? 'NONE';
+  const cashSessionAttachable = canAttachOfflineCashSale(snapshot.cashSession);
+  const saleType = cart?.saleType ?? 'CASH';
+  const saleMode = cart?.saleMode ?? 'IMMEDIATE';
+  const membershipValid = saleType !== 'INSURANCE' || Boolean(cart?.membershipId);
+  const patientShareUsd = cart?.patientShareUsd ?? cartTotal;
+  const insuranceShareUsd = cart?.insuranceShareUsd ?? 0;
+  const amountDueUsd = patientShareUsd;
+  const amountDueCdf = cartExchangeRate ? Math.round(amountDueUsd * cartExchangeRate) : 0;
+  const paidEquivalentUsd = settlementPreview.netTotalEquivalentUsd;
+  const paymentValid =
+    (saleType === 'INSURANCE' && patientShareUsd <= 0)
+    || settlementPreview.amountPaidUsd > 0
+    || settlementPreview.amountPaidCdf > 0;
+  const returnedAmountValid =
+    settlementPreview.amountReturnedUsd <= settlementPreview.amountPaidUsd
+    && settlementPreview.amountReturnedCdf <= settlementPreview.amountPaidCdf
     && (
-      (cart.saleType === 'INSURANCE' && (cart.patientShareUsd ?? 0) <= 0)
+      settlementPreview.amountReturnedUsd <= 0
+      && settlementPreview.amountReturnedCdf <= 0
       || settlementPreview.amountPaidUsd > 0
       || settlementPreview.amountPaidCdf > 0
-    )
+    );
+  const canFinalizeOfflineSale =
+    hasCart
+    && itemCount > 0
+    && cartStatus !== 'BLOCKED'
+    && authorizationState !== 'EXPIRED'
+    && membershipValid
+    && paymentValid
     && (
       requiresCashSessionForSettlement
-        ? canAttachOfflineCashSale(snapshot.cashSession)
+        ? cashSessionAttachable
         : true
     )
-    && settlementPreview.settlementDifferenceUsd >= -0.02;
+    && settlementPreview.settlementDifferenceUsd >= -0.02
+    && returnedAmountValid;
+  const checkoutDiagnostic = useMemo(() => ({
+    hasCart,
+    itemCount,
+    cartStatus,
+    cartBlockingReasons,
+    authorizationState,
+    cashSessionStatus,
+    cashSessionAttachable,
+    saleType,
+    saleMode,
+    membershipId: cart?.membershipId ?? null,
+    patientShareUsd,
+    insuranceShareUsd,
+    amountPaidUsd: settlementPreview.amountPaidUsd,
+    amountPaidCdf: settlementPreview.amountPaidCdf,
+    paidEquivalentUsd,
+    settlementDifferenceUsd: settlementPreview.settlementDifferenceUsd,
+    amountDueUsd,
+    amountDueCdf,
+    returnedUsd: settlementPreview.amountReturnedUsd,
+    returnedCdf: settlementPreview.amountReturnedCdf,
+    busyAction,
+    canFinalizeOfflineSale,
+  }), [
+    amountDueCdf,
+    amountDueUsd,
+    authorizationState,
+    busyAction,
+    canFinalizeOfflineSale,
+    cart?.membershipId,
+    cartBlockingReasons,
+    cartStatus,
+    cashSessionAttachable,
+    cashSessionStatus,
+    hasCart,
+    insuranceShareUsd,
+    itemCount,
+    paidEquivalentUsd,
+    patientShareUsd,
+    saleMode,
+    saleType,
+    settlementPreview.amountPaidCdf,
+    settlementPreview.amountPaidUsd,
+    settlementPreview.amountReturnedCdf,
+    settlementPreview.amountReturnedUsd,
+    settlementPreview.settlementDifferenceUsd,
+  ]);
+  const checkoutDisabledReason = useMemo(() => {
+    if (!hasCart) return 'Chargement du brouillon local.';
+    if (itemCount <= 0) return 'Ajoutez au moins un article au panier.';
+    if (cartStatus === 'BLOCKED') {
+      return cartBlockingReasons[0] ? `Vente bloquee : ${cartBlockingReasons[0]}` : 'Vente bloquee : stock indisponible.';
+    }
+    if (authorizationState === 'EXPIRED') return 'Autorisation hors ligne expiree.';
+    if (!membershipValid) return 'Selectionnez une assurance / mutuelle.';
+    if (!paymentValid) return 'Montant paye insuffisant ou absent.';
+    if (requiresCashSessionForSettlement && !cashSessionAttachable) {
+      return snapshot.cashSession
+        ? 'La session locale restauree n est pas encore utilisable pour encaisser.'
+        : 'Ouvrez la caisse avant d encaisser une vente.';
+    }
+    if (settlementPreview.settlementDifferenceUsd < -0.02) return 'Montant paye insuffisant.';
+    if (!returnedAmountValid) return 'Les montants rendus depassent les montants encaisses.';
+    return null;
+  }, [
+    authorizationState,
+    cartBlockingReasons,
+    cartStatus,
+    cashSessionAttachable,
+    hasCart,
+    itemCount,
+    membershipValid,
+    paymentValid,
+    requiresCashSessionForSettlement,
+    returnedAmountValid,
+    settlementPreview.settlementDifferenceUsd,
+    snapshot.cashSession,
+  ]);
+
+  useEffect(() => {
+    console.debug('[OFFLINE CHECKOUT DIAGNOSTIC]', checkoutDiagnostic);
+  }, [checkoutDiagnostic]);
 
   async function handleSelectArticle(result: LocalCatalogSearchResult, quantityDelta = 1) {
     if (!cart) return;
@@ -924,6 +1031,11 @@ export function OfflinePosPage() {
                   <button className="ghost-button compact-button" type="button" onClick={handlePrintReceipt}>
                     Imprimer ticket
                   </button>
+                </div>
+              ) : null}
+              {!canFinalizeOfflineSale && checkoutDisabledReason ? (
+                <div className="offline-warning-text" role="status">
+                  {checkoutDisabledReason}
                 </div>
               ) : null}
               <button className="button compact-button offline-checkout-button offline-checkout-button-inline offline-payment-checkout-button" type="button" onClick={() => void handleFinalizeOfflineSale()} disabled={busyAction !== null || !canFinalizeOfflineSale}>
