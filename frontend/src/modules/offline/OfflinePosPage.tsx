@@ -891,7 +891,7 @@ export function OfflinePosPage() {
                 </div>
               </div>
               <div className="offline-payment-readonly">
-                <h4>Informations (lecture seule)</h4>
+                <h4>Informations</h4>
                 <div className="offline-payment-readonly-row">
                   <span>Part patient</span>
                   <strong>{formatMoney(cart.patientShareUsd, 'USD')}</strong>
