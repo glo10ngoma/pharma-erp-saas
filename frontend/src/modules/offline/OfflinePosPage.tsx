@@ -855,10 +855,10 @@ export function OfflinePosPage() {
               <div className="offline-payment-settlement-card">
                 <div className="offline-panel-heading offline-payment-card-heading">
                   <h3>Reglement</h3>
-                  <button className="ghost-button compact-button offline-payment-exact-button" type="button" onClick={applyExactPayment}>
-                    Paiement exact
-                  </button>
                 </div>
+                <button className="ghost-button compact-button offline-payment-exact-button" type="button" onClick={applyExactPayment}>
+                  Paiement exact
+                </button>
                 <div className="detail-grid compact-detail-grid">
                   <label>
                     <span>PAYE USD</span>
