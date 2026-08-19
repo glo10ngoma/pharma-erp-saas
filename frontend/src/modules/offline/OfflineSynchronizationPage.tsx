@@ -48,7 +48,7 @@ const emptyViewModel: OfflineSnapshotViewModel = {
   queue: [],
   syncLog: [],
   conflicts: [],
-  authorizationState: 'EXPIRED',
+  authorizationState: 'UNAUTHORIZED',
   snapshotStatus: 'UNKNOWN',
   networkStatus: 'OFFLINE',
 };
@@ -295,7 +295,7 @@ export function OfflineSynchronizationPage() {
           <div className="detail-grid compact-detail-grid">
             <div><span>Derniere synchro</span><strong>{formatDateTime(viewModel.snapshot.syncState?.lastSuccessfulSyncAt)}</strong></div>
             <div><span>Derniere validation serveur</span><strong>{formatDateTime(viewModel.snapshot.auth?.lastServerValidationAt)}</strong></div>
-            <div><span>Expiration offline</span><strong>{formatDateTime(viewModel.snapshot.auth?.offlineAuthorizationExpiresAt)}</strong></div>
+            <div><span>Autorisation poste</span><strong>{authorizationLabel(viewModel.authorizationState)}</strong></div>
             <div><span>Curseur</span><strong>{truncateCursor(viewModel.snapshot.syncState?.syncCursor)}</strong></div>
             <div><span>Ping serveur</span><strong>{serverPingLabel}</strong></div>
             <div><span>Taux courant</span><strong>{exchangeRateLabel(viewModel.snapshot.settings?.exchangeRate?.rate)}</strong></div>
@@ -497,9 +497,9 @@ function snapshotLabel(status: OfflineSnapshotViewModel['snapshotStatus']) {
 }
 
 function authorizationLabel(status: ReturnType<typeof calculateAuthorizationState>) {
-  if (status === 'VALID') return 'Valid';
-  if (status === 'EXPIRING') return 'Expiring';
-  return 'Expired';
+  if (status === 'AUTHORIZED') return 'Authorized';
+  if (status === 'REVOKED') return 'Revoked';
+  return 'Unauthorized';
 }
 
 function statusLabel(status: OfflineAllocationStatus) {

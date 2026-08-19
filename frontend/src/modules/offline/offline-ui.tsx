@@ -12,7 +12,8 @@ export function mapOfflineSellerMessage(error: unknown) {
   const raw = error instanceof Error ? error.message : String(error ?? 'LOCAL_STORAGE_ERROR');
   const code = raw.toUpperCase();
   const messages: Record<string, string> = {
-    OFFLINE_AUTH_EXPIRED: 'L autorisation hors ligne de ce poste a expire. Reconnectez-vous a Internet.',
+    OFFLINE_AUTH_EXPIRED: 'Ce poste n est pas autorise a effectuer des ventes hors ligne.',
+    OFFLINE_AUTH_UNAUTHORIZED: 'Ce poste n est pas autorise a effectuer des ventes hors ligne.',
     WORKSTATION_REVOKED: 'Ce poste n est plus autorise a effectuer des ventes hors ligne.',
     SNAPSHOT_EXPIRED: 'Les donnees locales sont trop anciennes. Reconnectez Internet puis synchronisez.',
     STORAGE_CRITICAL: 'Le stockage local du poste est presque plein. Contactez un responsable.',

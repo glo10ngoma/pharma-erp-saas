@@ -27,6 +27,7 @@ async function main() {
   const ui = read('frontend/src/modules/offline/offline-ui.tsx');
   const cart = read('frontend/src/modules/offline/offline-cart.ts');
   const sale = read('frontend/src/modules/offline/offline-sale.ts');
+  const bootstrap = read('frontend/src/modules/offline/offline-bootstrap.ts');
   const config = read('frontend/src/modules/offline/offline-config.ts');
   const manifest = read('frontend/public/manifest.webmanifest');
   const main = read('frontend/src/main.tsx');
@@ -44,7 +45,7 @@ async function main() {
   assertIncludes(pos, 'flushSync', 'OfflinePosPage.tsx');
   assertIncludes(pos, 'setLastReceiptSale(result.sale);', 'OfflinePosPage.tsx');
   assertIncludes(pos, 'printOfflineReceipt({', 'OfflinePosPage.tsx');
-  assertIncludes(pos, "authorizationState !== 'EXPIRED'", 'OfflinePosPage.tsx');
+  assertIncludes(pos, "authorizationState === 'AUTHORIZED'", 'OfflinePosPage.tsx');
   assert(!pos.includes('allocationId}</td>'), 'OfflinePosPage.tsx should not render allocationId in the main cart table');
   assertIncludes(cash, 'gapLabel', 'OfflineCashPage.tsx');
   assertIncludes(sales, 'Reimprimer ticket', 'OfflineSalesPage.tsx');
@@ -60,7 +61,10 @@ async function main() {
   assertIncludes(ui, 'buildOfflineReceiptHtml', 'offline-ui.tsx');
   assertIncludes(ui, 'window.open', 'offline-ui.tsx');
   assertIncludes(cart, 'Ouvrez la caisse avant d encaisser une vente.', 'offline-cart.ts');
-  assertIncludes(sale, "throw new Error('OFFLINE_AUTH_EXPIRED');", 'offline-sale.ts');
+  assertIncludes(sale, "throw new Error('OFFLINE_AUTH_UNAUTHORIZED');", 'offline-sale.ts');
+  assertIncludes(bootstrap, "if (workstation.status === 'REVOKED') return 'REVOKED';", 'offline-bootstrap.ts');
+  assertIncludes(bootstrap, "return 'AUTHORIZED';", 'offline-bootstrap.ts');
+  assert(!bootstrap.includes("return 'EXPIRED'"), 'offline-bootstrap.ts should no longer expire authorization by time');
   assertIncludes(config, 'OFFLINE_DB_VERSION = 7', 'offline-config.ts');
   assertIncludes(manifest, '"display": "standalone"', 'manifest.webmanifest');
   assertIncludes(manifest, '"start_url": "/offline/pos"', 'manifest.webmanifest');

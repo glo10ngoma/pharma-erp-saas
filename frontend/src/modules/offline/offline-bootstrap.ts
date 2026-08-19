@@ -31,7 +31,6 @@ import {
 } from './offline-types';
 
 export const OFFLINE_DB_FRESH_MINUTES = 15;
-export const OFFLINE_AUTH_EXPIRING_MINUTES = 60;
 const DEVICE_ID_STORAGE_KEY = 'deviceUuid';
 
 export type OfflineSnapshotViewModel = {
@@ -88,7 +87,7 @@ export async function loadLocalSnapshot(): Promise<OfflineSnapshotViewModel> {
   ]);
 
   const snapshotStatus = calculateSnapshotFreshness(snapshot.syncState, snapshot.auth, snapshot.workstation);
-  const authorizationState = calculateAuthorizationState(snapshot.auth);
+  const authorizationState = calculateAuthorizationState(snapshot.auth, snapshot.workstation);
 
   return {
     snapshot: {
@@ -139,7 +138,7 @@ export async function bootstrapFromServer(options: {
     });
     validateBootstrapPayload(bootstrap.data);
 
-    const authSnapshot = buildAuthSnapshot(me.data, bootstrap.data.serverTime, bootstrap.data.settings.offlineAuthorizationHours);
+    const authSnapshot = buildAuthSnapshot(me.data, bootstrap.data.serverTime);
     const workstationSnapshot = buildWorkstationSnapshot(bootstrap.data, registered.data);
     const syncState = createDefaultSyncState({
       tenantId: bootstrap.data.tenant.tenantId,
@@ -264,12 +263,18 @@ export function calculateSnapshotFreshness(
   });
 }
 
-export function calculateAuthorizationState(auth: OfflineAuthSnapshot | null, now = new Date()): OfflineAuthorizationState {
-  if (!auth?.offlineAuthorizationExpiresAt) return 'EXPIRED';
-  const expiresAt = new Date(auth.offlineAuthorizationExpiresAt);
-  if (Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= now.getTime()) return 'EXPIRED';
-  const diffMinutes = (expiresAt.getTime() - now.getTime()) / 60000;
-  return diffMinutes <= OFFLINE_AUTH_EXPIRING_MINUTES ? 'EXPIRING' : 'VALID';
+export function calculateAuthorizationState(
+  auth: OfflineAuthSnapshot | null,
+  workstation: OfflineWorkstationSnapshot | null,
+  expectedDeviceId = getStableDeviceId(),
+): OfflineAuthorizationState {
+  if (!auth || !workstation) return 'UNAUTHORIZED';
+  if (workstation.status === 'REVOKED') return 'REVOKED';
+  if (!workstation.workstationId || !workstation.deviceId || workstation.deviceId !== expectedDeviceId) return 'UNAUTHORIZED';
+  if (!auth.userId || !auth.tenantId) return 'UNAUTHORIZED';
+  if (auth.tenantId !== workstation.tenantId) return 'UNAUTHORIZED';
+  if ((auth.siteId ?? null) && auth.siteId !== workstation.siteId) return 'UNAUTHORIZED';
+  return 'AUTHORIZED';
 }
 
 export function validateBootstrapPayload(payload: PosSyncBootstrapPayload) {
@@ -312,10 +317,7 @@ export function validateChangesPayload(payload: PosSyncChangesPayload) {
   return true;
 }
 
-function buildAuthSnapshot(user: AuthUser, serverTime: string, offlineAuthorizationHours: number): OfflineAuthSnapshot {
-  const expiresAt = new Date(serverTime);
-  expiresAt.setHours(expiresAt.getHours() + offlineAuthorizationHours);
-
+function buildAuthSnapshot(user: AuthUser, serverTime: string): OfflineAuthSnapshot {
   return {
     id: 'auth',
     tenantId: user.tenantId,
@@ -325,7 +327,7 @@ function buildAuthSnapshot(user: AuthUser, serverTime: string, offlineAuthorizat
     role: user.role,
     permissions: user.permissions ?? [],
     lastServerValidationAt: serverTime,
-    offlineAuthorizationExpiresAt: expiresAt.toISOString(),
+    offlineAuthorizationExpiresAt: null,
   };
 }
 

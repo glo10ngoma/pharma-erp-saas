@@ -1563,7 +1563,6 @@ export function computeSnapshotStatus(params: {
   const now = params.now ?? new Date();
   if (params.workstationStatus === 'REVOKED') return 'REVOKED';
   if (!params.lastSuccessfulSyncAt) return 'UNKNOWN';
-  if (params.offlineAuthorizationExpiresAt && new Date(params.offlineAuthorizationExpiresAt).getTime() <= now.getTime()) return 'EXPIRED';
   const ageMinutes = (now.getTime() - new Date(params.lastSuccessfulSyncAt).getTime()) / 60000;
   return ageMinutes < params.freshThresholdMinutes ? 'FRESH' : 'STALE';
 }

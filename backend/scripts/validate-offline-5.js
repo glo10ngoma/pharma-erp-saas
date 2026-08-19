@@ -757,7 +757,7 @@ function createOfflineCashLocalHarness(options = {}) {
 
   const bootstrapStub = {
     calculateAuthorizationState() {
-      return options.authorizationState ?? 'VALID';
+      return options.authorizationState ?? 'AUTHORIZED';
     },
   };
 
@@ -1432,17 +1432,33 @@ async function runLocalScenarios() {
       zeroHarness.cleanup();
     }
 
-    const expiredHarness = createOfflineCashLocalHarness({ authorizationState: 'EXPIRED' });
-    let expiredMessage = null;
+    const legacyExpiryHarness = createOfflineCashLocalHarness({
+      authorizationState: 'AUTHORIZED',
+    });
+    let legacyExpiryStatus = null;
     try {
-      await expiredHarness.module.openOfflineCashSession({
+      const legacySession = await legacyExpiryHarness.module.openOfflineCashSession({
+        openingBalanceUsd: 1,
+        openingBalanceCdf: 0,
+      });
+      legacyExpiryStatus = legacySession.status;
+    } catch (error) {
+      legacyExpiryStatus = error.message;
+    } finally {
+      legacyExpiryHarness.cleanup();
+    }
+
+    const revokedHarness = createOfflineCashLocalHarness({ authorizationState: 'REVOKED' });
+    let revokedMessage = null;
+    try {
+      await revokedHarness.module.openOfflineCashSession({
         openingBalanceUsd: 1,
         openingBalanceCdf: 0,
       });
     } catch (error) {
-      expiredMessage = error.message;
+      revokedMessage = error.message;
     } finally {
-      expiredHarness.cleanup();
+      revokedHarness.cleanup();
     }
 
     const permissionHarness = createOfflineCashLocalHarness({ permissions: ['cash_sessions.open'] });
@@ -1473,7 +1489,8 @@ async function runLocalScenarios() {
       && afterExpense.expectedClosingUsd === 7
       && afterClose.status === 'CLOSED_PENDING_SYNC'
       && zeroOpen.status === 'OPEN_PENDING_SYNC'
-      && expiredMessage === 'OFFLINE_AUTH_EXPIRED'
+      && legacyExpiryStatus === 'OPEN_PENDING_SYNC'
+      && revokedMessage === 'WORKSTATION_REVOKED'
       && permissionMessage === 'PERMISSION_DENIED';
 
     return {
@@ -1483,7 +1500,8 @@ async function runLocalScenarios() {
       afterCloseStatus: afterClose.status,
       queueTypes: harness.memory.queue.map((row) => row.operationType),
       zeroOpeningStatus: zeroOpen.status,
-      expiredMessage,
+      legacyExpiryStatus,
+      revokedMessage,
       permissionMessage,
     };
   } finally {

@@ -1567,7 +1567,7 @@ export class PosSyncRepository {
         ip.annual_limit,
         ip.requires_authorization,
         ip.is_active,
-        ip.created_at
+        NULL::timestamp AS created_at
       FROM insurance_plans ip
       JOIN organizations o ON o.organization_id = ip.organization_id AND o.tenant_id = $1
       WHERE ip.is_active = true
@@ -1609,7 +1609,7 @@ export class PosSyncRepository {
         cm.valid_from,
         cm.valid_to,
         cm.is_active,
-        cm.created_at
+        NULL::timestamp AS created_at
       FROM customer_memberships cm
       JOIN customers c ON c.customer_id = cm.customer_id AND c.tenant_id = cm.tenant_id
       JOIN organizations o ON o.organization_id = cm.organization_id AND o.tenant_id = cm.tenant_id
@@ -1841,16 +1841,15 @@ export class PosSyncRepository {
         annual_limit,
         requires_authorization,
         is_active,
-        created_at,
+        NULL::timestamp AS created_at,
         CASE WHEN is_active THEN 'UPSERT' ELSE 'DEACTIVATE' END AS operation,
-        created_at AS changed_at
+        NULL::timestamp AS changed_at
       FROM insurance_plans
       WHERE tenant_id = $1
-        AND ($2::timestamptz IS NULL OR created_at > $2::timestamptz)
       ORDER BY created_at ASC, plan_name ASC
       LIMIT 200
       `,
-      [user.tenantId, since ? since.toISOString() : null],
+      [user.tenantId],
     );
     return result.rows.map((row) => ({
       operation: row.operation,
@@ -1879,26 +1878,25 @@ export class PosSyncRepository {
         o.organization_name,
         cm.plan_id,
         ip.plan_name,
-        COALESCE(cm.coverage_override_percent, ip.coverage_percent) AS coverage_percent,
+        ip.coverage_percent,
         cm.member_number,
         cm.employee_number,
         cm.relationship_type,
         cm.valid_from::text AS valid_from,
         cm.valid_to::text AS valid_to,
         cm.is_active,
-        cm.created_at,
+        NULL::timestamp AS created_at,
         CASE WHEN cm.is_active THEN 'UPSERT' ELSE 'DEACTIVATE' END AS operation,
-        cm.created_at AS changed_at
+        NULL::timestamp AS changed_at
       FROM customer_memberships cm
       JOIN customers c ON c.customer_id = cm.customer_id AND c.tenant_id = cm.tenant_id
       JOIN organizations o ON o.organization_id = cm.organization_id AND o.tenant_id = cm.tenant_id
       LEFT JOIN insurance_plans ip ON ip.plan_id = cm.plan_id AND ip.organization_id = cm.organization_id
       WHERE cm.tenant_id = $1
-        AND ($2::timestamptz IS NULL OR cm.created_at > $2::timestamptz)
-      ORDER BY cm.created_at ASC, cm.membership_id ASC
+      ORDER BY created_at ASC, cm.membership_id ASC
       LIMIT 300
       `,
-      [user.tenantId, since ? since.toISOString() : null],
+      [user.tenantId],
     );
     return result.rows.map((row) => ({
       operation: row.operation,

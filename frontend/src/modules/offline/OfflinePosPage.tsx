@@ -56,7 +56,7 @@ const emptyViewModel: OfflineSnapshotViewModel = {
   queue: [],
   syncLog: [],
   conflicts: [],
-  authorizationState: 'EXPIRED',
+  authorizationState: 'UNAUTHORIZED',
   snapshotStatus: 'UNKNOWN',
   networkStatus: 'OFFLINE',
 };
@@ -185,7 +185,7 @@ export function OfflinePosPage() {
   }, [cart, pageModel?.quotaBreakdown]);
 
   const snapshotStatus = calculateSnapshotFreshness(snapshot.syncState, snapshot.auth, snapshot.workstation);
-  const authorizationState = calculateAuthorizationState(snapshot.auth);
+  const authorizationState = calculateAuthorizationState(snapshot.auth, snapshot.workstation);
   const quotaAlert = formatQuotaAlert(quotaSummary.totalAvailable);
   const cartTotal = cart?.total ?? 0;
   const cartExchangeRate = settings?.exchangeRate?.rate ?? cart?.exchangeRateSnapshot ?? null;
@@ -241,7 +241,7 @@ export function OfflinePosPage() {
     hasCart
     && itemCount > 0
     && cartStatus !== 'BLOCKED'
-    && authorizationState !== 'EXPIRED'
+    && authorizationState === 'AUTHORIZED'
     && membershipValid
     && paymentValid
     && (
@@ -304,7 +304,8 @@ export function OfflinePosPage() {
     if (cartStatus === 'BLOCKED') {
       return cartBlockingReasons[0] ? `Vente bloquee : ${cartBlockingReasons[0]}` : 'Vente bloquee : stock indisponible.';
     }
-    if (authorizationState === 'EXPIRED') return 'Autorisation hors ligne expiree.';
+    if (authorizationState === 'REVOKED') return 'Ce poste a ete revoque.';
+    if (authorizationState !== 'AUTHORIZED') return 'Ce poste n est pas autorise pour la vente hors ligne.';
     if (!membershipValid) return 'Selectionnez une assurance / mutuelle.';
     if (!paymentValid) return 'Montant paye insuffisant ou absent.';
     if (requiresCashSessionForSettlement && !cashSessionAttachable) {
@@ -1057,9 +1058,9 @@ export function OfflinePosPage() {
 }
 
 function authorizationLabel(status: ReturnType<typeof calculateAuthorizationState>) {
-  if (status === 'VALID') return 'Valide';
-  if (status === 'EXPIRING') return 'Expire bientot';
-  return 'Expiree';
+  if (status === 'AUTHORIZED') return 'Poste autorise';
+  if (status === 'REVOKED') return 'Poste revoque';
+  return 'Poste non autorise';
 }
 
 function formatSyncEngineStatus(status: ReturnType<typeof useSyncEngine>['currentStatus']) {

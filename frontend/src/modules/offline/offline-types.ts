@@ -1,7 +1,7 @@
 export type OfflineAllocationStatus = 'ACTIVE' | 'EXHAUSTED' | 'SUSPENDED' | 'REVOKED';
 export type OfflineNetworkStatus = 'ONLINE' | 'DEGRADED' | 'OFFLINE';
 export type OfflineSnapshotStatus = 'FRESH' | 'STALE' | 'EXPIRED' | 'REVOKED' | 'UNKNOWN';
-export type OfflineAuthorizationState = 'VALID' | 'EXPIRING' | 'EXPIRED';
+export type OfflineAuthorizationState = 'AUTHORIZED' | 'REVOKED' | 'UNAUTHORIZED';
 export type OfflineRecoveryStatus = 'HEALTHY' | 'DEGRADED' | 'RECOVERY_REQUIRED' | 'BLOCKED';
 export type OfflineStorageStatus = 'HEALTHY' | 'WARNING' | 'CRITICAL' | 'UNKNOWN';
 export type OfflineIntegrityIssueLevel = 'INFO' | 'WARNING' | 'CRITICAL';

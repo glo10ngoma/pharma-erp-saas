@@ -9,10 +9,10 @@ const EXPLICIT_LOGOUT_KEY = 'auth.explicitLogout';
 type OfflineRestoreCandidate = {
   allowed: boolean;
   reason:
-    | 'VALID'
+    | 'AUTHORIZED'
     | 'EXPLICIT_LOGOUT'
     | 'MISSING_SNAPSHOT'
-    | 'AUTH_EXPIRED'
+    | 'UNAUTHORIZED'
     | 'WORKSTATION_REVOKED'
     | 'DEVICE_MISMATCH'
     | 'USER_MISMATCH';
@@ -156,10 +156,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
       }
 
-      if (calculateAuthorizationState(snapshot.auth) === 'EXPIRED') {
+      const authorizationState = calculateAuthorizationState(snapshot.auth, snapshot.workstation, currentDeviceId);
+      if (authorizationState === 'REVOKED') {
         return {
           allowed: false,
-          reason: 'AUTH_EXPIRED',
+          reason: 'WORKSTATION_REVOKED',
+          user: null,
+          expiresAt: snapshot.auth.offlineAuthorizationExpiresAt ?? null,
+        };
+      }
+      if (authorizationState !== 'AUTHORIZED') {
+        return {
+          allowed: false,
+          reason: 'UNAUTHORIZED',
           user: null,
           expiresAt: snapshot.auth.offlineAuthorizationExpiresAt ?? null,
         };
@@ -177,7 +186,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       return {
         allowed: true,
-        reason: 'VALID',
+        reason: 'AUTHORIZED',
         user: buildOfflineUser(snapshot.auth, storedUser),
         expiresAt: snapshot.auth.offlineAuthorizationExpiresAt ?? null,
       };

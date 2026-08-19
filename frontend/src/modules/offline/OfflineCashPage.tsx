@@ -37,7 +37,7 @@ const emptyViewModel: OfflineSnapshotViewModel = {
   queue: [],
   syncLog: [],
   conflicts: [],
-  authorizationState: 'EXPIRED',
+  authorizationState: 'UNAUTHORIZED',
   snapshotStatus: 'UNKNOWN',
   networkStatus: 'OFFLINE',
 };

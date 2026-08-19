@@ -3,7 +3,6 @@ import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
 import { landingPathForUser } from '../../auth/landing';
-import { formatDateTime } from '../../utils/date';
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -32,9 +31,11 @@ export function LoginPage() {
       if (cancelled) return;
       if (!candidate.allowed) {
         if (!navigator.onLine) {
-          setInfo(candidate.reason === 'AUTH_EXPIRED'
-            ? 'L autorisation hors ligne de ce poste a expire. Reconnectez-vous a Internet.'
-            : 'Connexion Internet requise pour vous connecter sur ce poste.');
+          setInfo(candidate.reason === 'WORKSTATION_REVOKED'
+            ? 'Ce poste n est plus autorise pour le mode hors ligne.'
+            : candidate.reason === 'UNAUTHORIZED'
+              ? 'Ce poste n est pas autorise pour le mode hors ligne.'
+              : 'Connexion Internet requise pour vous connecter sur ce poste.');
         }
         return;
       }
@@ -76,9 +77,11 @@ export function LoginPage() {
             return;
           }
         }
-        setError(candidate.reason === 'AUTH_EXPIRED'
-          ? 'L autorisation hors ligne de ce poste a expire. Reconnectez-vous a Internet.'
-          : 'Impossible de joindre le serveur.');
+        setError(candidate.reason === 'WORKSTATION_REVOKED'
+          ? 'Ce poste n est plus autorise pour le mode hors ligne.'
+          : candidate.reason === 'UNAUTHORIZED'
+            ? 'Ce poste n est pas autorise pour le mode hors ligne.'
+            : 'Impossible de joindre le serveur.');
       } else {
         setError('Identifiants invalides ou utilisateur inactif.');
       }
@@ -95,7 +98,6 @@ export function LoginPage() {
         {auth.offlineAuthenticated ? (
           <p className="muted">
             Session hors ligne restauree.
-            {auth.offlineSessionExpiresAt ? ` Autorisation valable jusqu au ${formatDateTime(auth.offlineSessionExpiresAt)}.` : ''}
           </p>
         ) : null}
         <label>

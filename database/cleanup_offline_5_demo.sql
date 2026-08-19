@@ -92,22 +92,46 @@ BEGIN
       OR COALESCE(description, '') ILIKE '%offline%'
     );
 
+  DELETE FROM cash_denominations cd
+  USING cash_sessions cs
+  WHERE cd.cash_session_id = cs.cash_session_id
+    AND cs.tenant_id = v_tenant_id;
+
+  DELETE FROM cash_reconciliations cr
+  USING cash_sessions cs
+  WHERE cr.cash_session_id = cs.cash_session_id
+    AND cs.tenant_id = v_tenant_id;
+
+  DELETE FROM offline_stock_allocations
+  WHERE tenant_id = v_tenant_id;
+
+  DELETE FROM expiry_alerts ea
+  USING lots l
+  JOIN articles a ON a.article_id = l.article_id
+  WHERE ea.lot_id = l.lot_id
+    AND a.tenant_id = v_tenant_id;
+
+  DELETE FROM fefo_actions
+  WHERE tenant_id = v_tenant_id;
+
   DELETE FROM stock_movements
   WHERE tenant_id = v_tenant_id;
 
-  DELETE FROM stocks
-  WHERE tenant_id = v_tenant_id;
+  DELETE FROM stocks st
+  USING lots l
+  JOIN articles a ON a.article_id = l.article_id
+  WHERE st.lot_id = l.lot_id
+    AND a.tenant_id = v_tenant_id;
 
   DELETE FROM lots
-  WHERE tenant_id = v_tenant_id;
+  USING articles a
+  WHERE lots.article_id = a.article_id
+    AND a.tenant_id = v_tenant_id;
 
   DELETE FROM purchase_items
   WHERE tenant_id = v_tenant_id;
 
   DELETE FROM purchases
-  WHERE tenant_id = v_tenant_id;
-
-  DELETE FROM offline_stock_allocations
   WHERE tenant_id = v_tenant_id;
 
   DELETE FROM audit_logs

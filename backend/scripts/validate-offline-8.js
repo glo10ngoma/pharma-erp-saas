@@ -24,6 +24,8 @@ async function main() {
   const sale = read('frontend/src/modules/offline/offline-sale.ts');
   const pos = read('frontend/src/modules/offline/OfflinePosPage.tsx');
   const ui = read('frontend/src/modules/offline/offline-ui.tsx');
+  const bootstrap = read('frontend/src/modules/offline/offline-bootstrap.ts');
+  const authContext = read('frontend/src/auth/AuthContext.tsx');
   const dto = read('backend/src/pos-sync/dto/submit-pos-operations.dto.ts');
   const posSyncRepo = read('backend/src/pos-sync/pos-sync.repository.ts');
   const salesRepo = read('backend/src/sales/sales.repository.ts');
@@ -59,6 +61,7 @@ async function main() {
   assertIncludes(sale, 'membershipId: cart.membershipId', 'offline-sale.ts');
   assertIncludes(sale, "throw new Error('CUSTOMER_REQUIRED_FOR_INSURANCE');", 'offline-sale.ts');
   assertIncludes(sale, "throw new Error('MEMBERSHIP_REQUIRED');", 'offline-sale.ts');
+  assertIncludes(sale, "throw new Error('OFFLINE_AUTH_UNAUTHORIZED');", 'offline-sale.ts');
 
   assertIncludes(pos, "handleSelectSaleType('INSURANCE')", 'OfflinePosPage.tsx');
   assertIncludes(pos, "handleSelectSaleMode('ADVANCE')", 'OfflinePosPage.tsx');
@@ -67,6 +70,14 @@ async function main() {
   assertIncludes(pos, 'Rendu USD', 'OfflinePosPage.tsx');
   assertIncludes(pos, 'Rendu FC', 'OfflinePosPage.tsx');
   assertIncludes(pos, 'formatInsuranceMembershipLabel', 'OfflinePosPage.tsx');
+  assertIncludes(pos, "authorizationState === 'AUTHORIZED'", 'OfflinePosPage.tsx');
+
+  assertIncludes(bootstrap, "if (!auth || !workstation) return 'UNAUTHORIZED';", 'offline-bootstrap.ts');
+  assertIncludes(bootstrap, "if (workstation.status === 'REVOKED') return 'REVOKED';", 'offline-bootstrap.ts');
+  assertIncludes(bootstrap, "return 'AUTHORIZED';", 'offline-bootstrap.ts');
+  assertIncludes(bootstrap, 'offlineAuthorizationExpiresAt: null,', 'offline-bootstrap.ts');
+  assert(!bootstrap.includes("return 'EXPIRED'"), 'offline-bootstrap.ts should not block authorization by expiresAt');
+  assertIncludes(authContext, "reason: 'UNAUTHORIZED'", 'AuthContext.tsx');
 
   assertIncludes(ui, 'Type : {receipt.saleTypeLabel}', 'offline-ui.tsx');
   assertIncludes(ui, 'Mode : {receipt.saleModeLabel}', 'offline-ui.tsx');

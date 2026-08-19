@@ -75,8 +75,9 @@ export async function openOfflineCashSession(input: {
   const snapshot = await readOfflineSnapshot();
   if (!snapshot.auth || !snapshot.workstation) throw new Error('POS_SYNC_LOCAL_CONTEXT_MISSING');
   if (!snapshot.auth.permissions.includes('cash_sessions.open')) throw new Error('PERMISSION_DENIED');
-  if (calculateAuthorizationState(snapshot.auth) === 'EXPIRED') throw new Error('OFFLINE_AUTH_EXPIRED');
-  if (snapshot.workstation.status === 'REVOKED') throw new Error('WORKSTATION_REVOKED');
+  const authorizationState = calculateAuthorizationState(snapshot.auth, snapshot.workstation);
+  if (authorizationState === 'REVOKED') throw new Error('WORKSTATION_REVOKED');
+  if (authorizationState !== 'AUTHORIZED') throw new Error('OFFLINE_AUTH_UNAUTHORIZED');
 
   const allSessions = await readOfflineCashSessions();
   const existingActive = allSessions.find(

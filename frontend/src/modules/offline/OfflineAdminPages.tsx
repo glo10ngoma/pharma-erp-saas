@@ -51,7 +51,7 @@ const emptyOfflineAdminViewModel: OfflineSnapshotViewModel = {
   queue: [],
   syncLog: [],
   conflicts: [],
-  authorizationState: 'EXPIRED',
+  authorizationState: 'UNAUTHORIZED',
   snapshotStatus: 'UNKNOWN',
   networkStatus: 'OFFLINE',
 };

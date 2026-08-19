@@ -85,9 +85,9 @@ export async function finalizeOfflineCashSale(cartId: string, input: FinalizeOff
   if (!snapshot.auth || !snapshot.workstation || !snapshot.settings) {
     throw new Error('CATALOG_EMPTY');
   }
-  if (calculateAuthorizationState(snapshot.auth) === 'EXPIRED') {
-    throw new Error('OFFLINE_AUTH_EXPIRED');
-  }
+  const authorizationState = calculateAuthorizationState(snapshot.auth, snapshot.workstation);
+  if (authorizationState === 'REVOKED') throw new Error('WORKSTATION_REVOKED');
+  if (authorizationState !== 'AUTHORIZED') throw new Error('OFFLINE_AUTH_UNAUTHORIZED');
   const cashSessionSnapshot = snapshot.cashSession;
   if (!cart.items.length || cart.status === 'BLOCKED') {
     throw new Error('CART_BLOCKED');
