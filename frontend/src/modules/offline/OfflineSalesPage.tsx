@@ -118,21 +118,30 @@ export function OfflineSalesPage() {
                 <tr>
                   <td colSpan={7}><p className="empty-state">Aucune vente offline finalisee sur ce poste.</p></td>
                 </tr>
-              ) : sales.map((sale) => (
-                <tr key={sale.localSaleId}>
+              ) : sales.map((sale) => {
+                  const queueEntry = viewModel.queue.find((row) => row.relatedLocalSaleId === sale.localSaleId);
+                  const syncMessage = queueEntry?.lastErrorMessage ?? queueEntry?.lastErrorCode ?? null;
+                  return (
+                    <tr key={sale.localSaleId}>
                   <td><strong>{sale.offlineReference}</strong></td>
                   <td>{formatDateTime(sale.validatedAt)}</td>
                   <td>{sale.customerNameSnapshot ?? 'Client comptoir'}</td>
                   <td>{formatMoney(sale.total, 'USD')}</td>
-                  <td><span className="badge compact-badge badge-neutral">{sale.syncStatus}</span></td>
+                  <td>
+                    <span className="badge compact-badge badge-neutral">{sale.syncStatus}</span>
+                    {(sale.syncStatus === 'FAILED' || sale.syncStatus === 'CONFLICT') && syncMessage ? (
+                      <div className="offline-row-meta">{syncMessage}</div>
+                    ) : null}
+                  </td>
                   <td>{sale.serverSaleNumber ?? '-'}</td>
                   <td>
                     <button className="ghost-button compact-button" type="button" onClick={() => handlePrint(sale)}>
                       Reimprimer ticket
                     </button>
                   </td>
-                </tr>
-              ))}
+                    </tr>
+                  );
+                })}
             </tbody>
           </table>
         </div>

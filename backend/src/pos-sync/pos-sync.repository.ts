@@ -1035,6 +1035,18 @@ export class PosSyncRepository {
     const normalizedConflictCode = /^[A-Z0-9_]+$/.test(params.conflictCode) && params.conflictCode.length <= 80
       ? params.conflictCode
       : 'POS_SYNC_REPLAY_FAILED';
+    const validSiteId = params.siteId
+      ? await this.db.query<{ site_id: string }>(
+          `SELECT site_id FROM sites WHERE tenant_id = $1 AND site_id = $2 LIMIT 1`,
+          [user.tenantId, params.siteId],
+        ).then((result) => result.rows[0]?.site_id ?? null)
+      : user.siteId ?? null;
+    const validWorkstationId = params.workstationId
+      ? await this.db.query<{ workstation_id: string }>(
+          `SELECT workstation_id FROM pos_workstations WHERE tenant_id = $1 AND workstation_id = $2 LIMIT 1`,
+          [user.tenantId, params.workstationId],
+        ).then((result) => result.rows[0]?.workstation_id ?? null)
+      : null;
     await this.db.query(
       `
       INSERT INTO pos_sync_conflicts (
@@ -1070,8 +1082,8 @@ export class PosSyncRepository {
       `,
       [
         user.tenantId,
-        params.siteId ?? user.siteId ?? null,
-        params.workstationId ?? null,
+        validSiteId,
+        validWorkstationId,
         params.operationId,
         params.localSaleId,
         params.offlineReference ?? null,
@@ -1243,10 +1255,16 @@ export class PosSyncRepository {
       FROM pos_workstations w
       LEFT JOIN sites s ON s.site_id = w.site_id AND s.tenant_id = w.tenant_id
       WHERE w.tenant_id = $1
-        AND ($2::uuid IS NULL OR w.workstation_id = $2::uuid)
-        AND ($3::varchar IS NULL OR w.device_uuid = $3::varchar)
         AND ($4::uuid IS NULL OR w.site_id = $4::uuid)
-      ORDER BY w.updated_at DESC NULLS LAST, w.created_at DESC NULLS LAST
+        AND (
+          ($2::uuid IS NOT NULL AND w.workstation_id = $2::uuid)
+          OR ($3::varchar IS NOT NULL AND w.device_uuid = $3::varchar)
+        )
+      ORDER BY
+        CASE WHEN $2::uuid IS NOT NULL AND w.workstation_id = $2::uuid THEN 0 ELSE 1 END,
+        CASE WHEN $3::varchar IS NOT NULL AND w.device_uuid = $3::varchar THEN 0 ELSE 1 END,
+        w.updated_at DESC NULLS LAST,
+        w.created_at DESC NULLS LAST
       LIMIT 1
       `,
       [user.tenantId, query.workstationId ?? null, query.deviceId ?? null, user.siteId ?? null],
