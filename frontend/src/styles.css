@@ -8045,16 +8045,16 @@ details.nav-group .nav-link {
 }
 
 .offline-cart-table-compact td:nth-child(2) {
-  align-items: center;
-  display: flex;
-  justify-content: center;
   min-width: 0;
+  padding-left: 0;
+  padding-right: 0;
+  text-align: center;
 }
 
 .offline-cart-table-compact th:nth-child(3),
 .offline-cart-table-compact td:nth-child(3) {
   min-width: 72px;
-  text-align: right;
+  text-align: center;
   white-space: normal;
   width: 72px;
 }
@@ -8062,7 +8062,7 @@ details.nav-group .nav-link {
 .offline-cart-table-compact th:nth-child(4),
 .offline-cart-table-compact td:nth-child(4) {
   min-width: 72px;
-  text-align: right;
+  text-align: center;
   white-space: normal;
   width: 72px;
 }
@@ -8206,8 +8206,17 @@ details.nav-group .nav-link {
   box-shadow: none;
 }
 
-.offline-cart-panel-accent .offline-cart-table tbody tr + tr td {
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
+.offline-cart-panel-accent .offline-cart-table tbody td {
+  background: transparent;
+  border-bottom: 0;
+}
+
+.offline-cart-panel-accent .offline-cart-table tbody tr {
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.offline-cart-panel-accent .offline-cart-table tbody tr:last-child {
+  box-shadow: none;
 }
 
 .offline-cart-panel-accent .offline-cart-table tbody tr:hover td {
@@ -8253,14 +8262,24 @@ details.nav-group .nav-link {
   border-radius: 10px;
   color: #0f172a;
   cursor: text;
-  font-size: 0.92rem;
-  font-weight: 700;
+  display: block;
+  font-size: 16px;
+  font-weight: 600;
   height: 38px;
-  padding: 0 6px;
+  margin: 0 auto;
+  padding: 0 10px;
   text-align: center;
   max-width: 52px;
   min-width: 52px;
   width: 52px;
+}
+
+.offline-cart-panel-accent .offline-cart-table td:nth-child(3),
+.offline-cart-panel-accent .offline-cart-table td:nth-child(4) {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.15;
+  text-align: center;
 }
 
 .offline-cart-qty-input:focus {
