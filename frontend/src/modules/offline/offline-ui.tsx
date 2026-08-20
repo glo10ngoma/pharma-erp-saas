@@ -219,11 +219,7 @@ export function OfflineSellerHeader(props: {
 export function OfflineNetworkBanner(props: { viewModel: OfflineSnapshotViewModel; syncEngine?: ReturnType<typeof useSyncEngine> }) {
   if (props.viewModel.networkStatus === 'ONLINE' && !props.syncEngine?.pendingCount && !props.syncEngine?.conflictCount) return null;
   if (props.syncEngine?.conflictCount) {
-    return (
-      <div className="offline-seller-banner is-warning">
-        Une operation necessite une verification responsable. Consultez l administration offline pour les details.
-      </div>
-    );
+    return null;
   }
   if (props.viewModel.networkStatus === 'OFFLINE') {
     return <div className="offline-seller-banner">Mode hors ligne - les ventes seront synchronisees automatiquement.</div>;

@@ -249,7 +249,7 @@ export function OfflinePosPage() {
     && returnedAmountValid;
   const checkoutDisabledReason = useMemo(() => {
     if (!hasCart) return 'Chargement du brouillon local.';
-    if (itemCount <= 0) return 'Ajoutez au moins un article au panier.';
+    if (itemCount <= 0) return null;
     if (cartStatus === 'BLOCKED') {
       return cartBlockingReasons[0] ? `Vente bloquee : ${cartBlockingReasons[0]}` : 'Vente bloquee : stock indisponible.';
     }
