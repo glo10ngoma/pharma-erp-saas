@@ -168,7 +168,6 @@ export function OfflineSynchronizationPage() {
       const latestSnapshot = await readOfflineSnapshot();
       const result = await bootstrapFromServer({
         siteId: currentUser?.siteId ?? latestSnapshot.workstation?.siteId ?? null,
-        workstationId: latestSnapshot.workstation?.workstationId ?? null,
       });
       setServerPingLabel(getCurrentOfflinePingLabel(result.ping));
       setMessage(`Bootstrap applique pour ${result.payload.workstation.workstationName}.`);

@@ -30,6 +30,7 @@ import {
   calculateAuthorizationState,
   calculateSnapshotFreshness,
   loadLocalSnapshot,
+  verifyLocalWorkstationRegistration,
   type OfflineSnapshotViewModel,
 } from './offline-bootstrap';
 import { type OfflineCart, type OfflineCustomerMembership, type OfflinePosCustomer, type OfflineSale } from './offline-types';
@@ -95,6 +96,14 @@ export function OfflinePosPage() {
         loadLocalSnapshot(),
         getOfflineCartPageModel(cartId ?? selectedCartId),
       ]);
+      const serverWorkstationState = await verifyLocalWorkstationRegistration(localView.snapshot);
+      if (serverWorkstationState.state === 'REENROLL_REQUIRED') {
+        setViewModel(localView);
+        setPageModel(null);
+        setInitState('RECOVERY_REQUIRED');
+        setInitError(serverWorkstationState.message);
+        return;
+      }
       setViewModel(localView);
       setPageModel(cartView);
       setNoteDraft(cartView.cart.note ?? '');
@@ -251,53 +260,6 @@ export function OfflinePosPage() {
     )
     && settlementPreview.settlementDifferenceUsd >= -0.02
     && returnedAmountValid;
-  const checkoutDiagnostic = useMemo(() => ({
-    hasCart,
-    itemCount,
-    cartStatus,
-    cartBlockingReasons,
-    authorizationState,
-    cashSessionStatus,
-    cashSessionAttachable,
-    saleType,
-    saleMode,
-    membershipId: cart?.membershipId ?? null,
-    patientShareUsd,
-    insuranceShareUsd,
-    amountPaidUsd: settlementPreview.amountPaidUsd,
-    amountPaidCdf: settlementPreview.amountPaidCdf,
-    paidEquivalentUsd,
-    settlementDifferenceUsd: settlementPreview.settlementDifferenceUsd,
-    amountDueUsd,
-    amountDueCdf,
-    returnedUsd: settlementPreview.amountReturnedUsd,
-    returnedCdf: settlementPreview.amountReturnedCdf,
-    busyAction,
-    canFinalizeOfflineSale,
-  }), [
-    amountDueCdf,
-    amountDueUsd,
-    authorizationState,
-    busyAction,
-    canFinalizeOfflineSale,
-    cart?.membershipId,
-    cartBlockingReasons,
-    cartStatus,
-    cashSessionAttachable,
-    cashSessionStatus,
-    hasCart,
-    insuranceShareUsd,
-    itemCount,
-    paidEquivalentUsd,
-    patientShareUsd,
-    saleMode,
-    saleType,
-    settlementPreview.amountPaidCdf,
-    settlementPreview.amountPaidUsd,
-    settlementPreview.amountReturnedCdf,
-    settlementPreview.amountReturnedUsd,
-    settlementPreview.settlementDifferenceUsd,
-  ]);
   const checkoutDisabledReason = useMemo(() => {
     if (!hasCart) return 'Chargement du brouillon local.';
     if (itemCount <= 0) return 'Ajoutez au moins un article au panier.';
@@ -330,10 +292,6 @@ export function OfflinePosPage() {
     settlementPreview.settlementDifferenceUsd,
     snapshot.cashSession,
   ]);
-
-  useEffect(() => {
-    console.debug('[OFFLINE CHECKOUT DIAGNOSTIC]', checkoutDiagnostic);
-  }, [checkoutDiagnostic]);
 
   async function handleSelectArticle(result: LocalCatalogSearchResult, quantityDelta = 1) {
     if (!cart) return;

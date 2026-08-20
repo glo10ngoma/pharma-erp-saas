@@ -9,6 +9,7 @@ export class ResolvePosSyncConflictDto {
       'DISMISS',
       'CANCEL_SYNC_OPERATION',
       'REASSIGN_CASH_SESSION',
+      'RECOVER_WORKSTATION_AND_RETRY',
     ],
   })
   @IsIn([
@@ -17,13 +18,15 @@ export class ResolvePosSyncConflictDto {
     'DISMISS',
     'CANCEL_SYNC_OPERATION',
     'REASSIGN_CASH_SESSION',
+    'RECOVER_WORKSTATION_AND_RETRY',
   ])
   resolutionType:
     | 'UNDER_REVIEW'
     | 'MANUAL_REVIEW_COMPLETED'
     | 'DISMISS'
     | 'CANCEL_SYNC_OPERATION'
-    | 'REASSIGN_CASH_SESSION';
+    | 'REASSIGN_CASH_SESSION'
+    | 'RECOVER_WORKSTATION_AND_RETRY';
 
   @ApiPropertyOptional()
   @IsOptional()

@@ -863,6 +863,89 @@ export async function patchOfflineSyncQueueEntry(
   return nextRows.find((row) => row.operationId === operationId) ?? null;
 }
 
+export async function recoverOfflineSyncConflictForRetry(params: {
+  operationId: string;
+  recoveredWorkstationId: string;
+  recoveredDeviceId: string;
+  conflictId?: string | null;
+  recoveryNote?: string | null;
+}) {
+  const db = await openOfflineDatabase();
+  const tx = db.transaction(
+    [SYNC_QUEUE_STORE, OFFLINE_SALES_STORE, SYNC_CONFLICTS_STORE, ACTIVITY_LOG_STORE],
+    'readwrite',
+  );
+  const queueStore = tx.objectStore(SYNC_QUEUE_STORE);
+  const salesStore = tx.objectStore(OFFLINE_SALES_STORE);
+  const conflictsStore = tx.objectStore(SYNC_CONFLICTS_STORE);
+  const activityStore = tx.objectStore(ACTIVITY_LOG_STORE);
+
+  const [queueEntries, sales, conflicts] = await Promise.all([
+    readAllFromTransaction<OfflineSyncQueueEntry>(queueStore),
+    readAllFromTransaction<OfflineSale>(salesStore),
+    readAllFromTransaction<OfflineSyncConflictEntry>(conflictsStore),
+  ]);
+  const queueEntry = queueEntries.find((row) => row.operationId === params.operationId);
+  if (!queueEntry) {
+    await txDone(tx);
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  const nextQueueEntries = queueEntries.map((row) => {
+    if (row.operationId !== params.operationId) return row;
+    const payload = { ...row.payload };
+    if ('workstationId' in payload) payload.workstationId = params.recoveredWorkstationId;
+    if ('deviceId' in payload) payload.deviceId = params.recoveredDeviceId;
+    return {
+      ...row,
+      workstationId: params.recoveredWorkstationId,
+      payload,
+      status: 'PENDING' as const,
+      lastErrorCode: null,
+      lastErrorMessage: null,
+      updatedAt: now,
+    };
+  });
+  const nextSales = sales.map((row) => {
+    if (row.localSaleId !== queueEntry.relatedLocalSaleId && row.localSaleId !== ('localSaleId' in queueEntry.payload ? queueEntry.payload.localSaleId : null)) {
+      return row;
+    }
+    return {
+      ...row,
+      status: 'PENDING_SYNC' as const,
+      syncStatus: 'PENDING' as const,
+      syncedAt: null,
+    };
+  });
+  const nextConflicts = conflicts.map((row) => {
+    if (row.operationId !== params.operationId && row.conflictId !== params.conflictId) return row;
+    return {
+      ...row,
+      status: 'RESOLVED',
+      resolutionType: 'RECOVER_WORKSTATION_AND_RETRY',
+      updatedAt: now,
+    };
+  });
+
+  await replaceAll(queueStore, nextQueueEntries);
+  await replaceAll(salesStore, nextSales);
+  await replaceAll(conflictsStore, nextConflicts);
+  await putStore(activityStore, {
+    localId: crypto.randomUUID(),
+    cartId: null,
+    saleId: 'localSaleId' in queueEntry.payload ? queueEntry.payload.localSaleId : null,
+    type: 'sale.sync_queued',
+    message: params.recoveryNote?.trim()
+      ? `Operation ${params.operationId} remise en attente apres recuperation poste: ${params.recoveryNote.trim()}.`
+      : `Operation ${params.operationId} remise en attente apres recuperation du poste offline.`,
+    createdAt: now,
+  } satisfies OfflineActivityLogEntry);
+
+  await txDone(tx);
+  return nextQueueEntries.find((row) => row.operationId === params.operationId) ?? null;
+}
+
 export async function appendSyncLog(entry: Omit<OfflineSyncLogEntry, 'localId' | 'createdAt'>) {
   const db = await openOfflineDatabase();
   const tx = db.transaction(SYNC_LOG_STORE, 'readwrite');

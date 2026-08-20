@@ -133,7 +133,7 @@ export async function bootstrapFromServer(options: {
     });
 
     const bootstrap = await posSyncService.bootstrap({
-      workstationId: options.workstationId ?? registered.data.workstationId,
+      workstationId: registered.data.workstationId,
       deviceId,
     });
     validateBootstrapPayload(bootstrap.data);
@@ -181,6 +181,88 @@ export async function bootstrapFromServer(options: {
     };
   } catch (error) {
     await persistFailureState('BOOTSTRAP', error, pingState.networkStatus);
+    throw error;
+  }
+}
+
+export type OfflineWorkstationServerCheck =
+  | {
+      state: 'AUTHORIZED';
+      networkStatus: OfflineNetworkStatus;
+      serverTime: string | null;
+    }
+  | {
+      state: 'REENROLL_REQUIRED';
+      networkStatus: OfflineNetworkStatus;
+      errorCode: string;
+      message: string;
+    }
+  | {
+      state: 'SKIPPED';
+      networkStatus: OfflineNetworkStatus;
+      reason: 'MISSING_CONTEXT' | 'OFFLINE' | 'DEGRADED' | 'LOCAL_UNAUTHORIZED';
+    };
+
+export async function verifyLocalWorkstationRegistration(
+  snapshot?: OfflineLocalSnapshot | null,
+): Promise<OfflineWorkstationServerCheck> {
+  const localSnapshot = snapshot ?? await readOfflineSnapshot();
+  const pingState = await pingPosSync();
+
+  if (pingState.networkStatus !== 'ONLINE') {
+    return {
+      state: 'SKIPPED',
+      networkStatus: pingState.networkStatus,
+      reason: pingState.networkStatus === 'OFFLINE' ? 'OFFLINE' : 'DEGRADED',
+    };
+  }
+
+  const workstation = localSnapshot.workstation;
+  const auth = localSnapshot.auth;
+  if (!workstation?.workstationId || !workstation.deviceId || !auth?.tenantId) {
+    return { state: 'SKIPPED', networkStatus: pingState.networkStatus, reason: 'MISSING_CONTEXT' };
+  }
+
+  if (calculateAuthorizationState(auth, workstation) !== 'AUTHORIZED') {
+    return { state: 'SKIPPED', networkStatus: pingState.networkStatus, reason: 'LOCAL_UNAUTHORIZED' };
+  }
+
+  try {
+    const heartbeat = await posSyncService.heartbeat({
+      workstationId: workstation.workstationId,
+      deviceId: workstation.deviceId,
+      appVersion: workstation.appVersion ?? import.meta.env.VITE_APP_VERSION ?? 'web',
+      localDbVersion: String(import.meta.env.VITE_OFFLINE_DB_VERSION ?? ''),
+      snapshotStatus: localSnapshot.syncState?.snapshotStatus ?? 'UNKNOWN',
+      syncCursor: localSnapshot.syncState?.syncCursor ?? null,
+      pendingCount: 0,
+      conflictCount: 0,
+      lastSyncAt: localSnapshot.syncState?.lastAttemptAt ?? null,
+      lastSuccessfulSyncAt: localSnapshot.syncState?.lastSuccessfulSyncAt ?? null,
+    });
+    return {
+      state: 'AUTHORIZED',
+      networkStatus: pingState.networkStatus,
+      serverTime: heartbeat.data.serverTime ?? null,
+    };
+  } catch (error) {
+    const code = extractServiceErrorCode(error);
+    if (code === 'WORKSTATION_NOT_FOUND') {
+      return {
+        state: 'REENROLL_REQUIRED',
+        networkStatus: pingState.networkStatus,
+        errorCode: code,
+        message: 'Ce poste doit etre reenregistre.',
+      };
+    }
+    if (code === 'WORKSTATION_REVOKED') {
+      return {
+        state: 'REENROLL_REQUIRED',
+        networkStatus: pingState.networkStatus,
+        errorCode: code,
+        message: 'Ce poste a ete revoque et doit etre reprepare.',
+      };
+    }
     throw error;
   }
 }
@@ -400,6 +482,21 @@ export function getCurrentOfflinePingLabel(ping: PosSyncPingResponse | null) {
 }
 
 function extractErrorMessage(error: unknown) {
+  const code = extractServiceErrorCode(error);
+  if (code) return code;
   if (error instanceof Error) return error.message;
   return 'POS_SYNC_UNKNOWN_ERROR';
+}
+
+function extractServiceErrorCode(error: unknown) {
+  const response = error as {
+    message?: string;
+    response?: {
+      data?: {
+        message?: string;
+        error?: string;
+      };
+    };
+  };
+  return response.response?.data?.message ?? response.response?.data?.error ?? response.message ?? null;
 }

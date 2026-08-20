@@ -18,9 +18,11 @@ import { workstationsService } from '../../services/workstations.service';
 import { SearchBox } from '../../components/SearchBox';
 import { formatDate, formatDateTime } from '../../utils/date';
 import { formatMoney } from '../../utils/money';
-import { type OfflineSnapshotViewModel } from './offline-bootstrap';
+import { type OfflineSnapshotViewModel, verifyLocalWorkstationRegistration } from './offline-bootstrap';
 import { OfflineWorkspaceLayout } from './offline-ui';
 import {
+  readOfflineSnapshot,
+  recoverOfflineSyncConflictForRetry,
   readOfflineCashCounts,
   readOfflineCashMovements,
   readOfflineCashSessions,
@@ -278,6 +280,7 @@ export function OfflineAdminConflictsPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [selectedConflictId, setSelectedConflictId] = useState<string | null>(null);
+  const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null);
   const conflicts = useQuery({ queryKey: ['offline-admin', 'conflicts'], queryFn: async () => (await posSyncService.getAdminConflicts()).data });
   const conflictDetail = useQuery({
     queryKey: ['offline-admin', 'conflict', selectedConflictId],
@@ -292,6 +295,64 @@ export function OfflineAdminConflictsPage() {
       qc.invalidateQueries({ queryKey: ['offline-admin', 'conflict', variables.id] });
     },
   });
+  const recover = useMutation({
+    mutationFn: async (row: PosSyncAdminConflict) => {
+      const localSnapshot = await readOfflineSnapshot();
+      const workstation = localSnapshot.workstation;
+      const auth = localSnapshot.auth;
+      if (!workstation?.workstationId || !workstation.deviceId || !auth?.tenantId) {
+        throw new Error('WORKSTATION_RECOVERY_CONTEXT_MISSING');
+      }
+      if (auth.tenantId !== row.tenantId) {
+        throw new Error('WORKSTATION_RECOVERY_TENANT_MISMATCH');
+      }
+      if (row.siteId && workstation.siteId !== row.siteId) {
+        throw new Error('WORKSTATION_RECOVERY_SITE_MISMATCH');
+      }
+      const serverCheck = await verifyLocalWorkstationRegistration(localSnapshot);
+      if (serverCheck.state !== 'AUTHORIZED') {
+        throw new Error(serverCheck.state === 'REENROLL_REQUIRED' ? 'WORKSTATION_RECOVERY_REENROLL_REQUIRED' : 'WORKSTATION_RECOVERY_CONTEXT_MISSING');
+      }
+
+      const originalWorkstationId = typeof row.localPayload?.workstationId === 'string' ? row.localPayload.workstationId : row.workstationId;
+      const originalDeviceId = typeof row.localPayload?.deviceId === 'string' ? row.localPayload.deviceId : null;
+      const recoveredAt = new Date().toISOString();
+      await posSyncService.resolveConflict(row.conflictId, {
+        resolutionType: 'RECOVER_WORKSTATION_AND_RETRY',
+        note: 'Recuperation controlee du poste local actif.',
+        payload: {
+          originalWorkstationId,
+          originalDeviceId,
+          recoveredWorkstationId: workstation.workstationId,
+          recoveredDeviceId: workstation.deviceId,
+          recoveredAt,
+          recoveredBy: auth.userId,
+        },
+      });
+      await recoverOfflineSyncConflictForRetry({
+        operationId: row.operationId,
+        conflictId: row.conflictId,
+        recoveredWorkstationId: workstation.workstationId,
+        recoveredDeviceId: workstation.deviceId,
+        recoveryNote: 'Poste local reenregistre et operation remise en attente.',
+      });
+      return {
+        conflictId: row.conflictId,
+        workstationName: workstation.workstationName,
+        recoveredAt,
+      };
+    },
+    onSuccess: async (result) => {
+      setRecoveryMessage(`Conflit recupere sur ${result.workstationName}. Operation remise en attente le ${formatDateTime(result.recoveredAt)}.`);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['offline-admin', 'conflicts'] }),
+        qc.invalidateQueries({ queryKey: ['offline-admin', 'conflict', result.conflictId] }),
+      ]);
+    },
+    onError: (error) => {
+      setRecoveryMessage(error instanceof Error ? error.message : 'Recuperation du poste impossible.');
+    },
+  });
 
   const rows = useMemo(
     () => (conflicts.data ?? []).filter((row) => [row.offlineReference, row.conflictCode, row.message, row.workstationName, row.siteName].some((value) => String(value ?? '').toLowerCase().includes(search.toLowerCase()))),
@@ -301,6 +362,7 @@ export function OfflineAdminConflictsPage() {
   return (
     <PageShell title="Conflits Offline" description="Centre de supervision et de resolution des conflits de synchronisation.">
       <div className="card reference-filters"><SearchBox value={search} onChange={setSearch} placeholder="Rechercher reference, conflit, poste..." /></div>
+      {recoveryMessage ? <p className="offline-action-message">{recoveryMessage}</p> : null}
       <div className="card table-card">
         {conflicts.isLoading ? <p className="loading-state">Chargement des conflits...</p> : (
           <div className="table-wrap">
@@ -318,6 +380,11 @@ export function OfflineAdminConflictsPage() {
                     <button className="ghost-button compact-button" onClick={() => resolve.mutate({ id: row.conflictId, resolutionType: 'UNDER_REVIEW' })}>Sous revue</button>
                     <button className="ghost-button compact-button" onClick={() => resolve.mutate({ id: row.conflictId, resolutionType: 'MANUAL_REVIEW_COMPLETED' })}>Resolu</button>
                     <button className="ghost-button compact-button" onClick={() => resolve.mutate({ id: row.conflictId, resolutionType: 'DISMISS' })}>Ignorer</button>
+                    {row.conflictCode === 'WORKSTATION_NOT_FOUND' ? (
+                      <button className="ghost-button compact-button" onClick={() => recover.mutate(row)} disabled={recover.isPending}>
+                        Recuperer ce poste
+                      </button>
+                    ) : null}
                     <button className="ghost-button compact-button" onClick={() => setSelectedConflictId(row.conflictId)}>Detail</button>
                   </td>
                 </tr>
@@ -343,6 +410,13 @@ export function OfflineAdminConflictsPage() {
             <div><span>Resolution</span><strong>{conflictDetail.data.resolutionType ?? '-'}</strong></div>
             <div><span>Message</span><strong>{conflictDetail.data.message}</strong></div>
           </div>
+          {conflictDetail.data.conflictCode === 'WORKSTATION_NOT_FOUND' ? (
+            <div className="reference-actions" style={{ marginTop: 12 }}>
+              <button className="button compact-button" onClick={() => recover.mutate(conflictDetail.data)} disabled={recover.isPending}>
+                Recuperer l operation sur ce poste
+              </button>
+            </div>
+          ) : null}
           <pre className="json-preview">{JSON.stringify({ localPayload: conflictDetail.data.localPayload, serverContext: conflictDetail.data.serverContext }, null, 2)}</pre>
         </div>
       ) : null}

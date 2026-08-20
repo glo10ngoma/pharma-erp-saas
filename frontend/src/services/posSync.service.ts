@@ -213,7 +213,8 @@ export type ResolvePosSyncConflictPayload = {
     | 'MANUAL_REVIEW_COMPLETED'
     | 'DISMISS'
     | 'CANCEL_SYNC_OPERATION'
-    | 'REASSIGN_CASH_SESSION';
+    | 'REASSIGN_CASH_SESSION'
+    | 'RECOVER_WORKSTATION_AND_RETRY';
   note?: string;
   targetCashSessionId?: string;
   payload?: Record<string, unknown>;

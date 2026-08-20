@@ -724,6 +724,9 @@ export class PosSyncRepository {
 
   async resolveConflict(user: AuthUser, id: string, dto: ResolvePosSyncConflictDto) {
     this.assertOfflineAdminPermissions(user, 'pos_sync.conflicts.resolve');
+    if (dto.resolutionType === 'RECOVER_WORKSTATION_AND_RETRY') {
+      await this.validateWorkstationRecoveryConflict(user, id, dto.payload ?? {});
+    }
     const result = await this.db.query<PosSyncConflictRow>(
       `
       UPDATE pos_sync_conflicts
@@ -767,10 +770,81 @@ export class PosSyncRepository {
           resolutionType: dto.resolutionType,
           note: dto.note ?? null,
           targetCashSessionId: dto.targetCashSessionId ?? null,
+          payload: dto.payload ?? null,
         }),
       ],
     );
     return this.toAdminConflict(result.rows[0]);
+  }
+
+  private async validateWorkstationRecoveryConflict(user: AuthUser, id: string, payload: Record<string, unknown>) {
+    const conflictResult = await this.db.query<PosSyncConflictRow>(
+      `
+      SELECT
+        c.conflict_id,
+        c.tenant_id,
+        c.site_id,
+        s.site_name,
+        c.workstation_id,
+        w.workstation_name,
+        c.operation_id,
+        c.local_sale_id,
+        c.offline_reference,
+        c.conflict_code,
+        c.status,
+        c.severity,
+        c.message,
+        c.local_payload,
+        c.server_context,
+        c.resolution_type,
+        c.resolution_payload,
+        c.created_at,
+        c.resolved_at,
+        c.resolved_by,
+        ru.full_name AS resolved_by_name
+      FROM pos_sync_conflicts c
+      LEFT JOIN sites s
+        ON s.tenant_id = c.tenant_id
+       AND s.site_id = c.site_id
+      LEFT JOIN pos_workstations w
+        ON w.tenant_id = c.tenant_id
+       AND w.workstation_id = c.workstation_id
+      LEFT JOIN users ru
+        ON ru.tenant_id = c.tenant_id
+       AND ru.user_id = c.resolved_by
+      WHERE c.tenant_id = $1
+        AND c.conflict_id = $2
+      LIMIT 1
+      `,
+      [user.tenantId, id],
+    );
+    const conflict = conflictResult.rows[0];
+    if (!conflict) throw new NotFoundException('POS_SYNC_CONFLICT_NOT_FOUND');
+    if (conflict.conflict_code !== 'WORKSTATION_NOT_FOUND') {
+      throw new BadRequestException('WORKSTATION_RECOVERY_NOT_ALLOWED');
+    }
+
+    const recoveredWorkstationId = typeof payload.recoveredWorkstationId === 'string' ? payload.recoveredWorkstationId : null;
+    const recoveredDeviceId = typeof payload.recoveredDeviceId === 'string' ? payload.recoveredDeviceId : null;
+    if (!isUuidLike(recoveredWorkstationId)) {
+      throw new BadRequestException('RECOVERED_WORKSTATION_ID_REQUIRED');
+    }
+    if (!recoveredWorkstationId) {
+      throw new BadRequestException('RECOVERED_WORKSTATION_ID_REQUIRED');
+    }
+
+    const recoveredWorkstation = await this.resolveWorkstationForAdmin(user, recoveredWorkstationId);
+    if (conflict.site_id && recoveredWorkstation.siteId !== conflict.site_id) {
+      throw new BadRequestException('WORKSTATION_SITE_MISMATCH');
+    }
+    if (recoveredDeviceId && recoveredWorkstation.deviceId && recoveredWorkstation.deviceId !== recoveredDeviceId) {
+      throw new BadRequestException('WORKSTATION_DEVICE_MISMATCH');
+    }
+
+    const processedOperation = await this.findProcessedOperation(user, conflict.operation_id);
+    if (processedOperation) {
+      throw new BadRequestException('SYNC_OPERATION_ALREADY_PROCESSED');
+    }
   }
 
   async listConflictChanges(user: AuthUser, params: { workstationId?: string | null; since: Date | null }) {
@@ -2014,4 +2088,8 @@ function inferConflictSeverity(conflictCode: string): 'INFO' | 'WARNING' | 'CRIT
     return 'WARNING';
   }
   return 'INFO';
+}
+
+function isUuidLike(value: string | null) {
+  return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
 }
