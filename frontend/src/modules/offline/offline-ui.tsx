@@ -15,6 +15,9 @@ export function mapOfflineSellerMessage(error: unknown) {
     OFFLINE_AUTH_EXPIRED: 'Ce poste n est pas autorise a effectuer des ventes hors ligne.',
     OFFLINE_AUTH_UNAUTHORIZED: 'Ce poste n est pas autorise a effectuer des ventes hors ligne.',
     WORKSTATION_REVOKED: 'Ce poste n est plus autorise a effectuer des ventes hors ligne.',
+    WORKSTATION_NOT_FOUND: 'Le poste doit etre reconnecte automatiquement.',
+    POS_SYNC_BACKEND_UNREACHABLE: 'Synchronisation impossible pour le moment.',
+    POS_SYNC_SITE_REQUIRED: 'Le site du poste est manquant. Une verification responsable est requise.',
     SNAPSHOT_EXPIRED: 'Les donnees locales sont trop anciennes. Reconnectez Internet puis synchronisez.',
     STORAGE_CRITICAL: 'Le stockage local du poste est presque plein. Contactez un responsable.',
     RECOVERY_REQUIRED: 'Une verification locale est requise avant de continuer les ventes hors ligne.',
@@ -38,8 +41,6 @@ export function OfflineSellerNav() {
     ['/offline/drafts', 'Brouillons'],
     ['/offline/sales', 'Ventes'],
     ['/offline/cash', 'Caisse'],
-    ['/offline/synchronisation', 'Synchronisation'],
-    ['/offline/poste', 'Poste'],
   ];
   return (
     <nav className="offline-seller-nav" aria-label="Navigation POS Offline">
@@ -75,8 +76,6 @@ export function OfflineWorkspaceLayout(props: {
     { to: '/offline/drafts', label: 'Brouillons', short: 'BRO', permission: 'pos_sync.read' },
     { to: '/offline/sales', label: 'Ventes', short: 'VNT', permission: 'pos_sync.read' },
     { to: '/offline/cash', label: 'Caisse', short: 'CSH', permission: 'pos_sync.read' },
-    { to: '/offline/synchronisation', label: 'Synchronisation', short: 'SYN', permission: 'pos_sync.read' },
-    { to: '/offline/poste', label: 'Poste', short: 'PST', permission: 'pos_sync.read' },
   ].filter((item) => permissions.includes(item.permission));
   const adminLinks = [
     { to: '/offline-admin/dashboard', label: 'Dashboard', short: 'DAS', permission: 'pos_offline.admin.read' },
@@ -85,6 +84,8 @@ export function OfflineWorkspaceLayout(props: {
     { to: '/offline-admin/conflicts', label: 'Conflits', short: 'CFL', permission: 'pos_sync.conflicts.read' },
     { to: '/offline-admin/cash-sessions', label: 'Sessions caisse', short: 'SES', permission: 'pos_sync.read' },
     { to: '/offline-admin/logs', label: 'Logs', short: 'LOG', permission: 'pos_sync.logs.read' },
+    { to: '/offline/synchronisation', label: 'Synchronisation', short: 'SYN', permission: 'pos_sync.read' },
+    { to: '/offline/poste', label: 'Poste', short: 'PST', permission: 'pos_sync.read' },
   ].filter((item) => permissions.includes(item.permission));
   const workstation = props.viewModel.snapshot.workstation;
   const auth = props.viewModel.snapshot.auth;
@@ -94,10 +95,10 @@ export function OfflineWorkspaceLayout(props: {
       ? 'Connexion limitee'
       : 'Hors ligne';
   const syncText = props.syncEngine?.conflictCount
-    ? `${props.syncEngine.conflictCount} conflit(s)`
-    : props.syncEngine?.pendingCount
-      ? `${props.syncEngine.pendingCount} en attente`
-      : 'Synchronise';
+    ? 'Action requise'
+    : props.syncEngine?.currentStatus === 'SYNCING' || props.syncEngine?.pendingCount
+      ? 'Synchronisation...'
+      : 'Pret';
   const cashText = canAttachOfflineCashSale(props.cashSession ?? null) ? 'Caisse ouverte' : 'Caisse fermee';
 
   function renderNavSection(title: string, links: typeof sellerLinks) {
@@ -192,10 +193,10 @@ export function OfflineSellerHeader(props: {
       ? 'Connexion limitee'
       : 'Hors ligne';
   const syncText = syncEngine?.conflictCount
-    ? `${syncEngine.conflictCount} conflit(s)`
-    : syncEngine?.pendingCount
-      ? `${syncEngine.pendingCount} en attente`
-      : 'Synchronise';
+    ? 'Action requise'
+    : syncEngine?.currentStatus === 'SYNCING' || syncEngine?.pendingCount
+      ? 'Synchronisation...'
+      : 'Pret';
   const cashText = canAttachOfflineCashSale(props.cashSession ?? null) ? 'Caisse ouverte' : 'Caisse fermee';
 
   return (
@@ -220,7 +221,7 @@ export function OfflineNetworkBanner(props: { viewModel: OfflineSnapshotViewMode
   if (props.syncEngine?.conflictCount) {
     return (
       <div className="offline-seller-banner is-warning">
-        Une operation necessite la verification d un responsable. <Link to="/offline/synchronisation">Voir details</Link>
+        Une operation necessite une verification responsable. Consultez l administration offline pour les details.
       </div>
     );
   }

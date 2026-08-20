@@ -24,20 +24,19 @@ import {
   finalizeOfflineCashSale,
 } from './offline-sale';
 import { canAttachOfflineCashSale } from './offline-cash';
-import { notifyOfflineSaleQueued, runSync } from './sync-engine';
+import { notifyOfflineSaleQueued } from './sync-engine';
 import { OfflineNetworkBanner, OfflineReceiptTicket, OfflineWorkspaceLayout, mapOfflineSellerMessage, printOfflineReceipt } from './offline-ui';
 import {
   calculateAuthorizationState,
   calculateSnapshotFreshness,
-  loadLocalSnapshot,
-  verifyLocalWorkstationRegistration,
   type OfflineSnapshotViewModel,
 } from './offline-bootstrap';
+import { ensureOfflineEnvironmentReady, type OfflineEnvironmentState } from './offline-environment';
 import { type OfflineCart, type OfflineCustomerMembership, type OfflinePosCustomer, type OfflineSale } from './offline-types';
 import { useSyncEngine } from './useSyncEngine';
 
 type OfflinePageModel = Awaited<ReturnType<typeof getOfflineCartPageModel>>;
-type OfflinePosInitState = 'LOADING' | 'SETUP_REQUIRED' | 'READY' | 'RECOVERY_REQUIRED' | 'ERROR';
+type OfflinePosInitState = 'LOADING' | OfflineEnvironmentState | 'ERROR';
 
 const emptyViewModel: OfflineSnapshotViewModel = {
   snapshot: {
@@ -92,53 +91,41 @@ export function OfflinePosPage() {
     setInitState('LOADING');
     setInitError('');
     try {
-      const [localView, cartView] = await Promise.all([
-        loadLocalSnapshot(),
-        getOfflineCartPageModel(cartId ?? selectedCartId),
-      ]);
-      const serverWorkstationState = await verifyLocalWorkstationRegistration(localView.snapshot);
-      if (serverWorkstationState.state === 'REENROLL_REQUIRED') {
-        setViewModel(localView);
-        setPageModel(null);
-        setInitState('RECOVERY_REQUIRED');
-        setInitError(serverWorkstationState.message);
-        return;
-      }
-      setViewModel(localView);
-      setPageModel(cartView);
-      setNoteDraft(cartView.cart.note ?? '');
+      const environment = await ensureOfflineEnvironmentReady({
+        cartId: cartId ?? selectedCartId,
+      });
+      setViewModel(environment.viewModel);
+      setPageModel(environment.pageModel);
+      setNoteDraft(environment.pageModel?.cart.note ?? '');
       setSaveLabel('SAVED');
-      setInitState('READY');
-      const nextCartId = cartView.cart.cartId;
-      if (nextCartId !== selectedCartId) {
+      setInitState(environment.state);
+      if (environment.message) {
+        setInitError(environment.message);
+      }
+      const nextCartId = environment.pageModel?.cart.cartId ?? null;
+      if (nextCartId && nextCartId !== selectedCartId) {
         const nextParams = new URLSearchParams(searchParams);
         nextParams.set('draft', nextCartId);
         setSearchParams(nextParams, { replace: true });
       }
     } catch (error) {
       setPageModel(null);
-      try {
-        const localView = await loadLocalSnapshot();
-        setViewModel(localView);
-        const needsSetup = !localView.snapshot.workstation?.workstationId
-          || !localView.snapshot.auth
-          || !localView.snapshot.settings
-          || localView.snapshot.articles.length === 0;
-        const recoveryRequired = localView.snapshotStatus === 'REVOKED'
-          || localView.snapshot.syncState?.snapshotStatus === 'REVOKED'
-          || String(error instanceof Error ? error.message : error).includes('RECOVERY_REQUIRED');
-        setInitState(recoveryRequired ? 'RECOVERY_REQUIRED' : needsSetup ? 'SETUP_REQUIRED' : 'ERROR');
-        setInitError(mapOfflineSellerMessage(error));
-      } catch (snapshotError) {
-        setViewModel(emptyViewModel);
-        setInitState('ERROR');
-        setInitError(mapOfflineSellerMessage(snapshotError));
-      }
+      setViewModel(emptyViewModel);
+      setInitState('ERROR');
+      setInitError(mapOfflineSellerMessage(error));
     }
   }
 
   useEffect(() => {
     void refresh(selectedCartId);
+  }, [selectedCartId]);
+
+  useEffect(() => {
+    function handleOnline() {
+      void refresh(selectedCartId);
+    }
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
   }, [selectedCartId]);
 
   useEffect(() => () => {
@@ -536,8 +523,9 @@ export function OfflinePosPage() {
   }
 
   if (!pageModel || !cart) {
-    const setupRequired = initState === 'SETUP_REQUIRED';
-    const recoveryRequired = initState === 'RECOVERY_REQUIRED';
+    const actionRequired = initState === 'ACTION_REQUIRED';
+    const revoked = initState === 'REVOKED';
+    const offlineReady = initState === 'OFFLINE_READY';
     const hasError = initState === 'ERROR';
     return (
       <section className="offline-page">
@@ -546,13 +534,15 @@ export function OfflinePosPage() {
             <span className="breadcrumb">Offline</span>
             <h1>POS Offline</h1>
             <p>
-              {setupRequired
-                ? 'Ce poste doit etre prepare avant d utiliser le POS Offline.'
-                : recoveryRequired
-                  ? 'Une verification locale est requise avant de continuer les ventes hors ligne.'
-                  : hasError
-                    ? 'Impossible d initialiser le POS Offline.'
-                    : 'Chargement du snapshot local et des brouillons persistants.'}
+              {revoked
+                ? 'Le poste a ete revoque. Les nouvelles ventes hors ligne sont bloquees.'
+                : actionRequired
+                  ? 'Le poste a besoin d une preparation ou d une verification automatique.'
+                  : offlineReady
+                    ? 'Le poste reste disponible hors ligne avec les donnees locales deja preparees.'
+                    : hasError
+                      ? 'Impossible d initialiser le POS Offline.'
+                      : 'Preparation automatique du POS Offline en cours.'}
             </p>
           </div>
         </header>
@@ -561,23 +551,29 @@ export function OfflinePosPage() {
         ) : (
           <section className="card offline-panel offline-setup-required">
             <h2>
-              {setupRequired
-                ? 'Poste non prepare'
-                : recoveryRequired
-                  ? 'Verification requise'
-                  : 'Initialisation impossible'}
+              {revoked
+                ? 'Action requise'
+                : actionRequired
+                  ? 'Preparation incomplete'
+                  : offlineReady
+                    ? 'POS pret hors ligne'
+                    : 'Initialisation impossible'}
             </h2>
             <p>
-              {setupRequired
-                ? 'Ce poste doit etre prepare avant d utiliser le POS Offline.'
-                : recoveryRequired
-                  ? 'Ouvrez la page Poste pour verifier le stockage local, le snapshot et les donnees en attente.'
-                  : initError || 'Une erreur locale empeche le demarrage du POS Offline.'}
+              {revoked
+                ? initError || 'Le poste n est plus autorise. Contactez un responsable.'
+                : actionRequired
+                  ? initError || 'La preparation automatique n a pas pu aboutir pour le moment.'
+                  : offlineReady
+                    ? initError || 'Le poste peut continuer a vendre hors ligne avec le dernier snapshot disponible.'
+                    : initError || 'Une erreur locale empeche le demarrage du POS Offline.'}
             </p>
             <div className="offline-panel-actions">
-              <Link className="button compact-button" to="/offline/poste">
-                Preparer ce poste
-              </Link>
+              {actionRequired || revoked ? (
+                <Link className="ghost-button compact-button" to="/offline-admin/workstations">
+                  Ouvrir le support offline
+                </Link>
+              ) : null}
               <button className="ghost-button compact-button" type="button" onClick={() => void refresh(selectedCartId)}>
                 Reessayer
               </button>

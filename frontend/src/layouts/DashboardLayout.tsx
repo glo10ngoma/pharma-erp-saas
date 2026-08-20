@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { canReadNotifications, readNotificationState, useGeneratedNotifications } from '../modules/notifications/notifications-data';
-import { formatDateTime } from '../utils/date';
 
 type NavLinkItem = [to: string, label: string, permission?: string];
 type NavGroup = { title: string; icon: string; links: NavLinkItem[] };
@@ -10,7 +9,7 @@ type NavGroup = { title: string; icon: string; links: NavLinkItem[] };
 export function DashboardLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { accessToken, currentUser, permissions, loading, offlineAuthenticated, offlineSessionExpiresAt, logout: clearAuth } = useAuth();
+  const { accessToken, currentUser, permissions, loading, offlineAuthenticated, logout: clearAuth } = useAuth();
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
   const [notificationState, setNotificationState] = useState(() => readNotificationState());
   const canSeeNotifications = canReadNotifications(permissions, currentUser?.role);
@@ -49,8 +48,6 @@ export function DashboardLayout() {
         ['/offline/drafts', 'Brouillons', 'pos_sync.read'],
         ['/offline/sales', 'Ventes', 'pos_sync.read'],
         ['/offline/cash', 'Caisse', 'pos_sync.read'],
-        ['/offline/synchronisation', 'Synchronisation', 'pos_sync.read'],
-        ['/offline/poste', 'Poste', 'pos_sync.read'],
       ],
     },
     {
@@ -63,6 +60,8 @@ export function DashboardLayout() {
         ['/offline-admin/cash-sessions', 'Caisses offline', 'pos_sync.read'],
         ['/offline-admin/conflicts', 'Conflits offline', 'pos_sync.conflicts.read'],
         ['/offline-admin/logs', 'Journal offline', 'pos_sync.logs.read'],
+        ['/offline/synchronisation', 'Synchronisation', 'pos_sync.read'],
+        ['/offline/poste', 'Poste', 'pos_sync.read'],
       ],
     },
     {
@@ -210,7 +209,6 @@ export function DashboardLayout() {
           <section className="card compact-card">
             <p className="muted">
               Session hors ligne restauree.
-              {offlineSessionExpiresAt ? ` Autorisation valable jusqu au ${formatDateTime(offlineSessionExpiresAt)}.` : ''}
             </p>
           </section>
         ) : null}
@@ -266,7 +264,6 @@ export function DashboardLayout() {
           <section className="card compact-card">
             <p className="muted">
               Session hors ligne restauree.
-              {offlineSessionExpiresAt ? ` Autorisation valable jusqu au ${formatDateTime(offlineSessionExpiresAt)}.` : ''}
             </p>
           </section>
         ) : null}

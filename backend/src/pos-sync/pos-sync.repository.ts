@@ -35,6 +35,30 @@ type OfflineSettingsRow = {
   supported_currencies: string[];
   offline_hours: string | null;
   timezone: string | null;
+  auto_register_workstation: string | null;
+  auto_bootstrap: string | null;
+  auto_sync: string | null;
+  auto_open_cash_session: string | null;
+  auto_allocation: string | null;
+  allocation_target_quantity: string | null;
+  allocation_low_threshold: string | null;
+  snapshot_freshness_policy: string | null;
+};
+
+type OfflineSettings = {
+  defaultCurrency: string;
+  supportedCurrencies: string[];
+  offlineAuthorizationHours: number;
+  allocationPolicy: string;
+  autoRegisterWorkstation: boolean;
+  autoBootstrap: boolean;
+  autoSync: boolean;
+  autoOpenCashSession: boolean;
+  autoAllocation: boolean;
+  allocationTargetQuantity: number;
+  allocationLowThreshold: number;
+  snapshotFreshnessPolicy: string;
+  timezone: string;
 };
 
 type ArticleBootstrapRow = {
@@ -232,6 +256,14 @@ type TimestampedSettingsChange = { operation: 'UPSERT'; changed_at: Date | null;
 const DEFAULT_OFFLINE_AUTHORIZATION_HOURS = 24;
 const DEFAULT_TIMEZONE = 'Africa/Kinshasa';
 const DEFAULT_ALLOCATION_POLICY = 'STRICT_PER_WORKSTATION_LOT';
+const DEFAULT_AUTO_REGISTER_WORKSTATION = true;
+const DEFAULT_AUTO_BOOTSTRAP = true;
+const DEFAULT_AUTO_SYNC = true;
+const DEFAULT_AUTO_OPEN_CASH_SESSION = true;
+const DEFAULT_AUTO_ALLOCATION = true;
+const DEFAULT_ALLOCATION_TARGET_QUANTITY = 12;
+const DEFAULT_ALLOCATION_LOW_THRESHOLD = 3;
+const DEFAULT_SNAPSHOT_FRESHNESS_POLICY = 'WARN_ONLY';
 
 @Injectable()
 export class PosSyncRepository {
@@ -248,9 +280,10 @@ export class PosSyncRepository {
       LEFT JOIN sites s ON s.site_id = w.site_id AND s.tenant_id = w.tenant_id
       WHERE w.tenant_id = $1
         AND w.device_uuid = $2
+        AND w.site_id = $3
       LIMIT 1
       `,
-      [user.tenantId, dto.deviceId],
+      [user.tenantId, dto.deviceId, dto.siteId],
     );
 
     if (existing.rows[0]) {
@@ -301,11 +334,12 @@ export class PosSyncRepository {
   async buildBootstrap(user: AuthUser, query: BootstrapPosDto) {
     this.assertOfflinePermissions(user);
     const workstation = await this.resolveWorkstation(user, query);
-    const [tenant, site, exchangeRate, settings, cashSession, articles, lots, allocations, customers, organizations, insurancePlans, memberships] = await Promise.all([
+    const settings = await this.getOfflineSettings(user);
+    await this.ensureAutomaticOfflineAllocations(user, workstation, settings);
+    const [tenant, site, exchangeRate, cashSession, articles, lots, allocations, customers, organizations, insurancePlans, memberships] = await Promise.all([
       this.getTenant(user),
       this.getSite(user, workstation.siteId),
       this.getExchangeRate(user),
-      this.getOfflineSettings(user),
       this.getBootstrapCashSession(user, workstation),
       this.getBootstrapArticles(user, workstation),
       this.getBootstrapLots(user, workstation),
@@ -340,7 +374,15 @@ export class PosSyncRepository {
         currency: settings.defaultCurrency,
         exchangeRate,
         offlineAuthorizationHours: settings.offlineAuthorizationHours,
-        allocationPolicy: DEFAULT_ALLOCATION_POLICY,
+        allocationPolicy: settings.allocationPolicy,
+        autoRegisterWorkstation: settings.autoRegisterWorkstation,
+        autoBootstrap: settings.autoBootstrap,
+        autoSync: settings.autoSync,
+        autoOpenCashSession: settings.autoOpenCashSession,
+        autoAllocation: settings.autoAllocation,
+        allocationTargetQuantity: settings.allocationTargetQuantity,
+        allocationLowThreshold: settings.allocationLowThreshold,
+        snapshotFreshnessPolicy: settings.snapshotFreshnessPolicy,
         timezone: settings.timezone,
         supportedCurrencies: settings.supportedCurrencies,
       },
@@ -358,6 +400,8 @@ export class PosSyncRepository {
   async listChanges(user: AuthUser, query: ListPosChangesDto) {
     this.assertOfflinePermissions(user);
     const workstation = await this.resolveWorkstation(user, query);
+    const settingsSnapshot = await this.getOfflineSettings(user);
+    await this.ensureAutomaticOfflineAllocations(user, workstation, settingsSnapshot);
     const since = decodeCursor(query.cursor);
     const [articles, lots, allocations, customers, organizations, insurancePlans, memberships, settings, conflicts] = await Promise.all([
       this.getArticleChanges(user, workstation, since),
@@ -1414,26 +1458,24 @@ export class PosSyncRepository {
       : null;
   }
 
-  private async getOfflineSettings(user: AuthUser) {
+  private async getOfflineSettings(user: AuthUser): Promise<OfflineSettings> {
     const result = await this.db.query<OfflineSettingsRow>(
       `
       SELECT
         'USD'::varchar AS default_currency,
         ARRAY['USD', 'CDF']::varchar[] AS supported_currencies,
-        (
-          SELECT setting_value
-          FROM tenant_settings
-          WHERE tenant_id = $1
-            AND setting_key = 'OFFLINE_AUTHORIZATION_HOURS'
-          LIMIT 1
-        ) AS offline_hours,
-        (
-          SELECT setting_value
-          FROM tenant_settings
-          WHERE tenant_id = $1
-            AND setting_key = 'TIMEZONE'
-          LIMIT 1
-        ) AS timezone
+        MAX(CASE WHEN setting_key = 'OFFLINE_AUTHORIZATION_HOURS' THEN setting_value END) AS offline_hours,
+        MAX(CASE WHEN setting_key = 'TIMEZONE' THEN setting_value END) AS timezone,
+        MAX(CASE WHEN setting_key = 'OFFLINE_AUTO_REGISTER_WORKSTATION' THEN setting_value END) AS auto_register_workstation,
+        MAX(CASE WHEN setting_key = 'OFFLINE_AUTO_BOOTSTRAP' THEN setting_value END) AS auto_bootstrap,
+        MAX(CASE WHEN setting_key = 'OFFLINE_AUTO_SYNC' THEN setting_value END) AS auto_sync,
+        MAX(CASE WHEN setting_key = 'OFFLINE_AUTO_OPEN_CASH_SESSION' THEN setting_value END) AS auto_open_cash_session,
+        MAX(CASE WHEN setting_key = 'OFFLINE_AUTO_ALLOCATION' THEN setting_value END) AS auto_allocation,
+        MAX(CASE WHEN setting_key = 'OFFLINE_ALLOCATION_TARGET_QUANTITY' THEN setting_value END) AS allocation_target_quantity,
+        MAX(CASE WHEN setting_key = 'OFFLINE_ALLOCATION_LOW_THRESHOLD' THEN setting_value END) AS allocation_low_threshold,
+        MAX(CASE WHEN setting_key = 'OFFLINE_SNAPSHOT_FRESHNESS_POLICY' THEN setting_value END) AS snapshot_freshness_policy
+      FROM tenant_settings
+      WHERE tenant_id = $1
       `,
       [user.tenantId],
     );
@@ -1442,8 +1484,177 @@ export class PosSyncRepository {
       defaultCurrency: row?.default_currency ?? 'USD',
       supportedCurrencies: row?.supported_currencies ?? ['USD', 'CDF'],
       offlineAuthorizationHours: Number(row?.offline_hours ?? DEFAULT_OFFLINE_AUTHORIZATION_HOURS),
+      allocationPolicy: DEFAULT_ALLOCATION_POLICY,
+      autoRegisterWorkstation: parseBooleanSetting(row?.auto_register_workstation, DEFAULT_AUTO_REGISTER_WORKSTATION),
+      autoBootstrap: parseBooleanSetting(row?.auto_bootstrap, DEFAULT_AUTO_BOOTSTRAP),
+      autoSync: parseBooleanSetting(row?.auto_sync, DEFAULT_AUTO_SYNC),
+      autoOpenCashSession: parseBooleanSetting(row?.auto_open_cash_session, DEFAULT_AUTO_OPEN_CASH_SESSION),
+      autoAllocation: parseBooleanSetting(row?.auto_allocation, DEFAULT_AUTO_ALLOCATION),
+      allocationTargetQuantity: parseNumberSetting(row?.allocation_target_quantity, DEFAULT_ALLOCATION_TARGET_QUANTITY),
+      allocationLowThreshold: parseNumberSetting(row?.allocation_low_threshold, DEFAULT_ALLOCATION_LOW_THRESHOLD),
+      snapshotFreshnessPolicy: row?.snapshot_freshness_policy?.trim() || DEFAULT_SNAPSHOT_FRESHNESS_POLICY,
       timezone: row?.timezone ?? DEFAULT_TIMEZONE,
     };
+  }
+
+  private async ensureAutomaticOfflineAllocations(
+    user: AuthUser,
+    workstation: { workstationId: string; siteId: string },
+    settings: OfflineSettings,
+  ) {
+    if (!settings.autoAllocation) return;
+    const targetQuantity = Math.max(0, Math.round(settings.allocationTargetQuantity));
+    const lowThreshold = Math.max(0, Math.round(settings.allocationLowThreshold));
+    if (targetQuantity <= 0) return;
+
+    await this.db.transaction(async (client) => {
+      const candidates = await client.query<{
+        article_id: string;
+        lot_id: string;
+        quantity_available: string;
+        reserved_quantity: string;
+        workstation_remaining: string;
+        current_status: string | null;
+      }>(
+        `
+        WITH workstation_article_stock AS (
+          SELECT
+            article_id,
+            SUM(GREATEST(allocated_quantity - consumed_quantity, 0))::numeric AS workstation_remaining
+          FROM offline_stock_allocations
+          WHERE tenant_id = $1
+            AND site_id = $2
+            AND workstation_id = $3
+            AND status IN ('ACTIVE', 'EXHAUSTED')
+          GROUP BY article_id
+        ),
+        reserved_by_lot AS (
+          SELECT
+            lot_id,
+            SUM(GREATEST(allocated_quantity - consumed_quantity, 0))::numeric AS reserved_quantity
+          FROM offline_stock_allocations
+          WHERE tenant_id = $1
+            AND site_id = $2
+            AND status IN ('ACTIVE', 'SUSPENDED', 'EXHAUSTED')
+          GROUP BY lot_id
+        )
+        SELECT
+          l.article_id,
+          st.lot_id,
+          st.quantity_available::numeric AS quantity_available,
+          COALESCE(r.reserved_quantity, 0)::numeric AS reserved_quantity,
+          COALESCE(was.workstation_remaining, 0)::numeric AS workstation_remaining,
+          current_alloc.status AS current_status
+        FROM stocks st
+        JOIN lots l
+          ON l.lot_id = st.lot_id
+         AND l.tenant_id = st.tenant_id
+        JOIN articles a
+          ON a.article_id = l.article_id
+         AND a.tenant_id = st.tenant_id
+        LEFT JOIN reserved_by_lot r
+          ON r.lot_id = st.lot_id
+        LEFT JOIN workstation_article_stock was
+          ON was.article_id = l.article_id
+        LEFT JOIN offline_stock_allocations current_alloc
+          ON current_alloc.tenant_id = $1
+         AND current_alloc.site_id = $2
+         AND current_alloc.workstation_id = $3
+         AND current_alloc.lot_id = st.lot_id
+        WHERE st.tenant_id = $1
+          AND st.site_id = $2
+          AND a.is_active = true
+          AND COALESCE(l.is_blocked, false) = false
+          AND l.expiry_date >= CURRENT_DATE
+          AND st.quantity_available > 0
+        ORDER BY a.commercial_name ASC, l.expiry_date ASC, l.lot_number ASC
+        FOR UPDATE OF st
+        `,
+        [user.tenantId, workstation.siteId, workstation.workstationId],
+      );
+
+      const remainingByArticle = new Map<string, number>();
+      const freeByLot = new Map<string, number>();
+      const rowsByArticle = new Map<string, typeof candidates.rows>();
+
+      for (const row of candidates.rows) {
+        if (!remainingByArticle.has(row.article_id)) {
+          remainingByArticle.set(row.article_id, Number(row.workstation_remaining ?? 0));
+        }
+        freeByLot.set(row.lot_id, Math.max(0, Number(row.quantity_available ?? 0) - Number(row.reserved_quantity ?? 0)));
+        const current = rowsByArticle.get(row.article_id) ?? [];
+        current.push(row);
+        rowsByArticle.set(row.article_id, current);
+      }
+
+      let allocatedQuantity = 0;
+      let touchedLots = 0;
+
+      for (const [articleId, articleRows] of rowsByArticle.entries()) {
+        const currentRemaining = remainingByArticle.get(articleId) ?? 0;
+        if (currentRemaining > lowThreshold) continue;
+        let needed = Math.max(0, targetQuantity - currentRemaining);
+        if (needed <= 0) continue;
+
+        for (const row of articleRows) {
+          if (needed <= 0) break;
+          if (row.current_status === 'SUSPENDED' || row.current_status === 'REVOKED') continue;
+
+          const freeQuantity = freeByLot.get(row.lot_id) ?? 0;
+          if (freeQuantity <= 0) continue;
+
+          const quantity = Math.min(needed, freeQuantity);
+          await client.query(
+            `
+            INSERT INTO offline_stock_allocations (
+              tenant_id, site_id, workstation_id, article_id, lot_id,
+              allocated_quantity, consumed_quantity, status, server_version, allocated_by
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, 0, 'ACTIVE', 1, $7)
+            ON CONFLICT (tenant_id, workstation_id, lot_id) DO UPDATE SET
+              allocated_quantity = offline_stock_allocations.allocated_quantity + EXCLUDED.allocated_quantity,
+              status = CASE
+                WHEN offline_stock_allocations.status = 'EXHAUSTED' THEN 'ACTIVE'
+                ELSE offline_stock_allocations.status
+              END,
+              server_version = offline_stock_allocations.server_version + 1,
+              updated_at = CURRENT_TIMESTAMP,
+              allocated_by = EXCLUDED.allocated_by
+            `,
+            [user.tenantId, workstation.siteId, workstation.workstationId, articleId, row.lot_id, quantity, user.userId],
+          );
+
+          needed -= quantity;
+          allocatedQuantity += quantity;
+          touchedLots += 1;
+          remainingByArticle.set(articleId, (remainingByArticle.get(articleId) ?? 0) + quantity);
+          freeByLot.set(row.lot_id, freeQuantity - quantity);
+        }
+      }
+
+      if (allocatedQuantity > 0) {
+        await client.query(
+          `
+          INSERT INTO audit_logs (tenant_id, site_id, user_id, table_name, record_id, action_type, new_value)
+          VALUES ($1, $2, $3, 'offline_stock_allocations', $4, 'UPDATE', $5::jsonb)
+          `,
+          [
+            user.tenantId,
+            workstation.siteId,
+            user.userId,
+            workstation.workstationId,
+            JSON.stringify({
+              action: 'AUTO_ALLOCATION',
+              workstationId: workstation.workstationId,
+              targetQuantity,
+              lowThreshold,
+              allocatedQuantity,
+              touchedLots,
+            }),
+          ],
+        );
+      }
+    });
   }
 
   private async getBootstrapCashSession(
@@ -2078,6 +2289,17 @@ function parseOptionalDate(value?: string | null) {
   if (!value) return null;
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function parseBooleanSetting(value: string | null | undefined, fallback: boolean) {
+  if (value === null || value === undefined || value === '') return fallback;
+  return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase());
+}
+
+function parseNumberSetting(value: string | null | undefined, fallback: number) {
+  if (value === null || value === undefined || value === '') return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 function inferConflictSeverity(conflictCode: string): 'INFO' | 'WARNING' | 'CRITICAL' {

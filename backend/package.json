@@ -16,6 +16,7 @@
     "validate:offline6": "node scripts/validate-offline-6.js",
     "validate:offline7": "node scripts/validate-offline-7.js",
     "validate:offline8": "node scripts/validate-offline-8.js",
+    "validate:offline9": "node scripts/validate-offline-9.js",
     "validate:offline-autosync": "node scripts/validate-offline-autosync.js",
     "lint": "eslint \"src/**/*.ts\""
   },
