@@ -6,12 +6,18 @@ import { formatDate, formatDateTime } from '../../utils/date';
 import { formatMoney } from '../../utils/money';
 import {
   addOrIncrementOfflineCartItem,
+  buildOfflineArticleSearchIndex,
+  buildQuotaBreakdown,
   createNewOfflineCart,
+  findExactOfflineArticleMatch,
   findCounterCustomer,
   formatOfflineCartStatus,
   formatQuotaAlert,
   getOfflineCartPageModel,
   mapOfflineError,
+  normalizeOfflineSearch,
+  persistOfflineCartWritePlan,
+  prepareOfflineCartItemUpdateWithContext,
   searchOfflineArticles,
   searchOfflineCustomers,
   setOfflineCartNote,
@@ -85,6 +91,8 @@ export function OfflinePosPage() {
   const customerInputRef = useRef<HTMLInputElement | null>(null);
   const amountPaidCdfRef = useRef<HTMLInputElement | null>(null);
   const noteSaveTimer = useRef<number | null>(null);
+  const autoExactSelectionRef = useRef<string | null>(null);
+  const addToCartMetricsRef = useRef<Record<string, number>>({});
   const syncEngine = useSyncEngine();
 
   async function refresh(cartId?: string | null) {
@@ -158,9 +166,25 @@ export function OfflinePosPage() {
   const auth = snapshot.auth;
   const draftCounterCustomer = useMemo(() => findCounterCustomer(snapshot), [snapshot]);
 
+  const cartContext = useMemo(
+    () => ({
+      snapshot,
+      carts: pageModel?.drafts ?? [],
+      reservations: pageModel?.reservations ?? [],
+    }),
+    [pageModel?.drafts, pageModel?.reservations, snapshot],
+  );
+  const articleSearchIndex = useMemo(
+    () => buildOfflineArticleSearchIndex(snapshot, pageModel?.reservations ?? [], cart?.cartId ?? null),
+    [cart?.cartId, pageModel?.reservations, snapshot],
+  );
   const articleResults = useMemo(
-    () => searchOfflineArticles(snapshot, pageModel?.drafts ?? [], pageModel?.reservations ?? [], articleQuery, 20),
-    [articleQuery, pageModel?.drafts, pageModel?.reservations, snapshot],
+    () => articleQuery.trim().length >= 1 ? searchOfflineArticles(articleSearchIndex, articleQuery, 8) : [],
+    [articleQuery, articleSearchIndex],
+  );
+  const exactArticleMatch = useMemo<LocalCatalogSearchResult | null>(
+    () => articleQuery.trim().length >= 1 ? findExactOfflineArticleMatch(articleSearchIndex, articleQuery) : null,
+    [articleQuery, articleSearchIndex],
   );
   const customerResults = useMemo(
     () => searchOfflineCustomers(snapshot, customerQuery, 20),
@@ -280,6 +304,58 @@ export function OfflinePosPage() {
     snapshot.cashSession,
   ]);
 
+  function updateLocalCartState(nextCart: OfflineCart, nextReservations: OfflinePageModel['reservations']) {
+    setPageModel((current) => {
+      if (!current) return current;
+      const nextDrafts = current.drafts.some((draft) => draft.cartId === nextCart.cartId)
+        ? current.drafts.map((draft) => (draft.cartId === nextCart.cartId ? nextCart : draft))
+        : [nextCart, ...current.drafts];
+      return {
+        ...current,
+        cart: nextCart,
+        drafts: nextDrafts,
+        reservations: nextReservations,
+        quotaBreakdown: buildQuotaBreakdown(snapshot, nextReservations, nextCart.cartId),
+      };
+    });
+  }
+
+  function beginPerfMeasure(label: string) {
+    if (typeof performance === 'undefined') return 0;
+    performance.mark(`${label}:start`);
+    return performance.now();
+  }
+
+  function endPerfMeasure(label: string, start: number) {
+    if (typeof performance === 'undefined') return 0;
+    const end = performance.now();
+    performance.mark(`${label}:end`);
+    performance.measure(label, `${label}:start`, `${label}:end`);
+    return end - start;
+  }
+
+  function handleArticleQueryChange(value: string) {
+    setArticleQuery(value);
+    setArticleOpen(value.trim().length >= 1);
+  }
+
+  useEffect(() => {
+    if (!cart || !exactArticleMatch || exactArticleMatch.status !== 'READY') return;
+    const normalized = normalizeOfflineSearch(articleQuery);
+    if (!normalized) {
+      autoExactSelectionRef.current = null;
+      return;
+    }
+    const selectionKey = `${cart.cartId}:${normalized}`;
+    if (autoExactSelectionRef.current === selectionKey) return;
+    autoExactSelectionRef.current = selectionKey;
+    void handleSelectArticle(exactArticleMatch, 1);
+  }, [articleQuery, cart, exactArticleMatch]);
+
+  useEffect(() => {
+    if (!articleQuery.trim()) autoExactSelectionRef.current = null;
+  }, [articleQuery]);
+
   async function handleSelectArticle(result: LocalCatalogSearchResult, quantityDelta = 1) {
     if (!cart) return;
     if (result.status !== 'READY') {
@@ -295,20 +371,50 @@ export function OfflinePosPage() {
     setBusyAction('ITEM');
     setSaveLabel('SAVING');
     try {
-      const updated = await addOrIncrementOfflineCartItem({
+      const totalStart = beginPerfMeasure('offline-pos:add-to-cart');
+      const lookupStart = typeof performance !== 'undefined' ? performance.now() : 0;
+      const articleLookupMs = typeof performance !== 'undefined' ? performance.now() - lookupStart : 0;
+      const fefoStart = typeof performance !== 'undefined' ? performance.now() : 0;
+      const prepared = prepareOfflineCartItemUpdateWithContext({
         cartId: cart.cartId,
         articleId: result.article.articleId,
         quantityDelta,
+      }, cartContext);
+      const fefoSelectionMs = typeof performance !== 'undefined' ? performance.now() - fefoStart : 0;
+      const cartUpdateStart = typeof performance !== 'undefined' ? performance.now() : 0;
+      flushSync(() => {
+        updateLocalCartState(prepared.cart, prepared.mergedReservations);
+        setMessage(`${result.article.commercialName} ajoute au brouillon ${prepared.cart.offlineReference}.`);
+        setArticleQuery('');
+        setArticleOpen(false);
       });
-      setMessage(`${result.article.commercialName} ajoute au brouillon ${updated.offlineReference}.`);
-      setArticleQuery('');
-      setArticleOpen(false);
-      await refresh(updated.cartId);
+      const cartUpdateMs = typeof performance !== 'undefined' ? performance.now() - cartUpdateStart : 0;
       setTimeout(() => articleInputRef.current?.focus(), 0);
+      setBusyAction(null);
+      void (async () => {
+        const persistenceStart = typeof performance !== 'undefined' ? performance.now() : 0;
+        try {
+          await persistOfflineCartWritePlan(prepared);
+          const indexedDbSaveMs = typeof performance !== 'undefined' ? performance.now() - persistenceStart : 0;
+          const renderMs = endPerfMeasure('offline-pos:add-to-cart', totalStart) - articleLookupMs - fefoSelectionMs - cartUpdateMs - indexedDbSaveMs;
+          addToCartMetricsRef.current = {
+            ARTICLE_LOOKUP_MS: Number(articleLookupMs.toFixed(2)),
+            FEFO_SELECTION_MS: Number(fefoSelectionMs.toFixed(2)),
+            CART_UPDATE_MS: Number(cartUpdateMs.toFixed(2)),
+            INDEXEDDB_SAVE_MS: Number(indexedDbSaveMs.toFixed(2)),
+            RENDER_MS: Number(Math.max(0, renderMs).toFixed(2)),
+            TOTAL_ADD_TO_CART_MS: Number((articleLookupMs + fefoSelectionMs + cartUpdateMs + indexedDbSaveMs + Math.max(0, renderMs)).toFixed(2)),
+          };
+          setSaveLabel('SAVED');
+        } catch (error) {
+          setSaveLabel('ERROR');
+          setMessage(mapOfflineError(error));
+          await refresh(prepared.cart.cartId);
+        }
+      })();
     } catch (error) {
       setSaveLabel('ERROR');
       setMessage(mapOfflineError(error));
-    } finally {
       setBusyAction(null);
     }
   }
@@ -318,16 +424,19 @@ export function OfflinePosPage() {
     setBusyAction('ITEM');
     setSaveLabel('SAVING');
     try {
-      const updated = await addOrIncrementOfflineCartItem({
+      const prepared = prepareOfflineCartItemUpdateWithContext({
         cartId: cart.cartId,
         articleId: item.articleId,
         replaceQuantity: nextQuantity,
-      });
+      }, cartContext);
+      updateLocalCartState(prepared.cart, prepared.mergedReservations);
       setMessage(`${item.articleName} mis a jour localement.`);
-      await refresh(updated.cartId);
+      await persistOfflineCartWritePlan(prepared);
+      setSaveLabel('SAVED');
     } catch (error) {
       setSaveLabel('ERROR');
       setMessage(mapOfflineError(error));
+      await refresh(cart.cartId);
     } finally {
       setBusyAction(null);
     }
@@ -851,47 +960,21 @@ export function OfflinePosPage() {
                 ]}
                 getKey={(item) => item.article.articleId}
                 inputRef={articleInputRef}
-                open={articleOpen}
+                open={articleOpen && articleQuery.trim().length >= 1}
                 value={articleQuery}
                 placeholder="Scanner code-barres ou rechercher article..."
                 searchPlaceholder="Rechercher localement (nom, code, barcode...)"
                 suggestions={articleResults}
                 emptyText="Aucun article local disponible"
-                onOpen={() => setArticleOpen(true)}
+                onOpen={() => articleQuery.trim().length >= 1 && setArticleOpen(true)}
                 onClose={() => setArticleOpen(false)}
-                onChange={setArticleQuery}
+                onChange={handleArticleQueryChange}
                 onSelect={(item) => void handleSelectArticle(item, 1)}
               />
               <div className="offline-search-help">
                 <span>Le lot FEFO est applique automatiquement.</span>
                 <span>Entrer = selectionner, F4 = paiement, F8 = encaisser.</span>
               </div>
-              {articleResults.length > 0 ? (
-                <div className="offline-inline-results offline-inline-results-compact">
-                  {articleResults.slice(0, 5).map((result) => (
-                    <button
-                      key={result.article.articleId}
-                      className={`offline-result-chip ${result.status !== 'READY' ? 'is-disabled' : ''}`}
-                      type="button"
-                      onClick={() => result.status === 'READY' && void handleSelectArticle(result, 1)}
-                      disabled={result.status !== 'READY' || busyAction !== null}
-                      title={
-                        result.status === 'READY'
-                          ? `${result.offlineAvailableQuantity} unite(s) offline disponibles`
-                          : result.status === 'INACTIVE'
-                            ? 'Article inactif'
-                            : result.status === 'NO_PRICE'
-                              ? 'Prix indisponible'
-                              : 'Quota offline epuise'
-                      }
-                    >
-                      <strong>{formatDisplayCode(result.article.articleCode)}</strong>
-                      <span>{formatDisplayArticleName(result.article.commercialName, result.article.articleCode)}</span>
-                      <small>{result.offlineAvailableQuantity} dispo</small>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
 
               <div className="offline-pos-footer-actions">
                 <button className="ghost-button compact-button offline-draft-save-button" type="button" onClick={() => setMessage('Le brouillon est deja enregistre localement.')} disabled={busyAction !== null}>

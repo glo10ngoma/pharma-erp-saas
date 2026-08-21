@@ -46,6 +46,28 @@ export type LocalCatalogSearchResult = {
   status: 'READY' | 'INACTIVE' | 'NO_PRICE' | 'NO_QUOTA';
 };
 
+type IndexedCatalogSearchRow = LocalCatalogSearchResult & {
+  normalizedName: string;
+  normalizedCode: string;
+  normalizedBarcode: string;
+};
+
+export type OfflineArticleSearchIndex = {
+  articlesById: Map<string, OfflinePosArticle>;
+  articlesByCode: Map<string, IndexedCatalogSearchRow>;
+  articlesByBarcode: Map<string, IndexedCatalogSearchRow>;
+  allocationsByArticleId: Map<string, OfflineStockAllocation[]>;
+  lotsById: Map<string, OfflineLocalSnapshot['lots'][number]>;
+  rows: IndexedCatalogSearchRow[];
+};
+
+export type OfflineCartWritePlan = {
+  cart: OfflineCart;
+  mergedReservations: OfflineDraftReservation[];
+  ownReservations: OfflineDraftReservation[];
+  activityEntries: OfflineActivityLogEntry[];
+};
+
 export type OfflineCartContext = {
   snapshot: OfflineLocalSnapshot;
   carts: OfflineCart[];
@@ -56,38 +78,91 @@ export function normalizeOfflineSearch(value: string) {
   return value.trim().toLowerCase();
 }
 
-export function searchOfflineArticles(
+export function buildOfflineArticleSearchIndex(
   snapshot: OfflineLocalSnapshot,
-  carts: OfflineCart[],
   reservations: OfflineDraftReservation[],
+  currentCartId: string | null,
+) {
+  const articlesById = new Map(snapshot.articles.map((article) => [article.articleId, article]));
+  const lotsById = new Map(snapshot.lots.map((lot) => [lot.lotId, lot]));
+  const quotaRows = buildQuotaBreakdown(snapshot, reservations, currentCartId);
+  const quotaByArticleId = new Map<string, OfflineCartQuotaBreakdown[]>();
+  for (const row of quotaRows) {
+    const current = quotaByArticleId.get(row.articleId) ?? [];
+    current.push(row);
+    quotaByArticleId.set(row.articleId, current);
+  }
+
+  const allocationsByArticleId = new Map<string, OfflineStockAllocation[]>();
+  for (const allocation of snapshot.allocations) {
+    const current = allocationsByArticleId.get(allocation.articleId) ?? [];
+    current.push(allocation);
+    allocationsByArticleId.set(allocation.articleId, current);
+  }
+
+  const rows = snapshot.articles.map((article) => {
+    const result = buildCatalogSearchResult(article, snapshot, quotaByArticleId.get(article.articleId) ?? [], allocationsByArticleId.get(article.articleId) ?? []);
+    return {
+      ...result,
+      normalizedName: normalizeOfflineSearch(article.commercialName),
+      normalizedCode: normalizeOfflineSearch(article.articleCode),
+      normalizedBarcode: normalizeOfflineSearch(article.barcode ?? ''),
+    };
+  });
+
+  const articlesByCode = new Map<string, IndexedCatalogSearchRow>();
+  const articlesByBarcode = new Map<string, IndexedCatalogSearchRow>();
+  for (const row of rows) {
+    if (row.normalizedCode) articlesByCode.set(row.normalizedCode, row);
+    if (row.normalizedBarcode) articlesByBarcode.set(row.normalizedBarcode, row);
+  }
+
+  return {
+    articlesById,
+    articlesByCode,
+    articlesByBarcode,
+    allocationsByArticleId,
+    lotsById,
+    rows,
+  } satisfies OfflineArticleSearchIndex;
+}
+
+export function findExactOfflineArticleMatch(index: OfflineArticleSearchIndex, query: string) {
+  const needle = normalizeOfflineSearch(query);
+  if (!needle) return null;
+  return index.articlesByBarcode.get(needle) ?? index.articlesByCode.get(needle) ?? null;
+}
+
+export function searchOfflineArticles(
+  index: OfflineArticleSearchIndex,
   query: string,
-  limit = 20,
+  limit = 10,
 ) {
   const needle = normalizeOfflineSearch(query);
-  return snapshot.articles
-    .filter((article) => {
-      if (!needle) return true;
-      return [article.commercialName, article.articleCode, article.barcode ?? '']
-        .some((value) => normalizeOfflineSearch(String(value)).includes(needle));
-    })
-    .map((article) => buildCatalogSearchResult(article, snapshot, carts, reservations))
-    .sort((left, right) => {
-      const leftExact = Number(
-        needle.length > 0 && (
-          normalizeOfflineSearch(left.article.barcode ?? '') === needle
-          || normalizeOfflineSearch(left.article.articleCode) === needle
-        ),
-      );
-      const rightExact = Number(
-        needle.length > 0 && (
-          normalizeOfflineSearch(right.article.barcode ?? '') === needle
-          || normalizeOfflineSearch(right.article.articleCode) === needle
-        ),
-      );
-      if (leftExact !== rightExact) return rightExact - leftExact;
-      return left.article.commercialName.localeCompare(right.article.commercialName);
-    })
-    .slice(0, limit);
+  if (!needle) return [];
+
+  const exact = findExactOfflineArticleMatch(index, needle);
+  const matches = index.rows.filter((row) =>
+    row.normalizedName.includes(needle)
+    || row.normalizedCode.includes(needle)
+    || row.normalizedBarcode.includes(needle),
+  );
+
+  matches.sort((left, right) => {
+    const leftExact = Number(left.normalizedBarcode === needle || left.normalizedCode === needle);
+    const rightExact = Number(right.normalizedBarcode === needle || right.normalizedCode === needle);
+    if (leftExact !== rightExact) return rightExact - leftExact;
+    const leftStarts = Number(left.normalizedName.startsWith(needle) || left.normalizedCode.startsWith(needle));
+    const rightStarts = Number(right.normalizedName.startsWith(needle) || right.normalizedCode.startsWith(needle));
+    if (leftStarts !== rightStarts) return rightStarts - leftStarts;
+    return left.article.commercialName.localeCompare(right.article.commercialName);
+  });
+
+  if (exact) {
+    const deduped = [exact, ...matches.filter((row) => row.article.articleId !== exact.article.articleId)];
+    return deduped.slice(0, limit);
+  }
+  return matches.slice(0, limit);
 }
 
 export function searchOfflineCustomers(snapshot: OfflineLocalSnapshot, query: string, limit = 20) {
@@ -341,7 +416,30 @@ export async function addOrIncrementOfflineCartItem(params: {
   quantityDelta?: number;
   replaceQuantity?: number;
 }) {
+  const plan = await prepareOfflineCartItemUpdate(params);
+  await persistOfflineCartWritePlan(plan);
+  return plan.cart;
+}
+
+export async function prepareOfflineCartItemUpdate(params: {
+  cartId: string;
+  articleId: string;
+  quantityDelta?: number;
+  replaceQuantity?: number;
+}) {
   const context = await loadCartContext();
+  return prepareOfflineCartItemUpdateWithContext(params, context);
+}
+
+export function prepareOfflineCartItemUpdateWithContext(
+  params: {
+    cartId: string;
+    articleId: string;
+    quantityDelta?: number;
+    replaceQuantity?: number;
+  },
+  context: OfflineCartContext,
+) {
   const cart = context.carts.find((row) => row.cartId === params.cartId);
   if (!cart) throw new Error('CART_BLOCKED');
 
@@ -506,12 +604,11 @@ export function findCounterCustomer(snapshot: OfflineLocalSnapshot) {
 function buildCatalogSearchResult(
   article: OfflinePosArticle,
   snapshot: OfflineLocalSnapshot,
-  carts: OfflineCart[],
-  reservations: OfflineDraftReservation[],
+  quotaRows: OfflineCartQuotaBreakdown[],
+  articleAllocations: OfflineStockAllocation[],
 ): LocalCatalogSearchResult {
-  const quotaRows = buildQuotaBreakdown(snapshot, reservations, null).filter((row) => row.articleId === article.articleId);
   const vendableAllocations = sortOfflineAllocationsByFefo(
-    snapshot.allocations.filter((allocation) => allocation.articleId === article.articleId && isAllocationVendableForCart(allocation, quotaRows)),
+    articleAllocations.filter((allocation) => isAllocationVendableForCart(allocation, quotaRows)),
   );
   const offlineAvailableQuantity = quotaRows.reduce((sum, row) => sum + row.availableForCart, 0);
   const unitPrice = resolveUnitPrice(article, snapshot);
@@ -530,7 +627,7 @@ function buildCatalogSearchResult(
   };
 }
 
-async function upsertOfflineCartItem(
+function upsertOfflineCartItem(
   cart: OfflineCart,
   article: OfflinePosArticle,
   quantity: number,
@@ -538,8 +635,29 @@ async function upsertOfflineCartItem(
 ) {
   if (quantity <= 0) {
     const existing = cart.items.find((item) => item.articleId === article.articleId);
-    if (!existing) return cart;
-    return removeOfflineCartItem(cart.cartId, existing.localItemId);
+    if (!existing) {
+      return {
+        cart,
+        mergedReservations: context.reservations,
+        ownReservations: context.reservations.filter((entry) => entry.cartId === cart.cartId),
+        activityEntries: [],
+      } satisfies OfflineCartWritePlan;
+    }
+    const nextCart = recalculateCart({
+      ...cart,
+      items: cart.items.filter((item) => item.articleId !== article.articleId),
+      updatedAt: new Date().toISOString(),
+    });
+    const mergedReservations = context.reservations.filter((entry) => entry.cartId !== cart.cartId);
+    return {
+      cart: nextCart,
+      mergedReservations,
+      ownReservations: [],
+      activityEntries: [
+        createActivityLog('cart.item_removed', cart.cartId, `Ligne retiree du brouillon ${cart.offlineReference}.`),
+        createActivityLog('reservation.released', cart.cartId, `Reservations liberees pour ${existing.articleName}.`),
+      ],
+    } satisfies OfflineCartWritePlan;
   }
 
   const price = resolveUnitPrice(article, context.snapshot);
@@ -618,13 +736,22 @@ async function upsertOfflineCartItem(
     updatedAt: now,
   }));
 
-  await saveOfflineCart(nextCart, ownReservations, [
-    createActivityLog(existing ? 'cart.quantity_changed' : 'cart.item_added', cart.cartId, `${article.commercialName} x${quantity} enregistre localement.`),
-    createActivityLog('fefo.recalculated', cart.cartId, `FEFO local recalcule pour ${article.commercialName}.`),
-    createActivityLog('reservation.created', cart.cartId, `${ownReservations.length} reservation(s) locale(s) mises a jour.`),
-  ]);
-  await writeOfflineDraftReservations([...nextReservations, ...ownReservations]);
-  return nextCart;
+  return {
+    cart: nextCart,
+    mergedReservations: [...nextReservations, ...ownReservations],
+    ownReservations,
+    activityEntries: [
+      createActivityLog(existing ? 'cart.quantity_changed' : 'cart.item_added', cart.cartId, `${article.commercialName} x${quantity} enregistre localement.`),
+      createActivityLog('fefo.recalculated', cart.cartId, `FEFO local recalcule pour ${article.commercialName}.`),
+      createActivityLog('reservation.created', cart.cartId, `${ownReservations.length} reservation(s) locale(s) mises a jour.`),
+    ],
+  } satisfies OfflineCartWritePlan;
+}
+
+export async function persistOfflineCartWritePlan(plan: OfflineCartWritePlan) {
+  await saveOfflineCart(plan.cart, plan.ownReservations, plan.activityEntries);
+  await writeOfflineDraftReservations(plan.mergedReservations);
+  return plan.cart;
 }
 
 function buildOfflineReference(workstationCode: string) {
