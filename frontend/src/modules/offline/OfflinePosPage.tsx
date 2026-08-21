@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { Link, useSearchParams } from 'react-router-dom';
 import { FloatingSearchPopover } from '../../components/FloatingSearchPopover';
@@ -78,6 +78,7 @@ export function OfflinePosPage() {
   const [customerQuery, setCustomerQuery] = useState('');
   const [articleOpen, setArticleOpen] = useState(false);
   const [customerOpen, setCustomerOpen] = useState(false);
+  const [articleHighlightedIndex, setArticleHighlightedIndex] = useState(0);
   const [message, setMessage] = useState('Le panier offline reste local a ce poste et n envoie aucune vente.');
   const [saveLabel, setSaveLabel] = useState<'SAVED' | 'SAVING' | 'ERROR'>('SAVED');
   const [busyAction, setBusyAction] = useState<'NEW' | 'ITEM' | 'CUSTOMER' | 'NOTE' | null>(null);
@@ -337,6 +338,39 @@ export function OfflinePosPage() {
   function handleArticleQueryChange(value: string) {
     setArticleQuery(value);
     setArticleOpen(value.trim().length >= 1);
+  }
+
+  useEffect(() => {
+    setArticleHighlightedIndex(0);
+  }, [articleQuery, articleResults.length]);
+
+  function handleArticleSearchKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Escape') {
+      setArticleOpen(false);
+      return;
+    }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setArticleOpen(articleQuery.trim().length >= 1);
+      setArticleHighlightedIndex((index) => Math.min(index + 1, Math.max(articleResults.length - 1, 0)));
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setArticleHighlightedIndex((index) => Math.max(index - 1, 0));
+      return;
+    }
+    if (event.key === 'Enter' && articleOpen && articleResults[articleHighlightedIndex]) {
+      event.preventDefault();
+      void handleSelectArticle(articleResults[articleHighlightedIndex], 1);
+    }
+  }
+
+  function getArticleResultStatusLabel(result: LocalCatalogSearchResult) {
+    if (result.status === 'READY') return `${result.offlineAvailableQuantity} dispo`;
+    if (result.status === 'INACTIVE') return 'Inactif';
+    if (result.status === 'NO_PRICE') return 'Prix indisponible';
+    return 'Quota epuise';
   }
 
   useEffect(() => {
@@ -951,26 +985,47 @@ export function OfflinePosPage() {
                     <span className="offline-row-meta">Scannez un code-barres ou tapez un nom/code. F2 ramene le focus.</span>
                   </div>
                 </div>
-              <FloatingSearchPopover
-                columns={[
-                  { header: 'Article', render: (item: LocalCatalogSearchResult) => <strong>{formatDisplayArticleName(item.article.commercialName, item.article.articleCode)}</strong> },
-                  { header: 'Code', render: (item: LocalCatalogSearchResult) => formatDisplayCode(item.article.articleCode) },
-                  { header: 'Prix', render: (item: LocalCatalogSearchResult) => item.unitPrice ? formatMoney(item.unitPrice, cart.currency) : '-' },
-                  { header: 'Stock poste', render: (item: LocalCatalogSearchResult) => item.offlineAvailableQuantity },
-                ]}
-                getKey={(item) => item.article.articleId}
-                inputRef={articleInputRef}
-                open={articleOpen && articleQuery.trim().length >= 1}
-                value={articleQuery}
-                placeholder="Scanner code-barres ou rechercher article..."
-                searchPlaceholder="Rechercher localement (nom, code, barcode...)"
-                suggestions={articleResults}
-                emptyText="Aucun article local disponible"
-                onOpen={() => articleQuery.trim().length >= 1 && setArticleOpen(true)}
-                onClose={() => setArticleOpen(false)}
-                onChange={handleArticleQueryChange}
-                onSelect={(item) => void handleSelectArticle(item, 1)}
-              />
+              <div className="offline-local-search">
+                <input
+                  ref={articleInputRef}
+                  className="input compact-input offline-local-search-input"
+                  type="search"
+                  value={articleQuery}
+                  placeholder="Scanner code-barres ou rechercher article..."
+                  role="combobox"
+                  aria-expanded={articleOpen && articleQuery.trim().length >= 1}
+                  aria-controls="offline-article-results"
+                  onFocus={() => setArticleOpen(articleQuery.trim().length >= 1)}
+                  onChange={(event) => handleArticleQueryChange(event.target.value)}
+                  onKeyDown={handleArticleSearchKeyDown}
+                />
+                {articleOpen && articleQuery.trim().length >= 1 && (
+                  <div className="offline-local-search-results" id="offline-article-results" role="listbox">
+                    {articleResults.length === 0 && (
+                      <div className="offline-local-search-empty">Aucun article local disponible</div>
+                    )}
+                    {articleResults.map((result, index) => (
+                      <button
+                        className={`offline-local-search-option ${index === articleHighlightedIndex ? 'selected' : ''} ${result.status !== 'READY' ? 'is-disabled' : ''}`}
+                        type="button"
+                        key={result.article.articleId}
+                        role="option"
+                        aria-selected={index === articleHighlightedIndex}
+                        disabled={result.status !== 'READY'}
+                        onMouseEnter={() => setArticleHighlightedIndex(index)}
+                        onClick={() => void handleSelectArticle(result, 1)}
+                      >
+                        <span>
+                          <strong>{formatDisplayArticleName(result.article.commercialName, result.article.articleCode)}</strong>
+                          <small>{formatDisplayCode(result.article.articleCode)}</small>
+                        </span>
+                        <span>{result.unitPrice ? formatMoney(result.unitPrice, cart.currency) : '-'}</span>
+                        <span>{getArticleResultStatusLabel(result)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div className="offline-search-help">
                 <span>Le lot FEFO est applique automatiquement.</span>
                 <span>Entrer = selectionner, F4 = paiement, F8 = encaisser.</span>

@@ -7787,6 +7787,113 @@ details.nav-group .nav-link {
   font-size: 0.92rem;
 }
 
+.offline-local-search {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  position: relative;
+}
+
+.offline-local-search-input {
+  width: 100%;
+}
+
+.offline-local-search-results {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 4px;
+  max-height: 260px;
+  overflow: auto;
+  padding: 6px;
+  position: absolute;
+  top: calc(100% + 6px);
+  width: 100%;
+  z-index: 80;
+}
+
+.offline-local-search-option {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) 84px 80px;
+  min-width: 0;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.offline-local-search-option:hover:not(:disabled),
+.offline-local-search-option:focus-visible,
+.offline-local-search-option.selected:not(:disabled) {
+  background: #eef8f3;
+  outline: none;
+}
+
+.offline-local-search-option.is-disabled,
+.offline-local-search-option:disabled {
+  cursor: not-allowed;
+  opacity: .68;
+}
+
+.offline-local-search-option strong,
+.offline-local-search-option small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.offline-local-search-option strong {
+  font-size: .86rem;
+  font-weight: 800;
+}
+
+.offline-local-search-option small {
+  color: var(--muted);
+  font-size: .72rem;
+  margin-top: 2px;
+}
+
+.offline-local-search-option > span:nth-child(2),
+.offline-local-search-option > span:nth-child(3) {
+  font-size: .78rem;
+  font-weight: 800;
+  text-align: right;
+}
+
+.offline-local-search-option > span:nth-child(3) {
+  color: #047857;
+}
+
+.offline-local-search-option.is-disabled > span:nth-child(3) {
+  color: #dc2626;
+}
+
+.offline-local-search-empty {
+  color: var(--muted);
+  font-size: .84rem;
+  padding: 10px;
+}
+
+[data-theme='dark'] .offline-local-search-results {
+  background: #111827;
+  border-color: #334155;
+}
+
+[data-theme='dark'] .offline-local-search-option:hover:not(:disabled),
+[data-theme='dark'] .offline-local-search-option:focus-visible,
+[data-theme='dark'] .offline-local-search-option.selected:not(:disabled) {
+  background: rgba(20, 184, 166, .14);
+}
+
 .offline-inline-results {
   align-content: start;
   display: grid;
