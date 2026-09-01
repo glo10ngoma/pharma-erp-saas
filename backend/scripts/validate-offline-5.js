@@ -15,7 +15,11 @@ const FRONTEND_ROOT = path.join(REPO_ROOT, 'frontend', 'src', 'modules', 'offlin
 const OFFLINE_CASH_MODULE_PATH = path.join(FRONTEND_ROOT, 'offline-cash.ts');
 const SYNC_ENGINE_MODULE_PATH = path.join(FRONTEND_ROOT, 'sync-engine.ts');
 
-const baseUrl = process.env.MVP_API_URL || 'http://127.0.0.1:3000/api/v1';
+const configuredOfflineTestApiUrl = String(process.env.OFFLINE_TEST_API_URL || '').trim();
+const baseUrl = configuredOfflineTestApiUrl || process.env.MVP_API_URL || 'http://127.0.0.1:3000/api/v1';
+if (!configuredOfflineTestApiUrl && !isLocalApiUrl(baseUrl)) {
+  throw new Error('OFFLINE_TEST_API_URL_REQUIRED_FOR_REMOTE_RUNTIME');
+}
 const connectionString = String(process.env.DATABASE_URL || '').replace(/^[ '"]+|[ '"]+$/g, '');
 const client = new Client({
   connectionString,
@@ -24,6 +28,8 @@ const client = new Client({
 
 const PASSWORD = 'admin123';
 const TENANT_CODE = 'OFFLINE_STAGING';
+const EXPECTED_OFFLINE_STAGING_TENANT_ID = '93809af1-afe7-4d66-baf3-1f8158ca64e1';
+const EXPECTED_OFFLINE_STAGING_SITE_ID = '3ff0c8d2-117d-4a0a-b155-69fe31a1e5d1';
 const MAIN_SITE_CODE = 'OFF-STG-SITE';
 const SECOND_SITE_CODE = 'OFF-STG-SITE-2';
 const WS1_CODE = 'POS-STG-01';
@@ -63,6 +69,15 @@ function roundMoney(value) {
 
 function unwrap(body) {
   return body && Object.prototype.hasOwnProperty.call(body, 'data') ? body.data : body;
+}
+
+function isLocalApiUrl(value) {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+    return hostname === 'localhost' || hostname === '127.0.0.1';
+  } catch {
+    return false;
+  }
 }
 
 function deepClone(value) {
@@ -154,6 +169,52 @@ async function countBy(sql, params = []) {
 async function runCleanup() {
   const sql = fs.readFileSync(CLEANUP_SQL, 'utf8');
   await client.query(sql);
+}
+
+function isRemoteApiRuntime() {
+  return !isLocalApiUrl(baseUrl);
+}
+
+async function assertOfflineStagingRemoteGuard() {
+  if (!isRemoteApiRuntime()) return;
+
+  const tenant = (
+    await q(
+      `SELECT tenant_id, tenant_code FROM tenants WHERE tenant_code = $1 LIMIT 1`,
+      [TENANT_CODE],
+    )
+  ).rows[0];
+  if (!tenant || tenant.tenant_id !== EXPECTED_OFFLINE_STAGING_TENANT_ID) {
+    throw new Error(`ABORT_OFFLINE_STAGING_TENANT_GUARD: expected ${EXPECTED_OFFLINE_STAGING_TENANT_ID}, got ${tenant?.tenant_id ?? 'missing'}`);
+  }
+
+  const site = (
+    await q(
+      `SELECT site_id, site_code, site_name FROM sites WHERE tenant_id = $1 AND site_code = $2 LIMIT 1`,
+      [EXPECTED_OFFLINE_STAGING_TENANT_ID, MAIN_SITE_CODE],
+    )
+  ).rows[0];
+  if (!site || site.site_id !== EXPECTED_OFFLINE_STAGING_SITE_ID) {
+    throw new Error(`ABORT_OFFLINE_STAGING_SITE_GUARD: expected ${EXPECTED_OFFLINE_STAGING_SITE_ID}, got ${site?.site_id ?? 'missing'}`);
+  }
+
+  const user = (
+    await q(
+      `SELECT user_id, tenant_id, site_id, email FROM users WHERE email = $1 LIMIT 1`,
+      [ADMIN_EMAIL],
+    )
+  ).rows[0];
+  if (!user || user.tenant_id !== EXPECTED_OFFLINE_STAGING_TENANT_ID || user.email !== ADMIN_EMAIL) {
+    throw new Error(`ABORT_OFFLINE_STAGING_USER_GUARD: expected ${ADMIN_EMAIL} on ${EXPECTED_OFFLINE_STAGING_TENANT_ID}`);
+  }
+
+  summary.notes.push({
+    OFFLINE_STAGING_GUARD: 'PASS',
+    tenantId: tenant.tenant_id,
+    siteId: site.site_id,
+    userEmail: user.email,
+    apiUrl: baseUrl,
+  });
 }
 
 async function ensureGlobalSettings() {
@@ -1863,6 +1924,7 @@ async function runIntegrationScenarios(setup, refs, workstations) {
 
 async function main() {
   await client.connect();
+  await assertOfflineStagingRemoteGuard();
   await runCleanup();
   await ensureGlobalSettings();
 

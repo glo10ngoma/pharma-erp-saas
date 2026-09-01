@@ -152,49 +152,67 @@ BEGIN
 
   DELETE FROM pos_workstations
   WHERE tenant_id = v_tenant_id
-     OR workstation_code LIKE 'POS-STG-%'
-     OR workstation_name LIKE 'POS-STG-%'
-     OR device_uuid LIKE 'POS-STG-%';
+    AND (
+      workstation_code LIKE 'POS-STG-%'
+      OR workstation_name LIKE 'POS-STG-%'
+      OR device_uuid LIKE 'POS-STG-%'
+    );
 
   DELETE FROM cash_registers
   WHERE tenant_id = v_tenant_id
-     OR register_code LIKE 'OFF-STG-%'
-     OR register_name LIKE 'OFF-STG-%';
+    AND (
+      register_code LIKE 'OFF-STG-%'
+      OR register_name LIKE 'OFF-STG-%'
+    );
 
   DELETE FROM articles
   WHERE tenant_id = v_tenant_id
-     OR article_code LIKE 'OFF-STG-ARTICLE-%'
-     OR commercial_name LIKE 'OFF-STG-%';
+    AND (
+      article_code LIKE 'OFF-STG-ARTICLE-%'
+      OR commercial_name LIKE 'OFF-STG-%'
+    );
 
   DELETE FROM suppliers
   WHERE tenant_id = v_tenant_id
-     OR supplier_code LIKE 'OFF-STG-%'
-     OR supplier_name LIKE 'OFF-STG-%';
+    AND (
+      supplier_code LIKE 'OFF-STG-%'
+      OR supplier_name LIKE 'OFF-STG-%'
+    );
 
   DELETE FROM sub_categories
   WHERE tenant_id = v_tenant_id
-     OR sub_category_code LIKE 'OFF-STG-%'
-     OR sub_category_name LIKE 'OFF-STG-%';
+    AND (
+      sub_category_code LIKE 'OFF-STG-%'
+      OR sub_category_name LIKE 'OFF-STG-%'
+    );
 
   DELETE FROM categories
   WHERE tenant_id = v_tenant_id
-     OR category_code LIKE 'OFF-STG-%'
-     OR category_name LIKE 'OFF-STG-%';
+    AND (
+      category_code LIKE 'OFF-STG-%'
+      OR category_name LIKE 'OFF-STG-%'
+    );
 
   DELETE FROM galenic_forms
   WHERE tenant_id = v_tenant_id
-     OR form_code LIKE 'OFF-STG-%'
-     OR form_name LIKE 'OFF-STG-%';
+    AND (
+      form_code LIKE 'OFF-STG-%'
+      OR form_name LIKE 'OFF-STG-%'
+    );
 
   DELETE FROM administration_routes
   WHERE tenant_id = v_tenant_id
-     OR route_code LIKE 'OFF-STG-%'
-     OR route_name LIKE 'OFF-STG-%';
+    AND (
+      route_code LIKE 'OFF-STG-%'
+      OR route_name LIKE 'OFF-STG-%'
+    );
 
   DELETE FROM product_types
   WHERE tenant_id = v_tenant_id
-     OR type_code LIKE 'OFF-STG-%'
-     OR type_name LIKE 'OFF-STG-%';
+    AND (
+      type_code LIKE 'OFF-STG-%'
+      OR type_name LIKE 'OFF-STG-%'
+    );
 END $$;
 
 COMMIT;
