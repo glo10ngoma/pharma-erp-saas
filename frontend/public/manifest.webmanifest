@@ -1,8 +1,8 @@
 {
   "name": "PharmaERP POS",
   "short_name": "PharmaERP POS",
-  "description": "Poste POS offline PharmaERP",
-  "start_url": "/offline/pos",
+  "description": "Point de vente PharmaERP",
+  "start_url": "/pos",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f8fafc",

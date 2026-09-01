@@ -141,7 +141,7 @@ export function OfflineWorkstationPage() {
       subtitle="Sante locale du poste, stockage, snapshot, recovery et export diagnostic."
       topActions={(
         <>
-          <Link className="ghost-button compact-button" to="/offline/pos">POS</Link>
+          <Link className="ghost-button compact-button" to="/pos">Point de vente</Link>
           <Link className="ghost-button compact-button" to="/offline/synchronisation">Synchronisation</Link>
         </>
       )}

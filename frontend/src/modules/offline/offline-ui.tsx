@@ -37,13 +37,13 @@ export function mapOfflineSellerMessage(error: unknown) {
 export function OfflineSellerNav() {
   const location = useLocation();
   const links = [
-    ['/offline/pos', 'POS'],
+    ['/pos', 'Point de vente'],
     ['/offline/drafts', 'Brouillons'],
     ['/offline/sales', 'Ventes'],
     ['/offline/cash', 'Caisse'],
   ];
   return (
-    <nav className="offline-seller-nav" aria-label="Navigation POS Offline">
+    <nav className="offline-seller-nav" aria-label="Navigation point de vente">
       {links.map(([to, label]) => (
         <Link key={to} className={location.pathname === to ? 'is-active' : ''} to={to}>
           {label}
@@ -69,10 +69,10 @@ export function OfflineWorkspaceLayout(props: {
 }) {
   const location = useLocation();
   const { permissions } = useAuth();
-  const isPosFullscreen = props.mode === 'seller' && location.pathname === '/offline/pos';
+  const isPosFullscreen = props.mode === 'seller' && (location.pathname === '/pos' || location.pathname === '/offline/pos');
   const showSellerAction = props.mode === 'seller';
   const sellerLinks = [
-    { to: '/offline/pos', label: 'POS', short: 'POS', permission: 'pos_sync.read' },
+    { to: '/pos', label: 'Point de vente', short: 'POS', permission: 'pos_sync.read' },
     { to: '/offline/drafts', label: 'Brouillons', short: 'BRO', permission: 'pos_sync.read' },
     { to: '/offline/sales', label: 'Ventes', short: 'VNT', permission: 'pos_sync.read' },
     { to: '/offline/cash', label: 'Caisse', short: 'CSH', permission: 'pos_sync.read' },
@@ -137,14 +137,14 @@ export function OfflineWorkspaceLayout(props: {
           </div>
 
           {showSellerAction ? (
-            <Link className="offline-sidebar-primary" to="/offline/pos">
+            <Link className="offline-sidebar-primary" to="/pos">
               Nouvelle vente
             </Link>
           ) : props.primaryAction ? (
             <div className="offline-sidebar-action">{props.primaryAction}</div>
           ) : null}
 
-          {renderNavSection('POS Offline', sellerLinks)}
+          {renderNavSection('Point de vente', sellerLinks)}
           {renderNavSection('Admin Offline', adminLinks)}
         </aside>
       ) : null}
@@ -158,7 +158,7 @@ export function OfflineWorkspaceLayout(props: {
               </Link>
             ) : null}
             {!isPosFullscreen ? (
-              <span className="offline-workspace-kicker">{props.mode === 'seller' ? 'POS Offline' : 'Admin Offline'}</span>
+              <span className="offline-workspace-kicker">{props.mode === 'seller' ? 'Point de vente' : 'Admin Offline'}</span>
             ) : null}
             <h2>{props.title}</h2>
             {props.subtitle ? <p>{props.subtitle}</p> : null}

@@ -33,10 +33,10 @@ Le socle precedent fournit deja :
 
 Sprint Offline 2 ajoute le premier flux de preparation de vente offline exploitable :
 
-- route `/offline/pos` ;
+- route `/pos` avec alias historique `/offline/pos` ;
 - route `/offline/drafts` ;
 - route `/offline/poste` ;
-- menu Offline dedie ;
+- ecrans support/admin offline dedies ;
 - recherche article 100 % locale ;
 - recherche client 100 % locale ;
 - panier offline persistant ;
@@ -50,12 +50,13 @@ Sprint Offline 2 ajoute le premier flux de preparation de vente offline exploita
 
 Les routes frontend exposees sont :
 
-- `/offline/pos`
+- `/pos`
+- `/offline/pos` alias de compatibilite vers `/pos`
 - `/offline/drafts`
 - `/offline/synchronisation`
 - `/offline/poste`
 
-Le POS principal `/pos` reste totalement separe.
+Depuis l'unification POS, `/pos` rend le moteur POS local-first Offline 9. L'ancien POS online separe n'est plus une route active.
 
 ## Stores IndexedDB
 

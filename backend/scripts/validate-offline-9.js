@@ -26,6 +26,7 @@ async function main() {
   const posPage = read('frontend/src/modules/offline/OfflinePosPage.tsx');
   const offlineUi = read('frontend/src/modules/offline/offline-ui.tsx');
   const dashboardLayout = read('frontend/src/layouts/DashboardLayout.tsx');
+  const app = read('frontend/src/App.tsx');
   const offlineTypes = read('frontend/src/modules/offline/offline-types.ts');
   const offlineStorage = read('frontend/src/modules/offline/offline-storage.ts');
   const offlineCash = read('frontend/src/modules/offline/offline-cash.ts');
@@ -51,12 +52,17 @@ async function main() {
 
   assertExcludes(offlineUi, "['/offline/synchronisation', 'Synchronisation']", 'offline-ui.tsx');
   assertExcludes(offlineUi, "['/offline/poste', 'Poste']", 'offline-ui.tsx');
+  assertIncludes(offlineUi, "{ to: '/pos', label: 'Point de vente'", 'offline-ui.tsx');
   assertIncludes(offlineUi, "'Action requise'", 'offline-ui.tsx');
   assertIncludes(offlineUi, "'Synchronisation...'", 'offline-ui.tsx');
   assertIncludes(offlineUi, 'WORKSTATION_NOT_FOUND', 'offline-ui.tsx');
 
   const posOfflineBlock = dashboardLayout.split("{\n      title: 'POS Offline'")[1]?.split("{\n      title: 'Admin Offline'")[0] ?? '';
   const adminOfflineBlock = dashboardLayout.split("{\n      title: 'Admin Offline'")[1]?.split("{\n      title: 'Stock'")[0] ?? '';
+  assertIncludes(dashboardLayout, "['/pos', 'Point de vente', 'sales.create']", 'DashboardLayout.tsx');
+  assertExcludes(dashboardLayout, "title: 'POS Offline'", 'DashboardLayout.tsx');
+  assertIncludes(app, 'path="/pos" element={<OfflinePosPage />}', 'App.tsx');
+  assertIncludes(app, 'path="/offline/pos" element={<RedirectToUnifiedPos />}', 'App.tsx');
   assertExcludes(posOfflineBlock, "['/offline/synchronisation', 'Synchronisation', 'pos_sync.read'],", 'DashboardLayout.tsx POS Offline');
   assertExcludes(posOfflineBlock, "['/offline/poste', 'Poste', 'pos_sync.read'],", 'DashboardLayout.tsx POS Offline');
   assertIncludes(adminOfflineBlock, "['/offline/synchronisation', 'Synchronisation', 'pos_sync.read'],", 'DashboardLayout.tsx Admin Offline');

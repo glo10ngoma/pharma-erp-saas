@@ -62,7 +62,7 @@ export function OfflineDraftsPage() {
     setBusyId('new');
     try {
       const cart = await createNewOfflineCart();
-      navigate(`/offline/pos?draft=${cart.cartId}`);
+      navigate(`/pos?draft=${cart.cartId}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Creation du brouillon impossible.');
     } finally {
@@ -147,7 +147,7 @@ export function OfflineDraftsPage() {
                     <td>{formatMoney(cart.total, cart.currency)}</td>
                     <td>{formatDateTime(cart.updatedAt)}</td>
                     <td className="offline-action-cell">
-                      <Link className="ghost-button compact-button" to={`/offline/pos?draft=${cart.cartId}`}>
+                      <Link className="ghost-button compact-button" to={`/pos?draft=${cart.cartId}`}>
                         Reprendre
                       </Link>
                       <button className="ghost-button compact-button" type="button" onClick={() => void handleCancel(cart.cartId)} disabled={busyId !== null || cart.status === 'CANCELLED'}>

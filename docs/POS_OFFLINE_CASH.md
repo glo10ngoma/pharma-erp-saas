@@ -144,6 +144,7 @@ Les montants USD et CDF sont conserves separement:
 
 ## Routes frontend
 
+- `/pos`
 - `/offline/pos`
 - `/offline/cash`
 - `/offline/sales`

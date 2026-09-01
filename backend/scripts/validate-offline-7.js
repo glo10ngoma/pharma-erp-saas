@@ -35,9 +35,11 @@ async function main() {
   const checklist = read('docs/POS_OFFLINE_FIELD_TEST_CHECKLIST.md');
   const syncEngine = read('frontend/src/modules/offline/sync-engine.ts');
 
-  assertIncludes(layout, "title: 'POS Offline'", 'DashboardLayout.tsx');
   assertIncludes(layout, "title: 'Admin Offline'", 'DashboardLayout.tsx');
-  assertIncludes(app, 'path="/offline/pos"', 'App.tsx');
+  assertIncludes(layout, "['/pos', 'Point de vente', 'sales.create']", 'DashboardLayout.tsx');
+  assert(!layout.includes("title: 'POS Offline'"), 'DashboardLayout.tsx should not expose a separate POS Offline nav group');
+  assertIncludes(app, 'path="/pos" element={<OfflinePosPage />}', 'App.tsx');
+  assertIncludes(app, 'path="/offline/pos" element={<RedirectToUnifiedPos />}', 'App.tsx');
   assertIncludes(pos, 'OfflineWorkspaceLayout', 'OfflinePosPage.tsx');
   assertIncludes(pos, 'ENCAISSER', 'OfflinePosPage.tsx');
   assertIncludes(pos, 'Scannez ou recherchez un article pour commencer.', 'OfflinePosPage.tsx');
@@ -67,7 +69,7 @@ async function main() {
   assert(!bootstrap.includes("return 'EXPIRED'"), 'offline-bootstrap.ts should no longer expire authorization by time');
   assertIncludes(config, 'OFFLINE_DB_VERSION = 7', 'offline-config.ts');
   assertIncludes(manifest, '"display": "standalone"', 'manifest.webmanifest');
-  assertIncludes(manifest, '"start_url": "/offline/pos"', 'manifest.webmanifest');
+  assertIncludes(manifest, '"start_url": "/pos"', 'manifest.webmanifest');
   assertIncludes(manifest, '"scope": "/"', 'manifest.webmanifest');
   assertIncludes(main, "navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' })", 'main.tsx');
   assertIncludes(serviceWorker, "const SHELL_CACHE_PREFIX = 'pharmaerp-pos-shell-';", 'sw.js');

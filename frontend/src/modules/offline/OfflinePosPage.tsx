@@ -674,8 +674,8 @@ export function OfflinePosPage() {
       <section className="offline-page">
         <header className="page-heading">
           <div>
-            <span className="breadcrumb">Offline</span>
-            <h1>POS Offline</h1>
+            <span className="breadcrumb">Point de vente</span>
+            <h1>Point de vente</h1>
             <p>
               {revoked
                 ? 'Le poste a ete revoque. Les nouvelles ventes hors ligne sont bloquees.'
@@ -684,13 +684,13 @@ export function OfflinePosPage() {
                   : offlineReady
                     ? 'Le poste reste disponible hors ligne avec les donnees locales deja preparees.'
                     : hasError
-                      ? 'Impossible d initialiser le POS Offline.'
-                      : 'Preparation automatique du POS Offline en cours.'}
+                      ? 'Impossible d initialiser le point de vente.'
+                      : 'Preparation automatique du point de vente en cours.'}
             </p>
           </div>
         </header>
         {initState === 'LOADING' ? (
-          <p className="loading-state">Chargement du POS Offline...</p>
+          <p className="loading-state">Chargement du point de vente...</p>
         ) : (
           <section className="card offline-panel offline-setup-required">
             <h2>
@@ -709,7 +709,7 @@ export function OfflinePosPage() {
                   ? initError || 'La preparation automatique n a pas pu aboutir pour le moment.'
                   : offlineReady
                     ? initError || 'Le poste peut continuer a vendre hors ligne avec le dernier snapshot disponible.'
-                    : initError || 'Une erreur locale empeche le demarrage du POS Offline.'}
+                    : initError || 'Une erreur locale empeche le demarrage du point de vente.'}
             </p>
             <div className="offline-panel-actions">
               {actionRequired || revoked ? (

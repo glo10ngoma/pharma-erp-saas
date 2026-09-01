@@ -18,7 +18,7 @@
 Le manifest utilise :
 
 - Nom : `PharmaERP POS`
-- URL de demarrage : `/offline/pos`
+- URL de demarrage : `/pos`
 - Mode : `standalone`
 
 ## Bootstrap initial
@@ -40,7 +40,7 @@ Le manifest utilise :
 
 ## Pendant une coupure reseau
 
-- Utiliser `Offline > POS`.
+- Utiliser `Point de vente`.
 - Les ventes, paiements et consommations restent locaux.
 - La synchronisation reprend automatiquement au retour reseau.
 - Ne pas vider le stockage navigateur.

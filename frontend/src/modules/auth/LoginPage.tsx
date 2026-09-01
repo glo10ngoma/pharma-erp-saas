@@ -16,7 +16,7 @@ export function LoginPage() {
 
   useEffect(() => {
     if (auth.offlineAuthenticated && !auth.accessToken) {
-      navigate('/offline/pos', { replace: true });
+      navigate('/pos', { replace: true });
       return;
     }
 
@@ -45,7 +45,7 @@ export function LoginPage() {
       if (cancelled) return;
       setRestoring(false);
       if (user) {
-        navigate('/offline/pos', { replace: true });
+        navigate('/pos', { replace: true });
       }
     }
 
@@ -73,7 +73,7 @@ export function LoginPage() {
         if (candidate.allowed) {
           const restored = await auth.restoreOfflineSession();
           if (restored) {
-            navigate('/offline/pos', { replace: true });
+            navigate('/pos', { replace: true });
             return;
           }
         }

@@ -15,7 +15,7 @@ export function DashboardLayout() {
   const canSeeNotifications = canReadNotifications(permissions, currentUser?.role);
   const { notifications } = useGeneratedNotifications(notificationState, canSeeNotifications);
   const unreadCount = notifications.filter((notification) => notification.status === 'UNREAD').length;
-  const isOfflineWorkspace = location.pathname.startsWith('/offline/') || location.pathname.startsWith('/offline-admin/');
+  const isOfflineWorkspace = location.pathname === '/pos' || location.pathname.startsWith('/offline/') || location.pathname.startsWith('/offline-admin/');
   const groups = useMemo<NavGroup[]>(() => [
     {
       title: 'Pilotage',
@@ -32,22 +32,12 @@ export function DashboardLayout() {
       title: 'Ventes',
       icon: 'VN',
       links: [
-        ['/pos', 'POS', 'sales.create'],
+        ['/pos', 'Point de vente', 'sales.create'],
         ['/sales/dashboard', 'Dashboard ventes', 'sales.read'],
         ['/sales/list', 'Liste des ventes', 'sales.read'],
         ['/sales/list?saleMode=ADVANCE', 'Paiements en avance', 'sales.read'],
         ['/customer-returns', 'Retours clients', 'customer_returns.read'],
         ['/cash', 'Caisse', 'cash_registers.read'],
-      ],
-    },
-    {
-      title: 'POS Offline',
-      icon: 'OF',
-      links: [
-        ['/offline/pos', 'POS', 'pos_sync.read'],
-        ['/offline/drafts', 'Brouillons', 'pos_sync.read'],
-        ['/offline/sales', 'Ventes', 'pos_sync.read'],
-        ['/offline/cash', 'Caisse', 'pos_sync.read'],
       ],
     },
     {
@@ -193,8 +183,8 @@ export function DashboardLayout() {
   if (loading) return <main className="content"><p className="loading-state">Chargement du profil...</p></main>;
   if (!accessToken && !offlineAuthenticated) return <Navigate to="/login" replace />;
   if (!currentUser) return <Navigate to="/login" replace />;
-  if (!accessToken && offlineAuthenticated && !location.pathname.startsWith('/offline/')) {
-    return <Navigate to="/offline/pos" replace />;
+  if (!accessToken && offlineAuthenticated && location.pathname !== '/pos' && !location.pathname.startsWith('/offline/')) {
+    return <Navigate to="/pos" replace />;
   }
 
   function logout() {

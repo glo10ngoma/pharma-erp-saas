@@ -30,7 +30,6 @@ import { StocksPage } from './modules/stocks/StocksPage';
 import { TransferDetailPage } from './modules/transfers/TransferDetailPage';
 import { NewTransferPage } from './modules/transfers/NewTransferPage';
 import { TransfersPage } from './modules/transfers/TransfersPage';
-import { PosPage } from './modules/sales/PosPage';
 import { CustomerDisplayPage } from './modules/sales/CustomerDisplayPage';
 import { SalesModuleLayout } from './modules/sales/SalesModuleLayout';
 import { SalesDashboardPage } from './modules/sales/SalesDashboardPage';
@@ -150,8 +149,8 @@ export function App() {
                   <Route path="reports/yesterday" element={<YesterdaySalesReportPage />} />
                   <Route path="reports/end-of-day" element={<EndOfDaySalesReportPage />} />
                 </Route>
-                <Route path="/pos" element={<PosPage />} />
-                <Route path="/offline/pos" element={<OfflinePosPage />} />
+                <Route path="/pos" element={<OfflinePosPage />} />
+                <Route path="/offline/pos" element={<RedirectToUnifiedPos />} />
                 <Route path="/offline/cash" element={<OfflineCashPage />} />
                 <Route path="/offline/drafts" element={<OfflineDraftsPage />} />
                 <Route path="/offline/sales" element={<OfflineSalesPage />} />
@@ -235,9 +234,14 @@ export function App() {
 function HomeRedirect() {
   const { accessToken, currentUser, offlineAuthenticated } = useAuth();
   if (offlineAuthenticated && !accessToken) {
-    return <Navigate to="/offline/pos" replace />;
+    return <Navigate to="/pos" replace />;
   }
   return <Navigate to={landingPathForUser(currentUser)} replace />;
+}
+
+function RedirectToUnifiedPos() {
+  const location = useLocation();
+  return <Navigate to={`/pos${location.search}`} replace />;
 }
 
 function SalesIndexRedirect() {
