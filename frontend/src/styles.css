@@ -7883,6 +7883,19 @@ details.nav-group .nav-link {
   padding: 10px;
 }
 
+.offline-catalog-diagnostic {
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: .7rem;
+  gap: 4px 10px;
+  line-height: 1.25;
+}
+
+.offline-catalog-diagnostic span {
+  white-space: nowrap;
+}
+
 [data-theme='dark'] .offline-local-search-results {
   background: #111827;
   border-color: #334155;

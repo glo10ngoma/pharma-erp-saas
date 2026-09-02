@@ -207,6 +207,33 @@ export function OfflinePosPage() {
 
   const snapshotStatus = calculateSnapshotFreshness(snapshot.syncState, snapshot.auth, snapshot.workstation);
   const authorizationState = calculateAuthorizationState(snapshot.auth, snapshot.workstation);
+  const catalogDiagnostic = useMemo(
+    () => ({
+      workstationId: snapshot.workstation?.workstationId ?? '-',
+      deviceId: snapshot.workstation?.deviceId ?? '-',
+      articleCount: snapshot.articles.length,
+      lotCount: snapshot.lots.length,
+      allocationCount: snapshot.allocations.length,
+      searchableArticleCount: articleSearchIndex.rows.length,
+      query: articleQuery,
+      resultCount: articleResults.length,
+      snapshotStatus,
+      lastBootstrapAt: snapshot.syncState?.lastSuccessfulSyncAt ?? snapshot.syncState?.serverTime ?? null,
+    }),
+    [
+      articleQuery,
+      articleResults.length,
+      articleSearchIndex.rows.length,
+      snapshot.allocations.length,
+      snapshot.articles.length,
+      snapshot.lots.length,
+      snapshot.syncState?.lastSuccessfulSyncAt,
+      snapshot.syncState?.serverTime,
+      snapshot.workstation?.deviceId,
+      snapshot.workstation?.workstationId,
+      snapshotStatus,
+    ],
+  );
   const quotaAlert = formatQuotaAlert(quotaSummary.totalAvailable);
   const cartTotal = cart?.total ?? 0;
   const cartExchangeRate = settings?.exchangeRate?.rate ?? cart?.exchangeRateSnapshot ?? null;
@@ -389,6 +416,10 @@ export function OfflinePosPage() {
   useEffect(() => {
     if (!articleQuery.trim()) autoExactSelectionRef.current = null;
   }, [articleQuery]);
+
+  useEffect(() => {
+    console.debug('[POS CATALOG DIAGNOSTIC]', catalogDiagnostic);
+  }, [catalogDiagnostic]);
 
   async function handleSelectArticle(result: LocalCatalogSearchResult, quantityDelta = 1) {
     if (!cart) return;
@@ -674,8 +705,8 @@ export function OfflinePosPage() {
       <section className="offline-page">
         <header className="page-heading">
           <div>
-            <span className="breadcrumb">Point de vente</span>
-            <h1>Point de vente</h1>
+            <span className="breadcrumb">POS</span>
+            <h1>POS</h1>
             <p>
               {revoked
                 ? 'Le poste a ete revoque. Les nouvelles ventes hors ligne sont bloquees.'
@@ -684,13 +715,13 @@ export function OfflinePosPage() {
                   : offlineReady
                     ? 'Le poste reste disponible hors ligne avec les donnees locales deja preparees.'
                     : hasError
-                      ? 'Impossible d initialiser le point de vente.'
-                      : 'Preparation automatique du point de vente en cours.'}
+                      ? 'Impossible d initialiser le POS.'
+                      : 'Preparation automatique du POS en cours.'}
             </p>
           </div>
         </header>
         {initState === 'LOADING' ? (
-          <p className="loading-state">Chargement du point de vente...</p>
+          <p className="loading-state">Chargement du POS...</p>
         ) : (
           <section className="card offline-panel offline-setup-required">
             <h2>
@@ -709,7 +740,7 @@ export function OfflinePosPage() {
                   ? initError || 'La preparation automatique n a pas pu aboutir pour le moment.'
                   : offlineReady
                     ? initError || 'Le poste peut continuer a vendre hors ligne avec le dernier snapshot disponible.'
-                    : initError || 'Une erreur locale empeche le demarrage du point de vente.'}
+                    : initError || 'Une erreur locale empeche le demarrage du POS.'}
             </p>
             <div className="offline-panel-actions">
               {actionRequired || revoked ? (
@@ -733,7 +764,7 @@ export function OfflinePosPage() {
       viewModel={viewModel}
       syncEngine={syncEngine}
       cashSession={snapshot.cashSession}
-      title="Point de vente"
+      title="POS"
       exitTo="/offline/sales"
       topActions={(
         <Link className="ghost-button compact-button" to="/offline/drafts">
@@ -1025,6 +1056,15 @@ export function OfflinePosPage() {
                     ))}
                   </div>
                 )}
+              </div>
+              <div className="offline-catalog-diagnostic" aria-live="polite">
+                <span>Articles locaux : {catalogDiagnostic.articleCount}</span>
+                <span>Lots locaux : {catalogDiagnostic.lotCount}</span>
+                <span>Allocations locales : {catalogDiagnostic.allocationCount}</span>
+                <span>Articles recherchables : {catalogDiagnostic.searchableArticleCount}</span>
+                <span>Resultats : {catalogDiagnostic.resultCount}</span>
+                <span>Snapshot : {catalogDiagnostic.snapshotStatus}</span>
+                <span>Dernier bootstrap : {catalogDiagnostic.lastBootstrapAt ? formatDateTime(catalogDiagnostic.lastBootstrapAt) : '-'}</span>
               </div>
               <div className="offline-search-help">
                 <span>Le lot FEFO est applique automatiquement.</span>
