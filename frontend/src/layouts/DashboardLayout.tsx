@@ -32,7 +32,7 @@ export function DashboardLayout() {
       title: 'Ventes',
       icon: 'VN',
       links: [
-        ['/pos', 'Point de vente', 'sales.create'],
+        ['/pos', 'POS', 'sales.create'],
         ['/sales/dashboard', 'Dashboard ventes', 'sales.read'],
         ['/sales/list', 'Liste des ventes', 'sales.read'],
         ['/sales/list?saleMode=ADVANCE', 'Paiements en avance', 'sales.read'],
