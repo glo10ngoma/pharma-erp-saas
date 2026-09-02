@@ -734,7 +734,7 @@ export function OfflinePosPage() {
       syncEngine={syncEngine}
       cashSession={snapshot.cashSession}
       title="POS"
-      exitTo="/offline/sales"
+      exitTo="/reports/dashboard"
       topActions={(
         <Link className="ghost-button compact-button" to="/offline/drafts">
           Brouillons
