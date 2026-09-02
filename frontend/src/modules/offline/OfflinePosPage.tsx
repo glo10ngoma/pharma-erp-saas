@@ -207,33 +207,6 @@ export function OfflinePosPage() {
 
   const snapshotStatus = calculateSnapshotFreshness(snapshot.syncState, snapshot.auth, snapshot.workstation);
   const authorizationState = calculateAuthorizationState(snapshot.auth, snapshot.workstation);
-  const catalogDiagnostic = useMemo(
-    () => ({
-      workstationId: snapshot.workstation?.workstationId ?? '-',
-      deviceId: snapshot.workstation?.deviceId ?? '-',
-      articleCount: snapshot.articles.length,
-      lotCount: snapshot.lots.length,
-      allocationCount: snapshot.allocations.length,
-      searchableArticleCount: articleSearchIndex.rows.length,
-      query: articleQuery,
-      resultCount: articleResults.length,
-      snapshotStatus,
-      lastBootstrapAt: snapshot.syncState?.lastSuccessfulSyncAt ?? snapshot.syncState?.serverTime ?? null,
-    }),
-    [
-      articleQuery,
-      articleResults.length,
-      articleSearchIndex.rows.length,
-      snapshot.allocations.length,
-      snapshot.articles.length,
-      snapshot.lots.length,
-      snapshot.syncState?.lastSuccessfulSyncAt,
-      snapshot.syncState?.serverTime,
-      snapshot.workstation?.deviceId,
-      snapshot.workstation?.workstationId,
-      snapshotStatus,
-    ],
-  );
   const quotaAlert = formatQuotaAlert(quotaSummary.totalAvailable);
   const cartTotal = cart?.total ?? 0;
   const cartExchangeRate = settings?.exchangeRate?.rate ?? cart?.exchangeRateSnapshot ?? null;
@@ -416,10 +389,6 @@ export function OfflinePosPage() {
   useEffect(() => {
     if (!articleQuery.trim()) autoExactSelectionRef.current = null;
   }, [articleQuery]);
-
-  useEffect(() => {
-    console.debug('[POS CATALOG DIAGNOSTIC]', catalogDiagnostic);
-  }, [catalogDiagnostic]);
 
   async function handleSelectArticle(result: LocalCatalogSearchResult, quantityDelta = 1) {
     if (!cart) return;
@@ -1056,15 +1025,6 @@ export function OfflinePosPage() {
                     ))}
                   </div>
                 )}
-              </div>
-              <div className="offline-catalog-diagnostic" aria-live="polite">
-                <span>Articles locaux : {catalogDiagnostic.articleCount}</span>
-                <span>Lots locaux : {catalogDiagnostic.lotCount}</span>
-                <span>Allocations locales : {catalogDiagnostic.allocationCount}</span>
-                <span>Articles recherchables : {catalogDiagnostic.searchableArticleCount}</span>
-                <span>Resultats : {catalogDiagnostic.resultCount}</span>
-                <span>Snapshot : {catalogDiagnostic.snapshotStatus}</span>
-                <span>Dernier bootstrap : {catalogDiagnostic.lastBootstrapAt ? formatDateTime(catalogDiagnostic.lastBootstrapAt) : '-'}</span>
               </div>
               <div className="offline-search-help">
                 <span>Le lot FEFO est applique automatiquement.</span>
