@@ -81,7 +81,7 @@ export function OfflinePosPage() {
   const [articleHighlightedIndex, setArticleHighlightedIndex] = useState(0);
   const [message, setMessage] = useState('Le panier offline reste local a ce poste et n envoie aucune vente.');
   const [saveLabel, setSaveLabel] = useState<'SAVED' | 'SAVING' | 'ERROR'>('SAVED');
-  const [busyAction, setBusyAction] = useState<'NEW' | 'ITEM' | 'CUSTOMER' | 'NOTE' | null>(null);
+  const [busyAction, setBusyAction] = useState<'NEW' | 'ITEM' | 'CUSTOMER' | 'NOTE' | 'CHECKOUT' | null>(null);
   const [noteDraft, setNoteDraft] = useState('');
   const [amountPaidUsd, setAmountPaidUsd] = useState('');
   const [amountPaidCdf, setAmountPaidCdf] = useState('');
@@ -90,9 +90,14 @@ export function OfflinePosPage() {
   const [lastReceiptSale, setLastReceiptSale] = useState<OfflineSale | null>(null);
   const articleInputRef = useRef<HTMLInputElement | null>(null);
   const customerInputRef = useRef<HTMLInputElement | null>(null);
+  const membershipInputRef = useRef<HTMLSelectElement | null>(null);
+  const amountPaidUsdRef = useRef<HTMLInputElement | null>(null);
   const amountPaidCdfRef = useRef<HTMLInputElement | null>(null);
+  const amountReturnedUsdRef = useRef<HTMLInputElement | null>(null);
+  const amountReturnedCdfRef = useRef<HTMLInputElement | null>(null);
   const noteSaveTimer = useRef<number | null>(null);
   const autoExactSelectionRef = useRef<string | null>(null);
+  const returnedValuesAutofilledRef = useRef(false);
   const addToCartMetricsRef = useRef<Record<string, number>>({});
   const syncEngine = useSyncEngine();
 
@@ -143,17 +148,24 @@ export function OfflinePosPage() {
 
   useEffect(() => {
     function handleKeys(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      const isTextArea = target?.tagName === 'TEXTAREA' || target?.isContentEditable;
       if (event.key === 'F2') {
         event.preventDefault();
         articleInputRef.current?.focus();
       }
-      if (event.key === 'F4') {
+      if (event.key === 'F4' && !isTextArea) {
         event.preventDefault();
-        amountPaidCdfRef.current?.focus();
+        focusPrimaryPaymentField();
       }
       if (event.key === 'F8') {
         event.preventDefault();
-        if (canFinalizeOfflineSale && busyAction === null) void handleFinalizeOfflineSale();
+        if (canFinalizeOfflineSale && busyAction === null) {
+          void handleFinalizeOfflineSale();
+          return;
+        }
+        if (checkoutDisabledReason) setMessage(checkoutDisabledReason);
+        focusCheckoutBlockingField();
       }
     }
     window.addEventListener('keydown', handleKeys);
@@ -304,6 +316,103 @@ export function OfflinePosPage() {
     settlementPreview.settlementDifferenceUsd,
     snapshot.cashSession,
   ]);
+
+  function isPrimaryCdfCurrency() {
+    return cart?.currency === 'CDF';
+  }
+
+  function focusPrimaryPaymentField() {
+    const primaryInput = isPrimaryCdfCurrency() ? amountPaidCdfRef.current : amountPaidUsdRef.current;
+    const secondaryInput = isPrimaryCdfCurrency() ? amountPaidUsdRef.current : amountPaidCdfRef.current;
+    const primaryAmount = isPrimaryCdfCurrency() ? Number(amountPaidCdf || 0) : Number(amountPaidUsd || 0);
+
+    if (primaryAmount > 0 && settlementPreview.settlementDifferenceUsd < -0.02) {
+      secondaryInput?.focus();
+      return;
+    }
+    primaryInput?.focus();
+  }
+
+  function focusCheckoutBlockingField() {
+    if (!membershipValid) {
+      membershipInputRef.current?.focus();
+      return;
+    }
+    if (!paymentValid || settlementPreview.settlementDifferenceUsd < -0.02) {
+      focusPrimaryPaymentField();
+      return;
+    }
+    if (!returnedAmountValid) {
+      if (settlementPreview.amountReturnedUsd > settlementPreview.amountPaidUsd) {
+        amountReturnedUsdRef.current?.focus();
+        return;
+      }
+      amountReturnedCdfRef.current?.focus();
+    }
+  }
+
+  function setSuggestedReturnedAmounts(nextPaidUsd: string, nextPaidCdf: string) {
+    if (!cart) return;
+    const nextPreview = buildOfflineCashSettlement({
+      payableUsd: cart.patientShareUsd ?? cartTotal,
+      exchangeRate: cartExchangeRate,
+      amountPaidUsd: Number(nextPaidUsd || 0),
+      amountPaidCdf: Number(nextPaidCdf || 0),
+    });
+    const hasUsdPayment = nextPreview.amountPaidUsd > 0;
+    const hasCdfPayment = nextPreview.amountPaidCdf > 0;
+
+    if (hasUsdPayment && !hasCdfPayment) {
+      setAmountReturnedUsd(nextPreview.suggestedChangeUsd > 0 ? nextPreview.suggestedChangeUsd.toFixed(2) : '');
+      setAmountReturnedCdf('');
+      returnedValuesAutofilledRef.current = true;
+      return;
+    }
+    if (hasCdfPayment && !hasUsdPayment) {
+      setAmountReturnedUsd('');
+      setAmountReturnedCdf(nextPreview.suggestedChangeCdf > 0 ? String(Math.round(nextPreview.suggestedChangeCdf)) : '');
+      returnedValuesAutofilledRef.current = true;
+      return;
+    }
+    if (returnedValuesAutofilledRef.current) {
+      setAmountReturnedUsd('');
+      setAmountReturnedCdf('');
+      returnedValuesAutofilledRef.current = false;
+    }
+  }
+
+  function handlePaidUsdChange(value: string) {
+    setAmountPaidUsd(value);
+    setSuggestedReturnedAmounts(value, amountPaidCdf);
+  }
+
+  function handlePaidCdfChange(value: string) {
+    setAmountPaidCdf(value);
+    setSuggestedReturnedAmounts(amountPaidUsd, value);
+  }
+
+  function handleReturnedUsdChange(value: string) {
+    returnedValuesAutofilledRef.current = false;
+    setAmountReturnedUsd(value);
+  }
+
+  function handleReturnedCdfChange(value: string) {
+    returnedValuesAutofilledRef.current = false;
+    setAmountReturnedCdf(value);
+  }
+
+  function resetForNextSale() {
+    setArticleQuery('');
+    setArticleOpen(false);
+    setCustomerQuery('');
+    setCustomerOpen(false);
+    setNoteDraft('');
+    setAmountPaidUsd('');
+    setAmountPaidCdf('');
+    setAmountReturnedUsd('');
+    setAmountReturnedCdf('');
+    returnedValuesAutofilledRef.current = false;
+  }
 
   function updateLocalCartState(nextCart: OfflineCart, nextReservations: OfflinePageModel['reservations']) {
     setPageModel((current) => {
@@ -519,8 +628,7 @@ export function OfflinePosPage() {
     try {
       const next = await createNewOfflineCart();
       setMessage(`Nouveau brouillon ${next.offlineReference} cree localement.`);
-      setArticleQuery('');
-      setCustomerQuery('');
+      resetForNextSale();
       await refresh(next.cartId);
       setTimeout(() => articleInputRef.current?.focus(), 0);
     } catch (error) {
@@ -531,8 +639,12 @@ export function OfflinePosPage() {
   }
 
   async function handleFinalizeOfflineSale() {
-    if (!cart) return;
-    setBusyAction('NOTE');
+    if (!cart || busyAction !== null || !canFinalizeOfflineSale) {
+      if (checkoutDisabledReason) setMessage(checkoutDisabledReason);
+      focusCheckoutBlockingField();
+      return;
+    }
+    setBusyAction('CHECKOUT');
     try {
       const result = await finalizeOfflineCashSale(cart.cartId, {
         amountPaidUsd: Number(amountPaidUsd || 0),
@@ -542,10 +654,7 @@ export function OfflinePosPage() {
         note: noteDraft,
       });
       await notifyOfflineSaleQueued();
-      setAmountPaidUsd('');
-      setAmountPaidCdf('');
-      setAmountReturnedUsd('');
-      setAmountReturnedCdf('');
+      resetForNextSale();
       flushSync(() => {
         setLastReceiptSale(result.sale);
       });
@@ -591,10 +700,20 @@ export function OfflinePosPage() {
 
   function applyExactPayment() {
     if (!cart) return;
-    setAmountPaidUsd((cart.patientShareUsd ?? cartTotal).toFixed(2));
-    setAmountPaidCdf('');
+    if (Number(amountPaidUsd || 0) > 0 && Number(amountPaidCdf || 0) > 0) {
+      setMessage('Un paiement mixte est deja saisi. Ajustez les montants sans les ecraser.');
+      return;
+    }
+    if (isPrimaryCdfCurrency()) {
+      setAmountPaidUsd('');
+      setAmountPaidCdf(String(amountDueCdf));
+    } else {
+      setAmountPaidUsd((cart.patientShareUsd ?? cartTotal).toFixed(2));
+      setAmountPaidCdf('');
+    }
     setAmountReturnedUsd('');
     setAmountReturnedCdf('');
+    returnedValuesAutofilledRef.current = true;
   }
 
   async function handleSelectSaleType(nextSaleType: 'CASH' | 'INSURANCE') {
@@ -947,6 +1066,7 @@ export function OfflinePosPage() {
               <section className="card offline-panel offline-choice-card">
                 <div className="offline-panel-heading"><h3>Assurance / Mutuelle</h3></div>
                 <select
+                  ref={membershipInputRef}
                   className="input compact-input"
                   disabled={cart.saleType !== 'INSURANCE'}
                   value={cart.membershipId ?? ''}
@@ -1062,11 +1182,11 @@ export function OfflinePosPage() {
                 <div className="detail-grid compact-detail-grid">
                   <label>
                     <span>PAYE USD</span>
-                    <input className="input compact-input" type="number" min="0" step="0.01" value={amountPaidUsd} onChange={(event) => setAmountPaidUsd(event.target.value)} />
+                    <input ref={amountPaidUsdRef} className="input compact-input" type="number" min="0" step="0.01" value={amountPaidUsd} onChange={(event) => handlePaidUsdChange(event.target.value)} />
                   </label>
                   <label>
                     <span>PAYE FC</span>
-                    <input ref={amountPaidCdfRef} className="input compact-input" type="number" min="0" step="1" value={amountPaidCdf} onChange={(event) => setAmountPaidCdf(event.target.value)} />
+                    <input ref={amountPaidCdfRef} className="input compact-input" type="number" min="0" step="1" value={amountPaidCdf} onChange={(event) => handlePaidCdfChange(event.target.value)} />
                   </label>
                 </div>
                 <div className="detail-grid compact-detail-grid">
@@ -1082,11 +1202,11 @@ export function OfflinePosPage() {
                 <div className="detail-grid compact-detail-grid">
                   <label>
                     <span>Rendu USD</span>
-                    <input className="input compact-input" type="number" min="0" step="0.01" value={amountReturnedUsd} onChange={(event) => setAmountReturnedUsd(event.target.value)} />
+                    <input ref={amountReturnedUsdRef} className="input compact-input" type="number" min="0" step="0.01" value={amountReturnedUsd} onChange={(event) => handleReturnedUsdChange(event.target.value)} />
                   </label>
                   <label>
                     <span>Rendu FC</span>
-                    <input className="input compact-input" type="number" min="0" step="1" value={amountReturnedCdf} onChange={(event) => setAmountReturnedCdf(event.target.value)} />
+                    <input ref={amountReturnedCdfRef} className="input compact-input" type="number" min="0" step="1" value={amountReturnedCdf} onChange={(event) => handleReturnedCdfChange(event.target.value)} />
                   </label>
                 </div>
               </div>
@@ -1132,7 +1252,7 @@ export function OfflinePosPage() {
                 </div>
               ) : null}
               <button className="button compact-button offline-checkout-button offline-checkout-button-inline offline-payment-checkout-button" type="button" onClick={() => void handleFinalizeOfflineSale()} disabled={busyAction !== null || !canFinalizeOfflineSale}>
-                <span>ENCAISSER</span>
+                <span>{busyAction === 'CHECKOUT' ? 'ENCAISSEMENT...' : 'ENCAISSER'}</span>
                 <span className="offline-checkout-shortcut">F8</span>
               </button>
             </section>
