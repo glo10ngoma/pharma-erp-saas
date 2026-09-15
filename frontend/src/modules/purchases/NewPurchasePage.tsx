@@ -133,6 +133,7 @@ export function NewPurchasePage() {
   const [quickLine, setQuickLine] = useState<PurchaseDraftLine>(newLine());
   const [articleOptions, setArticleOptions] = useState<Article[]>([]);
   const [articlesLoading, setArticlesLoading] = useState(true);
+  const [debouncedArticleSearch, setDebouncedArticleSearch] = useState('');
   const [selectedLineId, setSelectedLineId] = useState('');
   const [activeAutocomplete, setActiveAutocomplete] = useState('');
   const [activeUnitPopover, setActiveUnitPopover] = useState('');
@@ -151,14 +152,24 @@ export function NewPurchasePage() {
     queryFn: async () => (await cashService.getCurrentSession(form.siteId)).data,
     enabled: Boolean(form.siteId),
   });
+  const activeArticleSearch = useMemo(() => {
+    const activeLine = activeAutocomplete === quickLine.id
+      ? quickLine
+      : draftLines.find((line) => line.id === activeAutocomplete);
+    return activeLine?.articleQuery.trim() ?? '';
+  }, [activeAutocomplete, draftLines, quickLine]);
+  const articleSearch = useQuery({
+    queryKey: ['purchase-article-search', debouncedArticleSearch],
+    queryFn: async () => normalizeArticleResponse((await articlesService.getAll({ search: debouncedArticleSearch, limit: 50, page: 1 })).data),
+    enabled: debouncedArticleSearch.length > 0,
+  });
 
   useEffect(() => {
     let mounted = true;
     setArticlesLoading(true);
-    articlesService.getAll({ limit: 100 })
+    articlesService.getAll({ limit: 50, page: 1 })
       .then((response) => {
-        const payload = response.data as unknown as { items?: Article[]; data?: { items?: Article[] } } | Article[];
-        const items = Array.isArray(payload) ? payload : payload.items ?? payload.data?.items ?? [];
+        const items = normalizeArticleResponse(response.data);
         if (mounted) setArticleOptions(items);
       })
       .finally(() => {
@@ -166,6 +177,16 @@ export function NewPurchasePage() {
       });
     return () => { mounted = false; };
   }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedArticleSearch(activeArticleSearch.trim()), 200);
+    return () => window.clearTimeout(timer);
+  }, [activeArticleSearch]);
+
+  useEffect(() => {
+    if (!articleSearch.data?.length) return;
+    setArticleOptions((current) => mergeArticleOptions(current, articleSearch.data ?? []));
+  }, [articleSearch.data]);
 
   useEffect(() => { if (!form.purchaseNumber && nextCode.data) setForm((current) => ({ ...current, purchaseNumber: nextCode.data ?? '' })); }, [form.purchaseNumber, nextCode.data]);
   useEffect(() => {
@@ -364,6 +385,7 @@ export function NewPurchasePage() {
   function removeLine(id: string) { setDraftLines((current) => current.filter((line) => line.id !== id)); }
   function removeSelectedLine() { if (selectedLineId) removeLine(selectedLineId); }
   function selectArticle(lineId: string, article: Article) {
+    setArticleOptions((current) => mergeArticleOptions(current, [article]));
     const sameArticleCount = draftLines.filter((line) => line.articleId === article.articleId).length + (quickLine.articleId === article.articleId ? 1 : 0) + 1;
     const purchaseUnitId = article.packagingUnitId ?? article.salesUnitId ?? '';
     const stockUnitId = article.salesUnitId ?? article.packagingUnitId ?? '';
@@ -395,8 +417,10 @@ export function NewPurchasePage() {
   }
   function articleSuggestions(line: PurchaseDraftLine) {
     const query = line.articleQuery.trim().toLowerCase();
-    const source = articleOptions;
-    if (!query) return source;
+    const isActiveLine = activeAutocomplete === line.id;
+    const hasFreshServerResults = isActiveLine && query.length > 0 && debouncedArticleSearch.toLowerCase() === query && Array.isArray(articleSearch.data);
+    const source = hasFreshServerResults ? articleSearch.data ?? [] : articleOptions;
+    if (!query) return source.slice(0, 50);
     return prioritizeExactBarcode(source.filter((article) => [article.articleCode, article.commercialName, article.dci, article.dosage, article.barcode].some((value) => String(value ?? '').toLowerCase().includes(query))), line.articleQuery);
   }
   function validatePurchaseDraft() {
@@ -664,6 +688,17 @@ function prioritizeExactBarcode(articles: Article[], query: string) {
   const needle = query.trim().toLowerCase();
   if (!needle) return articles;
   return [...articles].sort((a, b) => Number(String(b.barcode ?? '').toLowerCase() === needle) - Number(String(a.barcode ?? '').toLowerCase() === needle));
+}
+
+function normalizeArticleResponse(payload: unknown) {
+  const typed = payload as { items?: Article[]; data?: { items?: Article[] } } | Article[];
+  return Array.isArray(typed) ? typed : typed.items ?? typed.data?.items ?? [];
+}
+
+function mergeArticleOptions(current: Article[], next: Article[]) {
+  const byId = new Map(current.map((article) => [article.articleId, article]));
+  for (const article of next) byId.set(article.articleId, article);
+  return Array.from(byId.values());
 }
 
 function QuickEntryRow(props: { activeAutocomplete: string; activeUnitPopover: string; article?: Article; commitQuickLine: () => void; currencyCode: string; handleGridKey: (event: KeyboardEvent<HTMLElement>, row: number, col: number, lineId: string) => void; issue: LineIssue; line: PurchaseDraftLine; rowIndex: number; selectArticle: (lineId: string, article: Article) => void; selectPurchaseUnit: (lineId: string, unit: ProductUnitItem) => void; setActiveAutocomplete: (id: string) => void; setActiveUnitPopover: (id: string) => void; setSelectedLineId: (id: string) => void; stockByArticle: Map<string, number>; suggestions: Article[]; unitSuggestions: ProductUnitItem[]; updateQuickLine: (patch: Partial<PurchaseDraftLine>) => void }) {
