@@ -3,6 +3,7 @@ const LABELS: Record<string, string> = {
   LOT_EXPIRED: 'Le lot est expire.',
   LOT_BLOCKED: 'Le lot est bloque.',
   PURCHASE_NOT_DRAFT: 'Cet achat n est plus modifiable.',
+  PURCHASE_NUMBER_ALREADY_EXISTS: 'Ce numero d achat existe deja. Rechargez la page pour obtenir un nouveau numero.',
   SALE_NOT_DRAFT: 'Cette vente n est plus modifiable.',
   CASH_SESSION_ALREADY_OPEN: 'Une session caisse est deja ouverte pour ce site.',
   WORKSTATION_SESSION_ALREADY_OPEN: 'Une session caisse est deja ouverte pour ce poste.',
