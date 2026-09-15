@@ -62,8 +62,15 @@ export class ArticlesRepository {
     }
 
     const where = filters.join(' AND ');
-    const count = await this.db.query<{ total: string }>(
-      `SELECT COUNT(*)::int AS total FROM articles a WHERE ${where}`,
+    const count = await this.db.query<{ total: string; active_total: string; inactive_total: string }>(
+      `
+      SELECT
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE a.is_active = true)::int AS active_total,
+        COUNT(*) FILTER (WHERE a.is_active = false)::int AS inactive_total
+      FROM articles a
+      WHERE ${where}
+      `,
       params,
     );
 
@@ -114,6 +121,8 @@ export class ArticlesRepository {
     return {
       items: rows.rows.map(this.toArticle),
       total: Number(count.rows[0]?.total ?? 0),
+      activeTotal: Number(count.rows[0]?.active_total ?? 0),
+      inactiveTotal: Number(count.rows[0]?.inactive_total ?? 0),
       page,
       limit,
     };

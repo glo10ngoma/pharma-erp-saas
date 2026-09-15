@@ -1705,7 +1705,7 @@ export class PosSyncRepository {
   private async getBootstrapArticles(user: AuthUser, workstation: { workstationId: string }) {
     const result = await this.db.query<ArticleBootstrapRow>(
       `
-      SELECT DISTINCT
+      SELECT
         a.article_id,
         a.article_code,
         a.commercial_name,
@@ -1714,17 +1714,28 @@ export class PosSyncRepository {
         pu.unit_label AS sales_unit,
         a.packaging,
         a.units_per_package AS packaging_quantity,
-        l.selling_price AS default_selling_price,
+        price.selling_price AS default_selling_price,
         a.updated_at
-      FROM offline_stock_allocations osa
-      JOIN lots l ON l.lot_id = osa.lot_id
-      JOIN articles a ON a.article_id = osa.article_id
+      FROM articles a
       LEFT JOIN product_units pu ON pu.product_unit_id = a.sales_unit_id
-      WHERE osa.tenant_id = $1
-        AND osa.workstation_id = $2
+      LEFT JOIN LATERAL (
+        SELECT MIN(l.selling_price) FILTER (
+          WHERE st.quantity_available > 0
+            AND COALESCE(l.is_blocked, false) = false
+            AND l.expiry_date > CURRENT_DATE
+        ) AS selling_price
+        FROM lots l
+        LEFT JOIN stocks st
+          ON st.lot_id = l.lot_id
+         AND st.tenant_id = l.tenant_id
+        WHERE l.tenant_id = a.tenant_id
+          AND l.article_id = a.article_id
+      ) price ON true
+      WHERE a.tenant_id = $1
+        AND a.is_active = true
       ORDER BY a.commercial_name ASC
       `,
-      [user.tenantId, workstation.workstationId],
+      [user.tenantId],
     );
     return result.rows.map((row) => ({
       articleId: row.article_id,
@@ -1949,7 +1960,7 @@ export class PosSyncRepository {
   private async getArticleChanges(user: AuthUser, workstation: { workstationId: string }, since: Date | null) {
     const result = await this.db.query<TimestampedArticleChange>(
       `
-      SELECT DISTINCT
+      SELECT
         a.article_id,
         a.article_code,
         a.commercial_name,
@@ -1958,20 +1969,30 @@ export class PosSyncRepository {
         pu.unit_label AS sales_unit,
         a.packaging,
         a.units_per_package AS packaging_quantity,
-        l.selling_price AS default_selling_price,
+        price.selling_price AS default_selling_price,
         a.updated_at,
         CASE WHEN a.is_active THEN 'UPSERT' ELSE 'DEACTIVATE' END AS operation,
         COALESCE(a.updated_at, a.created_at) AS changed_at
-      FROM offline_stock_allocations osa
-      JOIN lots l ON l.lot_id = osa.lot_id
-      JOIN articles a ON a.article_id = osa.article_id
+      FROM articles a
       LEFT JOIN product_units pu ON pu.product_unit_id = a.sales_unit_id
-      WHERE osa.tenant_id = $1
-        AND osa.workstation_id = $2
-        AND ($3::timestamptz IS NULL OR COALESCE(a.updated_at, a.created_at) > $3::timestamptz)
+      LEFT JOIN LATERAL (
+        SELECT MIN(l.selling_price) FILTER (
+          WHERE st.quantity_available > 0
+            AND COALESCE(l.is_blocked, false) = false
+            AND l.expiry_date > CURRENT_DATE
+        ) AS selling_price
+        FROM lots l
+        LEFT JOIN stocks st
+          ON st.lot_id = l.lot_id
+         AND st.tenant_id = l.tenant_id
+        WHERE l.tenant_id = a.tenant_id
+          AND l.article_id = a.article_id
+      ) price ON true
+      WHERE a.tenant_id = $1
+        AND ($2::timestamptz IS NULL OR COALESCE(a.updated_at, a.created_at) > $2::timestamptz)
       ORDER BY changed_at ASC, a.article_code ASC
       `,
-      [user.tenantId, workstation.workstationId, since ? since.toISOString() : null],
+      [user.tenantId, since ? since.toISOString() : null],
     );
     return result.rows.map((row) => ({
       operation: row.operation,

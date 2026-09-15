@@ -22,7 +22,6 @@ import {
   ReferenceExportActions,
   ReferenceHeader,
   ReferenceSummary,
-  summarizeActive,
 } from '../reference/reference-ui';
 
 type SearchOption<T> =
@@ -32,10 +31,12 @@ type SearchOption<T> =
 export function ArticlesPage() {
   const qc = useQueryClient();
   const { can } = usePermission();
+  const pageSize = 100;
   const [modalOpen, setModalOpen] = useState(false);
   const [editingArticleId, setEditingArticleId] = useState<string | null>(null);
   const [detailArticle, setDetailArticle] = useState<Article | null>(null);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [articleCode, setArticleCode] = useState('');
   const [commercialName, setCommercialName] = useState('');
   const [dciId, setDciId] = useState('');
@@ -66,7 +67,10 @@ export function ArticlesPage() {
   const [formError, setFormError] = useState('');
   const [editingArticleSnapshot, setEditingArticleSnapshot] = useState<Article | null>(null);
 
-  const articles = useQuery({ queryKey: ['articles', search], queryFn: async () => fetchArticlesForList(search) });
+  const articles = useQuery({
+    queryKey: ['articles', search, page, pageSize],
+    queryFn: async () => (await articlesService.getAll({ search: search || undefined, limit: pageSize, page })).data,
+  });
   const categories = useQuery({ queryKey: ['categories'], queryFn: async () => (await referenceService.categories.getAll()).data });
   const subCategories = useQuery({ queryKey: ['sub-categories'], queryFn: async () => (await referenceService.subCategories.getAll()).data });
   const forms = useQuery({ queryKey: ['galenic-forms'], queryFn: async () => (await referenceService.galenicForms.getAll()).data });
@@ -117,13 +121,14 @@ export function ArticlesPage() {
   });
 
   const rows = articles.data?.items ?? [];
+  const totalRows = articles.data?.total ?? 0;
+  const pageCount = Math.max(1, Math.ceil(totalRows / pageSize));
   const categoryById = useMemo(() => new Map((categories.data ?? []).map((item) => [item.categoryId, item.categoryName])), [categories.data]);
   const subCategoryById = useMemo(() => new Map((subCategories.data ?? []).map((item) => [item.subCategoryId, item.subCategoryName])), [subCategories.data]);
   const formById = useMemo(() => new Map((forms.data ?? []).map((item) => [item.formId, item.formName])), [forms.data]);
   const routeById = useMemo(() => new Map((routes.data ?? []).map((item) => [item.routeId, item.routeName])), [routes.data]);
   const typeById = useMemo(() => new Map((productTypes.data ?? []).map((item) => [item.productTypeId, item.typeName])), [productTypes.data]);
   const unitById = useMemo(() => new Map((productUnits.data ?? []).map((item) => [item.productUnitId, item.unitLabel])), [productUnits.data]);
-  const summary = summarizeActive(rows);
   const visibleUnitItems = useMemo(
     () =>
       (productUnits.data ?? []).filter(
@@ -411,6 +416,14 @@ export function ArticlesPage() {
 
   const isSavingReference = createIngredient.isPending || createDosage.isPending || createAtc.isPending || createProductUnit.isPending;
 
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount);
+  }, [page, pageCount]);
+
   return (
     <>
       <ReferenceHeader title="Articles">
@@ -419,7 +432,12 @@ export function ArticlesPage() {
           {can('articles.create') && <button className="button compact-button" onClick={openCreate}>Nouvel article</button>}
         </div>
       </ReferenceHeader>
-      <ReferenceSummary total={articles.data?.total ?? rows.length} filtered={rows.length} active={summary.active} inactive={summary.inactive} />
+      <ReferenceSummary
+        total={totalRows}
+        filtered={totalRows}
+        active={articles.data?.activeTotal ?? 0}
+        inactive={articles.data?.inactiveTotal ?? 0}
+      />
       {(saveArticle.isError || createIngredient.isError || createDosage.isError || createAtc.isError || createProductUnit.isError) && <p className="form-error">Impossible d'enregistrer les informations pharmaceutiques de l'article.</p>}
       <Modal title={editingArticleId ? 'Modifier article' : 'Nouvel article'} open={modalOpen} onClose={() => { setModalOpen(false); resetForm(); }}>
         <form className="form-grid reference-form" onSubmit={submit}>
@@ -539,31 +557,38 @@ export function ArticlesPage() {
       </div>
       <div className="card table-card">
         {articles.isLoading ? <p className="loading-state">Chargement des articles...</p> : rows.length === 0 ? <p className="empty-state">Aucun article trouve. Creez un article ou importez le catalogue.</p> : (
-          <div className="table-wrap reference-table-wrap articles-table-wrap">
-            <table className="data-table reference-table articles-table">
-              <thead><tr><th>Code</th><th>Nom</th><th>DCI</th><th>Dosage</th><th>Unite vente</th><th>Categorie</th><th>Forme</th><th>Barcode</th><th>Stock min</th><th>Statut</th><th>Actions</th></tr></thead>
-              <tbody>{rows.map((article) => (
-                <tr key={article.articleId}>
-                  <td><strong>{article.articleCode}</strong></td>
-                  <td>{article.commercialName}</td>
-                  <td>{article.dci || '-'}</td>
-                  <td>{article.dosage || '-'}</td>
-                  <td>{unitById.get(article.salesUnitId ?? '') ?? '-'}</td>
-                  <td>{categoryById.get(article.categoryId ?? '') ?? '-'}</td>
-                  <td>{formById.get(article.formId ?? '') ?? '-'}</td>
-                  <td>{article.barcode || '-'}</td>
-                  <td className="quantity-cell">{article.defaultStockMin}</td>
-                  <td><ActiveBadge active={article.isActive} /></td>
-                  <td>
-                    <div className="article-action-group">
-                      <button className="ghost-button compact-button article-view-button" onClick={() => setDetailArticle(article)}>Voir</button>
-                      {can('articles.update') && <button className="ghost-button compact-button article-edit-button" onClick={() => openEdit(article)}>Modifier</button>}
-                    </div>
-                  </td>
-                </tr>
-              ))}</tbody>
-            </table>
-          </div>
+          <>
+            <div className="table-wrap reference-table-wrap articles-table-wrap">
+              <table className="data-table reference-table articles-table">
+                <thead><tr><th>Code</th><th>Nom</th><th>DCI</th><th>Dosage</th><th>Unite vente</th><th>Categorie</th><th>Forme</th><th>Barcode</th><th>Stock min</th><th>Statut</th><th>Actions</th></tr></thead>
+                <tbody>{rows.map((article) => (
+                  <tr key={article.articleId}>
+                    <td><strong>{article.articleCode}</strong></td>
+                    <td>{article.commercialName}</td>
+                    <td>{article.dci || '-'}</td>
+                    <td>{article.dosage || '-'}</td>
+                    <td>{unitById.get(article.salesUnitId ?? '') ?? '-'}</td>
+                    <td>{categoryById.get(article.categoryId ?? '') ?? '-'}</td>
+                    <td>{formById.get(article.formId ?? '') ?? '-'}</td>
+                    <td>{article.barcode || '-'}</td>
+                    <td className="quantity-cell">{article.defaultStockMin}</td>
+                    <td><ActiveBadge active={article.isActive} /></td>
+                    <td>
+                      <div className="article-action-group">
+                        <button className="ghost-button compact-button article-view-button" onClick={() => setDetailArticle(article)}>Voir</button>
+                        {can('articles.update') && <button className="ghost-button compact-button article-edit-button" onClick={() => openEdit(article)}>Modifier</button>}
+                      </div>
+                    </td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+            <div className="table-pagination">
+              <button className="ghost-button compact-button" type="button" disabled={page <= 1 || articles.isFetching} onClick={() => setPage((current) => Math.max(1, current - 1))}>Precedent</button>
+              <span className="muted">Page {page} / {pageCount} - {rows.length} affiches sur {totalRows}</span>
+              <button className="ghost-button compact-button" type="button" disabled={page >= pageCount || articles.isFetching} onClick={() => setPage((current) => Math.min(pageCount, current + 1))}>Suivant</button>
+            </div>
+          </>
         )}
       </div>
       {detailArticle && (
@@ -585,27 +610,6 @@ export function ArticlesPage() {
       )}
     </>
   );
-}
-
-async function fetchArticlesForList(search: string) {
-  const params = { search: search || undefined, limit: 100, page: 1 };
-  const firstPage = (await articlesService.getAll(params)).data;
-  const pageCount = Math.ceil(firstPage.total / firstPage.limit);
-  if (pageCount <= 1) return firstPage;
-
-  const remainingPages = await Promise.all(
-    Array.from({ length: pageCount - 1 }, (_, index) =>
-      articlesService.getAll({ ...params, page: index + 2 }),
-    ),
-  );
-
-  return {
-    ...firstPage,
-    items: [
-      ...firstPage.items,
-      ...remainingPages.flatMap((page) => page.data.items),
-    ],
-  };
 }
 
 function ArticleDetailModal({

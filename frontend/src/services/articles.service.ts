@@ -31,6 +31,8 @@ export type Article = {
 export type PaginatedArticles = {
   items: Article[];
   total: number;
+  activeTotal: number;
+  inactiveTotal: number;
   page: number;
   limit: number;
 };
