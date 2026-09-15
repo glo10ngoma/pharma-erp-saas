@@ -18,6 +18,8 @@
     "validate:offline8": "node scripts/validate-offline-8.js",
     "validate:offline9": "node scripts/validate-offline-9.js",
     "validate:offline-autosync": "node scripts/validate-offline-autosync.js",
+    "import:catalog": "node scripts/import-catalog.js",
+    "catalog:full-import": "node scripts/catalog-full-import.js",
     "lint": "eslint \"src/**/*.ts\""
   },
   "dependencies": {
@@ -34,7 +36,8 @@
     "passport-jwt": "^4.0.1",
     "pg": "^8.11.5",
     "reflect-metadata": "^0.1.13",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",

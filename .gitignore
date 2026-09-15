@@ -6,6 +6,8 @@ dist/
 backend/dist/
 frontend/dist/
 
+backend/tmp/
+
 .env
 .env.local
 .env.production
