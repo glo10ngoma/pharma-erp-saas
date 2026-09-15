@@ -47,6 +47,9 @@ type PurchaseDraftLine = {
   purchaseUnitPrice: string;
   sellingUnitPrice: string;
 };
+type SearchOption<T> =
+  | { kind: 'existing'; item: T }
+  | { kind: 'create'; label: string };
 type LineIssue = { level: 'valid' | 'warning' | 'danger'; message: string; blocksSave: boolean };
 
 const initialForm = (): PurchaseForm => ({
@@ -140,6 +143,7 @@ export function NewPurchasePage() {
   const [clientError, setClientError] = useState('');
   const [pendingFocusTarget, setPendingFocusTarget] = useState<{ lineId: string; col: number } | null>(null);
   const canPayPurchase = permissions.includes('purchases.pay');
+  const canCreateProductUnit = permissions.includes('product_units.create');
 
   const suppliers = useQuery({ queryKey: ['suppliers'], queryFn: async () => (await referenceService.suppliers.getAll()).data });
   const sites = useQuery({ queryKey: ['sites'], queryFn: async () => (await sitesService.getAll()).data });
@@ -151,6 +155,10 @@ export function NewPurchasePage() {
     queryKey: ['cash-session-current', form.siteId],
     queryFn: async () => (await cashService.getCurrentSession(form.siteId)).data,
     enabled: Boolean(form.siteId),
+  });
+  const createProductUnit = useMutation({
+    mutationFn: async (payload: { unitCode: string; unitLabel: string }) => (await referenceService.productUnits.create(payload)).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['product-units'] }),
   });
   const activeArticleSearch = useMemo(() => {
     const activeLine = activeAutocomplete === quickLine.id
@@ -302,6 +310,7 @@ export function NewPurchasePage() {
         : (await purchasesService.create(purchasePayload())).data;
       if (!purchaseDraftId) setPurchaseDraftId(purchase.purchaseId);
       for (const [index, line] of lines.entries()) {
+        const purchaseUnit = await ensurePurchaseUnit(line);
         await purchasesService.addItem(purchase.purchaseId, {
           articleId: line.articleId,
           lotNumber: line.lotNumber.trim(),
@@ -310,7 +319,7 @@ export function NewPurchasePage() {
           purchaseQuantity: Number(line.quantity),
           conversionFactor: Number(line.conversionFactor || 1),
           stockQuantity: lineStockQuantity(line),
-          purchaseUnitId: line.purchaseUnitId || undefined,
+          purchaseUnitId: purchaseUnit?.productUnitId || line.purchaseUnitId || undefined,
           stockUnitId: line.stockUnitId || undefined,
           lineOrder: index + 1,
           purchaseUnitPrice: Number(line.purchaseUnitPrice),
@@ -407,13 +416,27 @@ export function NewPurchasePage() {
   function unitSuggestions(line: PurchaseDraftLine) {
     const query = line.purchaseUnitQuery.trim().toLowerCase();
     const source = (productUnits.data ?? []).filter((unit) => unit.isActive || unit.productUnitId === line.purchaseUnitId);
-    if (!query) return source;
-    return source.filter((unit) => [unit.unitCode, unit.unitLabel].some((value) => String(value ?? '').toLowerCase().includes(query)));
+    const filtered = query
+      ? source.filter((unit) => [unit.unitCode, unit.unitLabel].some((value) => String(value ?? '').toLowerCase().includes(query)))
+      : source;
+    return buildUnitOptions(filtered, line.purchaseUnitQuery, canCreateProductUnit);
   }
-  function selectPurchaseUnit(lineId: string, unit: ProductUnitItem) {
+  async function selectPurchaseUnit(lineId: string, option: SearchOption<ProductUnitItem>) {
+    const unit = option.kind === 'create'
+      ? await createProductUnit.mutateAsync({ unitCode: buildUnitCode(option.label), unitLabel: option.label.trim() })
+      : option.item;
     const patch = { purchaseUnitId: unit.productUnitId, purchaseUnitQuery: unit.unitLabel };
     if (lineId === quickLine.id) updateQuickLine(patch); else updateLine(lineId, patch);
     setActiveUnitPopover('');
+  }
+  async function ensurePurchaseUnit(line: PurchaseDraftLine) {
+    if (line.purchaseUnitId) return productUnits.data?.find((unit) => unit.productUnitId === line.purchaseUnitId) ?? null;
+    const label = line.purchaseUnitQuery.trim();
+    if (!label) return null;
+    const existing = (productUnits.data ?? []).find((unit) => normalizeUnit(unit.unitLabel) === normalizeUnit(label) || normalizeUnit(unit.unitCode) === normalizeUnit(label));
+    if (existing) return existing;
+    if (!canCreateProductUnit) return null;
+    return createProductUnit.mutateAsync({ unitCode: buildUnitCode(label), unitLabel: label });
   }
   function articleSuggestions(line: PurchaseDraftLine) {
     const query = line.articleQuery.trim().toLowerCase();
@@ -612,7 +635,7 @@ function TrashIcon() {
   return <svg aria-hidden="true" className="row-action-icon" focusable="false" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M9 10v8M15 10v8M6 6l1 14h10l1-14" /></svg>;
 }
 
-function PurchaseGridRow(props: { action?: ReactNode; activeAutocomplete: string; activeUnitPopover: string; article?: Article; currencyCode: string; handleGridKey: (event: KeyboardEvent<HTMLElement>, row: number, col: number, lineId: string) => void; issue: LineIssue; line: PurchaseDraftLine; removeLine: (id: string) => void; rowIndex: number; selectArticle: (lineId: string, article: Article) => void; selectPurchaseUnit: (lineId: string, unit: ProductUnitItem) => void; selected: boolean; setActiveAutocomplete: (id: string) => void; setActiveUnitPopover: (id: string) => void; setSelectedLineId: (id: string) => void; stockByArticle: Map<string, number>; suggestions: Article[]; unitSuggestions: ProductUnitItem[]; updateLine: (patch: Partial<PurchaseDraftLine>) => void }) {
+function PurchaseGridRow(props: { action?: ReactNode; activeAutocomplete: string; activeUnitPopover: string; article?: Article; currencyCode: string; handleGridKey: (event: KeyboardEvent<HTMLElement>, row: number, col: number, lineId: string) => void; issue: LineIssue; line: PurchaseDraftLine; removeLine: (id: string) => void; rowIndex: number; selectArticle: (lineId: string, article: Article) => void; selectPurchaseUnit: (lineId: string, unit: SearchOption<ProductUnitItem>) => void | Promise<void>; selected: boolean; setActiveAutocomplete: (id: string) => void; setActiveUnitPopover: (id: string) => void; setSelectedLineId: (id: string) => void; stockByArticle: Map<string, number>; suggestions: Article[]; unitSuggestions: SearchOption<ProductUnitItem>[]; updateLine: (patch: Partial<PurchaseDraftLine>) => void }) {
   const { action, activeAutocomplete, activeUnitPopover, article, currencyCode, handleGridKey, issue, line, removeLine, rowIndex, selectArticle, selectPurchaseUnit, selected, setActiveAutocomplete, setActiveUnitPopover, setSelectedLineId, stockByArticle, suggestions, unitSuggestions, updateLine } = props;
   return <Fragment><tr className={`erp-grid-row line-${issue.level} ${selected ? 'selected' : ''}`} onClick={() => setSelectedLineId(line.id)}>
     <td><span className={`line-indicator ${issue.level}`}></span></td>
@@ -620,11 +643,11 @@ function PurchaseGridRow(props: { action?: ReactNode; activeAutocomplete: string
     <td className="unit-cell" data-line-id={line.id} data-line-col="1">
       <FloatingSearchPopover
         columns={[
-          { header: 'Code', render: (unit) => unit.unitCode },
-          { header: 'Unite', render: (unit) => unit.unitLabel },
+          { header: 'Code', render: (option) => option.kind === 'create' ? 'Nouveau' : option.item.unitCode },
+          { header: 'Unite', render: (option) => option.kind === 'create' ? `Creer "${option.label}"` : option.item.unitLabel },
         ]}
         dataGridCell={`${rowIndex}-1`}
-        getKey={(unit) => unit.productUnitId}
+        getKey={(option) => option.kind === 'create' ? `create-${option.label}` : option.item.productUnitId}
         onChange={(value) => { setActiveUnitPopover(line.id); updateLine({ purchaseUnitQuery: value, purchaseUnitId: '' }); }}
         onClose={() => setActiveUnitPopover('')}
         onFallbackKeyDown={(event) => handleGridKey(event, rowIndex, 1, line.id)}
@@ -701,7 +724,25 @@ function mergeArticleOptions(current: Article[], next: Article[]) {
   return Array.from(byId.values());
 }
 
-function QuickEntryRow(props: { activeAutocomplete: string; activeUnitPopover: string; article?: Article; commitQuickLine: () => void; currencyCode: string; handleGridKey: (event: KeyboardEvent<HTMLElement>, row: number, col: number, lineId: string) => void; issue: LineIssue; line: PurchaseDraftLine; rowIndex: number; selectArticle: (lineId: string, article: Article) => void; selectPurchaseUnit: (lineId: string, unit: ProductUnitItem) => void; setActiveAutocomplete: (id: string) => void; setActiveUnitPopover: (id: string) => void; setSelectedLineId: (id: string) => void; stockByArticle: Map<string, number>; suggestions: Article[]; unitSuggestions: ProductUnitItem[]; updateQuickLine: (patch: Partial<PurchaseDraftLine>) => void }) {
+function normalizeUnit(value: string) {
+  return value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function buildUnitCode(label: string) {
+  const compact = normalizeUnit(label).replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  return (compact || 'unite').slice(0, 40).toUpperCase();
+}
+
+function buildUnitOptions(units: ProductUnitItem[], query: string, canCreate: boolean): SearchOption<ProductUnitItem>[] {
+  const options: SearchOption<ProductUnitItem>[] = units.map((unit) => ({ kind: 'existing', item: unit }));
+  const label = query.trim();
+  if (!label || !canCreate) return options;
+  const normalized = normalizeUnit(label);
+  const exists = units.some((unit) => normalizeUnit(unit.unitLabel) === normalized || normalizeUnit(unit.unitCode) === normalized);
+  return exists ? options : [...options, { kind: 'create', label }];
+}
+
+function QuickEntryRow(props: { activeAutocomplete: string; activeUnitPopover: string; article?: Article; commitQuickLine: () => void; currencyCode: string; handleGridKey: (event: KeyboardEvent<HTMLElement>, row: number, col: number, lineId: string) => void; issue: LineIssue; line: PurchaseDraftLine; rowIndex: number; selectArticle: (lineId: string, article: Article) => void; selectPurchaseUnit: (lineId: string, unit: SearchOption<ProductUnitItem>) => void | Promise<void>; setActiveAutocomplete: (id: string) => void; setActiveUnitPopover: (id: string) => void; setSelectedLineId: (id: string) => void; stockByArticle: Map<string, number>; suggestions: Article[]; unitSuggestions: SearchOption<ProductUnitItem>[]; updateQuickLine: (patch: Partial<PurchaseDraftLine>) => void }) {
   const { activeAutocomplete, activeUnitPopover, commitQuickLine, currencyCode, handleGridKey, issue, line, rowIndex, selectArticle, selectPurchaseUnit, setActiveAutocomplete, setActiveUnitPopover, setSelectedLineId, stockByArticle, suggestions, unitSuggestions, updateQuickLine } = props;
   return <PurchaseGridRow action={<button aria-label="Ajouter la ligne" className="ghost-button compact-button row-action-button icon-only add" title="Ajouter la ligne" type="button" disabled={issue.blocksSave} onClick={commitQuickLine}><PlusIcon /></button>} activeAutocomplete={activeAutocomplete} activeUnitPopover={activeUnitPopover} article={props.article} currencyCode={currencyCode} handleGridKey={handleGridKey} issue={issue} line={line} removeLine={() => updateQuickLine(newLine())} rowIndex={rowIndex} selectArticle={selectArticle} selectPurchaseUnit={selectPurchaseUnit} selected={false} setActiveAutocomplete={setActiveAutocomplete} setActiveUnitPopover={setActiveUnitPopover} setSelectedLineId={setSelectedLineId} stockByArticle={stockByArticle} suggestions={suggestions} unitSuggestions={unitSuggestions} updateLine={updateQuickLine} />;
 }
