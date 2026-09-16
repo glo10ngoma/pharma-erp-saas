@@ -255,8 +255,12 @@ export function OfflinePosPage() {
   const patientShareUsd = cart?.patientShareUsd ?? cartTotal;
   const insuranceShareUsd = cart?.insuranceShareUsd ?? 0;
   const amountDueUsd = patientShareUsd;
+  const hasConfiguredExchangeRate = Boolean(cartExchangeRate && cartExchangeRate > 0);
   const amountDueCdf = cartExchangeRate ? Math.round(amountDueUsd * cartExchangeRate) : 0;
   const paidEquivalentUsd = settlementPreview.netTotalEquivalentUsd;
+  const hasCdfSettlement =
+    settlementPreview.amountPaidCdf > 0
+    || settlementPreview.amountReturnedCdf > 0;
   const paymentValid =
     (saleType === 'INSURANCE' && patientShareUsd <= 0)
     || settlementPreview.amountPaidUsd > 0
@@ -277,6 +281,7 @@ export function OfflinePosPage() {
     && authorizationState === 'AUTHORIZED'
     && membershipValid
     && paymentValid
+    && (!hasCdfSettlement || hasConfiguredExchangeRate)
     && (
       requiresCashSessionForSettlement
         ? cashSessionAttachable
@@ -293,7 +298,8 @@ export function OfflinePosPage() {
     if (authorizationState === 'REVOKED') return 'Ce poste a ete revoque.';
     if (authorizationState !== 'AUTHORIZED') return 'Ce poste n est pas autorise pour la vente hors ligne.';
     if (!membershipValid) return 'Selectionnez une assurance / mutuelle.';
-    if (!paymentValid) return 'Montant paye insuffisant ou absent.';
+    if (hasCdfSettlement && !hasConfiguredExchangeRate) return 'Taux USD/CDF non configuré.';
+    if (!paymentValid) return 'Montant paye insuffisant.';
     if (requiresCashSessionForSettlement && !cashSessionAttachable) {
       return snapshot.cashSession
         ? 'La session locale restauree n est pas encore utilisable pour encaisser.'
@@ -308,6 +314,8 @@ export function OfflinePosPage() {
     cartStatus,
     cashSessionAttachable,
     hasCart,
+    hasCdfSettlement,
+    hasConfiguredExchangeRate,
     itemCount,
     membershipValid,
     paymentValid,
@@ -705,6 +713,10 @@ export function OfflinePosPage() {
       return;
     }
     if (isPrimaryCdfCurrency()) {
+      if (!hasConfiguredExchangeRate) {
+        setMessage('Taux USD/CDF non configuré.');
+        return;
+      }
       setAmountPaidUsd('');
       setAmountPaidCdf(String(amountDueCdf));
     } else {
@@ -1186,7 +1198,7 @@ export function OfflinePosPage() {
                   </label>
                   <label>
                     <span>PAYE FC</span>
-                    <input ref={amountPaidCdfRef} className="input compact-input" type="number" min="0" step="1" value={amountPaidCdf} onChange={(event) => handlePaidCdfChange(event.target.value)} />
+                    <input ref={amountPaidCdfRef} className="input compact-input" type="number" min="0" step="1" value={amountPaidCdf} onChange={(event) => handlePaidCdfChange(event.target.value)} disabled={!hasConfiguredExchangeRate} title={!hasConfiguredExchangeRate ? 'Taux USD/CDF non configuré.' : undefined} />
                   </label>
                 </div>
                 <div className="detail-grid compact-detail-grid">
@@ -1206,7 +1218,7 @@ export function OfflinePosPage() {
                   </label>
                   <label>
                     <span>Rendu FC</span>
-                    <input ref={amountReturnedCdfRef} className="input compact-input" type="number" min="0" step="1" value={amountReturnedCdf} onChange={(event) => handleReturnedCdfChange(event.target.value)} />
+                    <input ref={amountReturnedCdfRef} className="input compact-input" type="number" min="0" step="1" value={amountReturnedCdf} onChange={(event) => handleReturnedCdfChange(event.target.value)} disabled={!hasConfiguredExchangeRate} title={!hasConfiguredExchangeRate ? 'Taux USD/CDF non configuré.' : undefined} />
                   </label>
                 </div>
               </div>

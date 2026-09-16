@@ -3,7 +3,7 @@ import { apiClient } from './apiClient';
 export type ExchangeRateSetting = {
   baseCurrency: 'USD';
   quoteCurrency: 'CDF';
-  rate: number;
+  rate: number | null;
   updatedAt: string | null;
   updatedBy: string | null;
 };

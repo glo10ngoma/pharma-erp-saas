@@ -9,7 +9,6 @@ type ExchangeRateRow = {
 };
 
 const USD_CDF_RATE_KEY = 'USD_CDF_RATE';
-const DEFAULT_USD_CDF_RATE = 2800;
 
 @Injectable()
 export class SettingsRepository {
@@ -56,7 +55,7 @@ export class SettingsRepository {
     return {
       baseCurrency: 'USD',
       quoteCurrency: 'CDF',
-      rate: Number(row?.setting_value ?? DEFAULT_USD_CDF_RATE),
+      rate: row ? Number(row.setting_value) : null,
       updatedAt: row?.updated_at ?? null,
       updatedBy: row?.updated_by_name ?? null,
     };

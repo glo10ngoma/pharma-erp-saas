@@ -19,7 +19,7 @@ export function GeneralSettingsPage() {
           <div><span>Devise interne</span><strong>USD</strong></div>
           <div><span>Devise client RDC</span><strong>CDF / FC</strong></div>
           <div><span>Timezone</span><strong>Africa/Lubumbashi</strong></div>
-          <div><span>Taux USD/CDF</span><strong>{rate.data ? rate.data.rate : '-'}</strong></div>
+          <div><span>Taux USD/CDF</span><strong>{rate.data?.rate ? rate.data.rate : 'Non configure'}</strong></div>
           <div><span>Derniere modification taux</span><strong>{rate.data?.updatedAt ? formatDate(rate.data.updatedAt) : '-'}</strong></div>
         </div>
         <div className="card">

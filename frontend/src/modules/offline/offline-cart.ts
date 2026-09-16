@@ -562,7 +562,7 @@ export function mapOfflineError(error: unknown) {
     CUSTOMER_REQUIRED_FOR_INSURANCE: 'Selectionnez un client assure avant de finaliser une vente assurance hors ligne.',
     MEMBERSHIP_REQUIRED: 'Choisissez une mutuelle active du client avant de finaliser la vente assurance.',
     MEMBERSHIP_NOT_ACTIVE: 'La mutuelle selectionnee n est plus valide dans le snapshot local.',
-    EXCHANGE_RATE_REQUIRED: 'Un taux local valide est requis pour accepter un paiement en CDF hors ligne.',
+    EXCHANGE_RATE_REQUIRED: 'Taux USD/CDF non configuré.',
     LOCAL_STORAGE_ERROR: 'Impossible d enregistrer localement ce brouillon.',
     OFFLINE_AUTH_EXPIRED: 'Ce poste n est pas autorise a effectuer des ventes hors ligne.',
     OFFLINE_AUTH_UNAUTHORIZED: 'Ce poste n est pas autorise a effectuer des ventes hors ligne.',

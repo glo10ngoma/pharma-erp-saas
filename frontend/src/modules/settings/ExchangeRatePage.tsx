@@ -29,7 +29,7 @@ export function ExchangeRatePage() {
     updateRate.mutate();
   }
 
-  const currentRate = Number(rateQuery.data?.rate ?? 2800);
+  const currentRate = rateQuery.data?.rate ?? null;
   const error = rateQuery.error || updateRate.error;
 
   return (
@@ -40,7 +40,7 @@ export function ExchangeRatePage() {
 
       <section className="card compact-card settings-rate-card">
         <span className="kpi-label">Taux courant</span>
-        <p className="metric">1 USD = {formatMoney(currentRate, 'CDF')}</p>
+        <p className="metric">{currentRate ? `1 USD = ${formatMoney(currentRate, 'CDF')}` : 'Taux USD/CDF non configure'}</p>
         <div className="detail-grid">
           <div><span>Devise de base</span><strong>{rateQuery.data?.baseCurrency ?? 'USD'}</strong></div>
           <div><span>Devise quote</span><strong>{rateQuery.data?.quoteCurrency ?? 'CDF'}</strong></div>
