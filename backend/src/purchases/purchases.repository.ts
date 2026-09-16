@@ -626,13 +626,22 @@ export class PurchasesRepository {
       [user.tenantId, articleId],
     );
     const current = article.rows[0];
-    const resolvedStockUnitId = stockUnitId ?? current?.sales_unit_id ?? current?.packaging_unit_id ?? null;
+    const resolvedStockUnitId = stockUnitId ?? current?.sales_unit_id ?? null;
     const purchaseLabel = purchaseUnitId ? await this.unitLabel(user, purchaseUnitId) : current?.packaging ?? await this.unitLabel(user, current?.packaging_unit_id ?? '');
-    const stockLabel = resolvedStockUnitId ? await this.unitLabel(user, resolvedStockUnitId) : current?.packaging ?? 'Unite';
+    if (purchaseUnitId && !purchaseLabel) throw new Error('PURCHASE_UNIT_NOT_IN_TENANT');
+    if (!resolvedStockUnitId) throw new Error('STOCK_UNIT_REQUIRED');
+    const stockLabel = await this.unitLabel(user, resolvedStockUnitId);
+    if (!stockLabel) throw new Error('STOCK_UNIT_NOT_IN_TENANT');
+    if (!current?.sales_unit_id && stockUnitId) {
+      await this.db.query(
+        `UPDATE articles SET sales_unit_id=$3, updated_at=CURRENT_TIMESTAMP WHERE tenant_id=$1 AND article_id=$2 AND sales_unit_id IS NULL`,
+        [user.tenantId, articleId, stockUnitId],
+      );
+    }
     return {
       purchaseUnitLabel: purchaseLabel || current?.packaging || 'Unite',
       stockUnitId: resolvedStockUnitId,
-      stockUnitLabel: stockLabel || 'Unite',
+      stockUnitLabel: stockLabel,
     };
   }
 
