@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { FloatingSearchPopover } from '../../components/FloatingSearchPopover';
 import { formatDate, formatDateTime } from '../../utils/date';
 import { formatMoney } from '../../utils/money';
+import { settingsService } from '../../services/settings.service';
 import {
   addOrIncrementOfflineCartItem,
   buildOfflineArticleSearchIndex,
@@ -39,6 +40,7 @@ import {
 } from './offline-bootstrap';
 import { ensureOfflineEnvironmentReady, type OfflineEnvironmentState } from './offline-environment';
 import { type OfflineCart, type OfflineCustomerMembership, type OfflinePosCustomer, type OfflineSale } from './offline-types';
+import { writeOfflineSettings } from './offline-storage';
 import { useSyncEngine } from './useSyncEngine';
 
 type OfflinePageModel = Awaited<ReturnType<typeof getOfflineCartPageModel>>;
@@ -108,9 +110,9 @@ export function OfflinePosPage() {
       setInitError('');
     }
     try {
-      const environment = await ensureOfflineEnvironmentReady({
+      const environment = await applyCurrentTenantExchangeRate(await ensureOfflineEnvironmentReady({
         cartId: cartId ?? selectedCartId,
-      });
+      }));
       setViewModel(environment.viewModel);
       setPageModel(environment.pageModel);
       setNoteDraft(environment.pageModel?.cart.note ?? '');
@@ -130,6 +132,52 @@ export function OfflinePosPage() {
       setViewModel(emptyViewModel);
       setInitState('ERROR');
       setInitError(mapOfflineSellerMessage(error));
+    }
+  }
+
+  async function applyCurrentTenantExchangeRate(environment: Awaited<ReturnType<typeof ensureOfflineEnvironmentReady>>) {
+    if (!navigator.onLine) return environment;
+    const currentSettings = environment.viewModel.snapshot.settings;
+    if (!currentSettings) return environment;
+
+    try {
+      const response = await settingsService.getExchangeRate();
+      const rate = Number(response.data.rate);
+      if (!Number.isFinite(rate) || rate <= 0) return environment;
+
+      const now = new Date().toISOString();
+      const nextSettings = {
+        ...currentSettings,
+        exchangeRate: {
+          fromCurrency: response.data.baseCurrency,
+          toCurrency: response.data.quoteCurrency,
+          rate,
+          effectiveDate: response.data.updatedAt ?? now,
+          updatedAt: response.data.updatedAt ?? now,
+        },
+        lastSyncedAt: now,
+      };
+      await writeOfflineSettings(nextSettings);
+
+      const snapshot = {
+        ...environment.viewModel.snapshot,
+        settings: nextSettings,
+      };
+      return {
+        ...environment,
+        viewModel: {
+          ...environment.viewModel,
+          snapshot,
+        },
+        pageModel: environment.pageModel
+          ? {
+              ...environment.pageModel,
+              snapshot,
+            }
+          : environment.pageModel,
+      };
+    } catch {
+      return environment;
     }
   }
 

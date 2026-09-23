@@ -103,6 +103,13 @@ export async function readOfflineSettings() {
   return rows[0] ?? null;
 }
 
+export async function writeOfflineSettings(settings: OfflinePosSettings) {
+  const db = await openOfflineDatabase();
+  const tx = db.transaction(SETTINGS_STORE, 'readwrite');
+  await replaceAll(tx.objectStore(SETTINGS_STORE), [settings]);
+  await txDone(tx);
+}
+
 export async function readAuthSnapshot() {
   const db = await openOfflineDatabase();
   const rows = await readAll<OfflineAuthSnapshot>(db, AUTH_STORE);
