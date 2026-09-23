@@ -1319,30 +1319,32 @@ export function OfflinePosPage() {
                 <span>{busyAction === 'CHECKOUT' ? 'ENCAISSEMENT...' : 'ENCAISSER'}</span>
                 <span className="offline-checkout-shortcut">F8</span>
               </button>
-              <div className="offline-checkout-feedback" role="status" aria-live="polite">
-                {!canFinalizeOfflineSale && checkoutDisabledReason ? <span>{checkoutDisabledReason}</span> : null}
-                {printRetrySale ? (
-                  <div className="offline-print-retry-actions">
-                    <button className="ghost-button compact-button" type="button" onClick={() => void printSaleTicket(printRetrySale)}>
-                      Reessayer impression directe
-                    </button>
-                    <button className="ghost-button compact-button" type="button" onClick={() => printSaleTicketWithBrowser(printRetrySale)}>
-                      Impression navigateur
-                    </button>
+              <div className="offline-checkout-secondary-area">
+                <div className="offline-payment-readonly offline-payment-readonly-secondary">
+                  <h4>Informations</h4>
+                  <div className="offline-payment-readonly-row">
+                    <span>Part patient</span>
+                    <strong>{formatMoney(cart.patientShareUsd, 'USD')}</strong>
+                    <strong>{settings?.exchangeRate?.rate ? `${Math.round(cart.patientShareUsd * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong>
                   </div>
-                ) : null}
-              </div>
-              <div className="offline-payment-readonly offline-payment-readonly-secondary">
-                <h4>Informations</h4>
-                <div className="offline-payment-readonly-row">
-                  <span>Part patient</span>
-                  <strong>{formatMoney(cart.patientShareUsd, 'USD')}</strong>
-                  <strong>{settings?.exchangeRate?.rate ? `${Math.round(cart.patientShareUsd * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong>
+                  <div className="offline-payment-readonly-row">
+                    <span>Part assurance</span>
+                    <strong>{formatMoney(cart.insuranceShareUsd, 'USD')}</strong>
+                    <strong>{settings?.exchangeRate?.rate ? `${Math.round(cart.insuranceShareUsd * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong>
+                  </div>
                 </div>
-                <div className="offline-payment-readonly-row">
-                  <span>Part assurance</span>
-                  <strong>{formatMoney(cart.insuranceShareUsd, 'USD')}</strong>
-                  <strong>{settings?.exchangeRate?.rate ? `${Math.round(cart.insuranceShareUsd * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong>
+                <div className="offline-checkout-feedback" role="status" aria-live="polite">
+                  {!canFinalizeOfflineSale && checkoutDisabledReason ? <span>{checkoutDisabledReason}</span> : null}
+                  {printRetrySale ? (
+                    <div className="offline-print-retry-actions">
+                      <button className="ghost-button compact-button" type="button" onClick={() => void printSaleTicket(printRetrySale)}>
+                        Reessayer impression directe
+                      </button>
+                      <button className="ghost-button compact-button" type="button" onClick={() => printSaleTicketWithBrowser(printRetrySale)}>
+                        Impression navigateur
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </section>

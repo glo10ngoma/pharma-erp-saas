@@ -8324,7 +8324,7 @@ details.nav-group .nav-link {
   flex: 0 0 52px;
   height: 52px;
   justify-content: space-between;
-  margin-top: auto;
+  margin-top: 2px;
   min-height: 52px;
   width: 100%;
 }
@@ -8579,11 +8579,10 @@ details.nav-group .nav-link {
   color: var(--danger);
   display: flex;
   flex-direction: column;
-  flex: 0 0 auto;
   font-size: 0.74rem;
   gap: 6px;
   line-height: 1.25;
-  min-height: 30px;
+  min-height: 0;
 }
 
 .offline-checkout-feedback .compact-button {
@@ -8613,9 +8612,18 @@ details.nav-group .nav-link {
 
 .offline-payment-readonly-secondary {
   border-top: 1px solid rgba(255, 255, 255, 0.18);
-  flex: 0 0 auto;
   margin-top: 0;
   padding-top: 8px;
+}
+
+.offline-checkout-secondary-area {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 82px;
+  overflow-y: auto;
+  padding-right: 2px;
 }
 
 .offline-payment-readonly-row {
