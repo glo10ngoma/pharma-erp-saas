@@ -7,7 +7,7 @@ import { readOfflineMetadata } from './offline-storage';
 import { buildOfflineDiagnosticExport, getOfflineStorageReport, requestOfflinePersistence, runOfflineRecovery, runOfflineRetention, type OfflineRecoveryReport, type OfflineRetentionReport, type OfflineStorageReport } from './offline-recovery';
 import { runSync } from './sync-engine';
 import { OfflineWorkspaceLayout } from './offline-ui';
-import { posPrinterService, type PosPrinterConfiguration, type PosPrinterStatus } from './pos-printer.service';
+import { posPrinterService, type PosPrinterConfiguration, type PosPrinterDevice, type PosPrinterStatus } from './pos-printer.service';
 import { type OfflineCart, type OfflineMetadataRecord } from './offline-types';
 
 const emptyViewModel: OfflineSnapshotViewModel = {
@@ -42,6 +42,7 @@ export function OfflineWorkstationPage() {
   const [retention, setRetention] = useState<OfflineRetentionReport | null>(null);
   const [printerConfiguration, setPrinterConfiguration] = useState<PosPrinterConfiguration | null>(null);
   const [printerStatus, setPrinterStatus] = useState<PosPrinterStatus | null>(null);
+  const [printerDevices, setPrinterDevices] = useState<PosPrinterDevice[]>([]);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -62,7 +63,12 @@ export function OfflineWorkstationPage() {
     setRetention(localRetention);
     const workstationId = localView.snapshot.workstation?.workstationId;
     setPrinterConfiguration(posPrinterService.getConfiguration(workstationId));
-    setPrinterStatus(await posPrinterService.getPrinterStatus(workstationId));
+    const [status, printers] = await Promise.all([
+      posPrinterService.getPrinterStatus(workstationId),
+      posPrinterService.listPrinters(workstationId),
+    ]);
+    setPrinterStatus(status);
+    setPrinterDevices(printers);
   }, []);
 
   useEffect(() => {
@@ -142,8 +148,35 @@ export function OfflineWorkstationPage() {
     if (!workstation?.workstationId || !printerConfiguration) return;
     const next = posPrinterService.saveConfiguration(workstation.workstationId, printerConfiguration);
     setPrinterConfiguration(next);
-    setPrinterStatus(await posPrinterService.getPrinterStatus(workstation.workstationId));
+    const [status, printers] = await Promise.all([
+      posPrinterService.getPrinterStatus(workstation.workstationId),
+      posPrinterService.listPrinters(workstation.workstationId),
+    ]);
+    setPrinterStatus(status);
+    setPrinterDevices(printers);
     setActionMessage('Configuration d impression enregistree pour ce poste.');
+  }
+
+  async function handleRefreshPrinters() {
+    if (!workstation?.workstationId) return;
+    if (printerConfiguration) {
+      setPrinterConfiguration(posPrinterService.saveConfiguration(workstation.workstationId, printerConfiguration));
+    }
+    const printers = await posPrinterService.listPrinters(workstation.workstationId);
+    setPrinterDevices(printers);
+    setPrinterStatus(await posPrinterService.getPrinterStatus(workstation.workstationId));
+    setActionMessage(printers.length ? `${printers.length} imprimante(s) detectee(s).` : 'Aucune imprimante detectee par l agent local.');
+  }
+
+  async function handleTestPrint() {
+    if (!workstation?.workstationId) return;
+    const next = printerConfiguration
+      ? posPrinterService.saveConfiguration(workstation.workstationId, printerConfiguration)
+      : posPrinterService.getConfiguration(workstation.workstationId);
+    setPrinterConfiguration(next);
+    const result = await posPrinterService.printTest(workstation.workstationId);
+    setPrinterStatus(await posPrinterService.getPrinterStatus(workstation.workstationId));
+    setActionMessage(result.message);
   }
 
   return (
@@ -309,13 +342,20 @@ export function OfflineWorkstationPage() {
               <label>
                 <span>Mode impression</span>
                 <select className="input compact-input" value={printerConfiguration.mode} onChange={(event) => setPrinterConfiguration({ ...printerConfiguration, mode: event.target.value === 'DIRECT' ? 'DIRECT' : 'BROWSER' })}>
-                  <option value="BROWSER">Navigateur</option>
                   <option value="DIRECT">Impression directe</option>
+                  <option value="BROWSER">Navigateur manuel</option>
                 </select>
               </label>
               <label>
                 <span>Imprimante</span>
-                <input className="input compact-input" value={printerConfiguration.printerName} onChange={(event) => setPrinterConfiguration({ ...printerConfiguration, printerName: event.target.value })} placeholder="Epson TM-T20" disabled={printerConfiguration.mode !== 'DIRECT'} />
+                <select className="input compact-input" value={printerConfiguration.printerName} onChange={(event) => setPrinterConfiguration({ ...printerConfiguration, printerName: event.target.value })} disabled={printerConfiguration.mode !== 'DIRECT'}>
+                  <option value="">{printerDevices.length ? 'Selectionner une imprimante' : 'Aucune imprimante chargee'}</option>
+                  {printerDevices.map((printer) => (
+                    <option key={printer.name} value={printer.name}>
+                      {printer.name}{printer.isDefault ? ' (defaut)' : ''}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label>
                 <span>Format</span>
@@ -337,6 +377,12 @@ export function OfflineWorkstationPage() {
                 <span>Imprimer automatiquement apres encaissement</span>
               </label>
               <div className="offline-panel-actions">
+                <button className="ghost-button compact-button" type="button" onClick={() => void handleRefreshPrinters()} disabled={!workstation?.workstationId}>
+                  Charger imprimantes
+                </button>
+                <button className="ghost-button compact-button" type="button" onClick={() => void handleTestPrint()} disabled={!workstation?.workstationId || printerConfiguration.mode !== 'DIRECT'}>
+                  Test impression
+                </button>
                 <button className="ghost-button compact-button" type="button" onClick={() => void handleSavePrinterConfiguration()} disabled={!workstation?.workstationId}>
                   Enregistrer impression
                 </button>

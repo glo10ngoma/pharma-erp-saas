@@ -867,6 +867,17 @@ export function OfflinePosPage() {
     }
   }
 
+  function printSaleTicketWithBrowser(sale: OfflineSale) {
+    const result = posPrinterService.printBrowserTicket({
+      workstationId: sale.workstationId,
+      sale,
+      siteName: workstation?.siteName ?? null,
+      sellerName: auth?.displayName ?? null,
+      workstationName: workstation?.workstationName ?? null,
+    });
+    setMessage(result.message);
+  }
+
   if (!pageModel || !cart) {
     const actionRequired = initState === 'ACTION_REQUIRED';
     const revoked = initState === 'REVOKED';
@@ -1293,28 +1304,30 @@ export function OfflinePosPage() {
                   </label>
                 </div>
               </div>
-              <div className="offline-payment-readonly">
-                <h4>Informations</h4>
-                <div className="offline-payment-readonly-row">
-                  <span>Part patient</span>
-                  <strong>{formatMoney(cart.patientShareUsd, 'USD')}</strong>
-                  <strong>{settings?.exchangeRate?.rate ? `${Math.round(cart.patientShareUsd * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong>
+              <div className="offline-payment-secondary">
+                <div className="offline-payment-readonly">
+                  <h4>Informations</h4>
+                  <div className="offline-payment-readonly-row">
+                    <span>Part patient</span>
+                    <strong>{formatMoney(cart.patientShareUsd, 'USD')}</strong>
+                    <strong>{settings?.exchangeRate?.rate ? `${Math.round(cart.patientShareUsd * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong>
+                  </div>
+                  <div className="offline-payment-readonly-row">
+                    <span>Part assurance</span>
+                    <strong>{formatMoney(cart.insuranceShareUsd, 'USD')}</strong>
+                    <strong>{settings?.exchangeRate?.rate ? `${Math.round(cart.insuranceShareUsd * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong>
+                  </div>
                 </div>
-                <div className="offline-payment-readonly-row">
-                  <span>Part assurance</span>
-                  <strong>{formatMoney(cart.insuranceShareUsd, 'USD')}</strong>
-                  <strong>{settings?.exchangeRate?.rate ? `${Math.round(cart.insuranceShareUsd * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong>
-                </div>
+                <label className="offline-payment-note">
+                  <span>NOTE</span>
+                  <textarea
+                    className="input compact-input offline-note-input"
+                    rows={3}
+                    value={noteDraft}
+                    onChange={(event) => handleNoteChange(event.target.value)}
+                  />
+                </label>
               </div>
-              <label className="offline-payment-note">
-                <span>NOTE</span>
-                <textarea
-                  className="input compact-input offline-note-input"
-                  rows={3}
-                  value={noteDraft}
-                  onChange={(event) => handleNoteChange(event.target.value)}
-                />
-              </label>
               <button className="button compact-button offline-checkout-button offline-checkout-button-inline offline-payment-checkout-button" type="button" onClick={() => void handleFinalizeOfflineSale()} disabled={busyAction !== null || !canFinalizeOfflineSale}>
                 <span>{busyAction === 'CHECKOUT' ? 'ENCAISSEMENT...' : 'ENCAISSER'}</span>
                 <span className="offline-checkout-shortcut">F8</span>
@@ -1322,9 +1335,14 @@ export function OfflinePosPage() {
               <div className="offline-checkout-feedback" role="status" aria-live="polite">
                 {!canFinalizeOfflineSale && checkoutDisabledReason ? <span>{checkoutDisabledReason}</span> : null}
                 {printRetrySale ? (
-                  <button className="ghost-button compact-button" type="button" onClick={() => void printSaleTicket(printRetrySale)}>
-                    Ticket non imprime - Reessayer
-                  </button>
+                  <div className="offline-print-retry-actions">
+                    <button className="ghost-button compact-button" type="button" onClick={() => void printSaleTicket(printRetrySale)}>
+                      Reessayer impression directe
+                    </button>
+                    <button className="ghost-button compact-button" type="button" onClick={() => printSaleTicketWithBrowser(printRetrySale)}>
+                      Impression navigateur
+                    </button>
+                  </div>
                 ) : null}
               </div>
             </section>

@@ -1,4 +1,4 @@
-import { buildOfflineReceiptHtml } from './offline-ui';
+import { buildOfflineReceiptHtml, buildOfflineReceiptText } from './offline-ui';
 import { type OfflineSale } from './offline-types';
 
 export type PosPrinterMode = 'BROWSER' | 'DIRECT';
@@ -23,6 +23,11 @@ export type PosPrinterResult = {
   message: string;
 };
 
+export type PosPrinterDevice = {
+  name: string;
+  isDefault: boolean;
+};
+
 type PosPrinterTicket = {
   workstationId: string;
   sale: OfflineSale;
@@ -32,14 +37,15 @@ type PosPrinterTicket = {
 };
 
 const PRINTER_CONFIG_PREFIX = 'pharmaerp:offline-printer:';
+const DEFAULT_AGENT_URL = 'http://127.0.0.1:17373';
 
 const DEFAULT_CONFIGURATION: PosPrinterConfiguration = {
-  mode: 'BROWSER',
+  mode: 'DIRECT',
   printerName: '',
   paperWidthMm: 80,
   autoPrint: true,
   copies: 1,
-  agentUrl: '',
+  agentUrl: DEFAULT_AGENT_URL,
 };
 
 export const posPrinterService = {
@@ -62,20 +68,34 @@ export const posPrinterService = {
 
   async getPrinterStatus(workstationId: string | null | undefined): Promise<PosPrinterStatus> {
     const configuration = this.getConfiguration(workstationId);
-    if (configuration.mode === 'BROWSER') {
-      return { status: 'READY', message: 'Dialogue d impression du navigateur actif.' };
-    }
     const agentUrl = getLocalAgentUrl(configuration.agentUrl);
     if (!agentUrl || !configuration.printerName.trim()) {
       return { status: 'NOT_CONFIGURED', message: 'Impression directe a configurer sur ce poste.' };
     }
 
     try {
-      const response = await fetch(`${agentUrl}/status`, { signal: AbortSignal.timeout(1500) });
+      const response = await fetch(`${agentUrl}/health`, { signal: AbortSignal.timeout(1500) });
       if (!response.ok) throw new Error('PRINT_AGENT_UNAVAILABLE');
       return { status: 'READY', message: `Agent local pret pour ${configuration.printerName}.` };
     } catch {
-      return { status: 'UNAVAILABLE', message: 'Agent d impression local indisponible.' };
+      return { status: 'UNAVAILABLE', message: 'Service d impression locale indisponible.' };
+    }
+  },
+
+  async listPrinters(workstationId: string | null | undefined): Promise<PosPrinterDevice[]> {
+    const configuration = this.getConfiguration(workstationId);
+    const agentUrl = getLocalAgentUrl(configuration.agentUrl);
+    if (!agentUrl) return [];
+    try {
+      const response = await fetch(`${agentUrl}/printers`, { signal: AbortSignal.timeout(2500) });
+      if (!response.ok) throw new Error('PRINT_AGENT_UNAVAILABLE');
+      const payload = await response.json();
+      const printers = Array.isArray(payload?.printers) ? payload.printers : [];
+      return printers
+        .map((row: unknown) => normalizePrinterDevice(row))
+        .filter((row: PosPrinterDevice | null): row is PosPrinterDevice => Boolean(row));
+    } catch {
+      return [];
     }
   },
 
@@ -86,12 +106,12 @@ export const posPrinterService = {
     }
 
     if (configuration.mode === 'BROWSER') {
-      return printWithBrowser(ticket);
+      return { success: false, message: 'Service d impression locale indisponible.' };
     }
 
     const agentUrl = getLocalAgentUrl(configuration.agentUrl);
     if (!agentUrl || !configuration.printerName.trim()) {
-      return { success: false, message: 'Impression directe non configuree sur ce poste.' };
+      return { success: false, message: 'Service d impression locale indisponible.' };
     }
 
     try {
@@ -106,6 +126,7 @@ export const posPrinterService = {
             offlineReference: ticket.sale.offlineReference,
             validatedAt: ticket.sale.validatedAt,
             html: buildOfflineReceiptHtml(ticket),
+            text: buildOfflineReceiptText(ticket),
           },
         }),
         signal: AbortSignal.timeout(2500),
@@ -113,7 +134,46 @@ export const posPrinterService = {
       if (!response.ok) throw new Error('PRINT_AGENT_FAILED');
       return { success: true, message: 'Ticket envoye a l imprimante configuree.' };
     } catch {
-      return { success: false, message: 'Ticket non imprime - Reessayer.' };
+      return { success: false, message: 'Service d impression locale indisponible.' };
+    }
+  },
+
+  printBrowserTicket(ticket: PosPrinterTicket): PosPrinterResult {
+    return printWithBrowser(ticket);
+  },
+
+  async printTest(workstationId: string): Promise<PosPrinterResult> {
+    const configuration = this.getConfiguration(workstationId);
+    const agentUrl = getLocalAgentUrl(configuration.agentUrl);
+    if (!agentUrl || !configuration.printerName.trim()) {
+      return { success: false, message: 'Service d impression locale indisponible.' };
+    }
+    try {
+      const response = await fetch(`${agentUrl}/print`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          printerName: configuration.printerName,
+          paperWidthMm: configuration.paperWidthMm,
+          copies: 1,
+          ticket: {
+            offlineReference: 'TEST-PRINT',
+            validatedAt: new Date().toISOString(),
+            text: [
+              'PharmaERP POS',
+              'Test impression directe',
+              `Imprimante : ${configuration.printerName}`,
+              `Format : ${configuration.paperWidthMm} mm`,
+              new Date().toLocaleString('fr-FR'),
+            ].join('\n'),
+          },
+        }),
+        signal: AbortSignal.timeout(2500),
+      });
+      if (!response.ok) throw new Error('PRINT_AGENT_FAILED');
+      return { success: true, message: 'Ticket test envoye a l imprimante configuree.' };
+    } catch {
+      return { success: false, message: 'Service d impression locale indisponible.' };
     }
   },
 };
@@ -125,7 +185,7 @@ function normalizeConfiguration(value: Partial<PosPrinterConfiguration>): PosPri
     paperWidthMm: value.paperWidthMm === 58 ? 58 : 80,
     autoPrint: value.autoPrint !== false,
     copies: Math.min(5, Math.max(1, Math.round(Number(value.copies) || 1))),
-    agentUrl: String(value.agentUrl ?? '').trim(),
+    agentUrl: String(value.agentUrl ?? DEFAULT_AGENT_URL).trim() || DEFAULT_AGENT_URL,
   };
 }
 
@@ -138,6 +198,14 @@ function getLocalAgentUrl(value: string) {
   } catch {
     return null;
   }
+}
+
+function normalizePrinterDevice(value: unknown): PosPrinterDevice | null {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as { name?: unknown; isDefault?: unknown; default?: unknown };
+  const name = String(row.name ?? '').trim();
+  if (!name) return null;
+  return { name, isDefault: row.isDefault === true || row.default === true };
 }
 
 function printWithBrowser(ticket: PosPrinterTicket): PosPrinterResult {

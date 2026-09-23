@@ -418,6 +418,52 @@ export function buildOfflineReceiptHtml(params: {
 </html>`;
 }
 
+export function buildOfflineReceiptText(params: {
+  sale: OfflineSale;
+  siteName?: string | null;
+  sellerName?: string | null;
+  workstationName?: string | null;
+}) {
+  const { sale } = params;
+  const receipt = buildOfflineReceiptViewModel(sale);
+  const lines = [
+    'PharmaERP POS',
+    params.siteName ?? '-',
+    '',
+    'VENTE',
+    `Reference offline : ${sale.offlineReference}`,
+    `Reference serveur : ${sale.serverSaleNumber ?? 'En attente'}`,
+    `Date : ${formatDateTime(sale.validatedAt)}`,
+    `Vendeur : ${params.sellerName ?? '-'}`,
+    `Poste : ${params.workstationName ?? sale.workstationId}`,
+    `Type : ${receipt.saleTypeLabel}`,
+    `Mode : ${receipt.saleModeLabel}`,
+  ];
+
+  if (receipt.membershipLabel) lines.push(`Assurance : ${receipt.membershipLabel}`);
+  lines.push('', 'Articles');
+  sale.items.forEach((item) => {
+    lines.push(`${item.articleName}`);
+    lines.push(`  ${item.quantity} x ${formatMoney(item.unitPriceSnapshot, 'USD')} = ${formatMoney(item.lineTotal, 'USD')}`);
+  });
+  lines.push(
+    '',
+    `Total USD : ${formatMoney(sale.total, 'USD')}`,
+    `Total CDF : ${receipt.totalCdfLabel}`,
+    `Part patient : ${formatMoney(sale.patientShareUsd, 'USD')} / ${receipt.patientShareCdfLabel}`,
+    `Part assurance : ${formatMoney(sale.insuranceShareUsd, 'USD')} / ${receipt.insuranceShareCdfLabel}`,
+    `Paye USD : ${formatMoney(sale.paymentSettlement.amountPaidUsd, 'USD')}`,
+    `Paye FC : ${receipt.paidCdfLabel}`,
+    `Rendu USD : ${formatMoney(sale.paymentSettlement.amountReturnedUsd, 'USD')}`,
+    `Rendu FC : ${receipt.returnedCdfLabel}`,
+    `Statut : ${sale.syncStatus === 'SYNCED' ? 'Synchronisee' : 'Vente enregistree hors ligne'}`,
+  );
+  if (receipt.rateLabel) lines.push(`Taux utilise : ${receipt.rateLabel}`);
+  if (sale.note) lines.push(`Note : ${sale.note}`);
+  lines.push('', 'Merci.');
+  return lines.join('\n');
+}
+
 function buildOfflineReceiptViewModel(sale: OfflineSale) {
   const rate = sale.exchangeRateSnapshot ?? null;
   return {
