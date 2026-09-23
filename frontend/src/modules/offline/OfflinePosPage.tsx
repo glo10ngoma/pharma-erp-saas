@@ -1192,6 +1192,17 @@ export function OfflinePosPage() {
               </section>
             </section>
 
+            <section className="card offline-panel offline-sale-note-card">
+              <div className="offline-panel-heading"><h3>Note</h3></div>
+              <textarea
+                className="input compact-input offline-note-input"
+                rows={3}
+                value={noteDraft}
+                placeholder="Commentaire interne optionnel"
+                onChange={(event) => handleNoteChange(event.target.value)}
+              />
+            </section>
+
               <section className="card offline-panel offline-search-card">
                 <div className="offline-panel-heading">
                   <div>
@@ -1304,30 +1315,6 @@ export function OfflinePosPage() {
                   </label>
                 </div>
               </div>
-              <div className="offline-payment-secondary">
-                <div className="offline-payment-readonly">
-                  <h4>Informations</h4>
-                  <div className="offline-payment-readonly-row">
-                    <span>Part patient</span>
-                    <strong>{formatMoney(cart.patientShareUsd, 'USD')}</strong>
-                    <strong>{settings?.exchangeRate?.rate ? `${Math.round(cart.patientShareUsd * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong>
-                  </div>
-                  <div className="offline-payment-readonly-row">
-                    <span>Part assurance</span>
-                    <strong>{formatMoney(cart.insuranceShareUsd, 'USD')}</strong>
-                    <strong>{settings?.exchangeRate?.rate ? `${Math.round(cart.insuranceShareUsd * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong>
-                  </div>
-                </div>
-                <label className="offline-payment-note">
-                  <span>NOTE</span>
-                  <textarea
-                    className="input compact-input offline-note-input"
-                    rows={3}
-                    value={noteDraft}
-                    onChange={(event) => handleNoteChange(event.target.value)}
-                  />
-                </label>
-              </div>
               <button className="button compact-button offline-checkout-button offline-checkout-button-inline offline-payment-checkout-button" type="button" onClick={() => void handleFinalizeOfflineSale()} disabled={busyAction !== null || !canFinalizeOfflineSale}>
                 <span>{busyAction === 'CHECKOUT' ? 'ENCAISSEMENT...' : 'ENCAISSER'}</span>
                 <span className="offline-checkout-shortcut">F8</span>
@@ -1344,6 +1331,19 @@ export function OfflinePosPage() {
                     </button>
                   </div>
                 ) : null}
+              </div>
+              <div className="offline-payment-readonly offline-payment-readonly-secondary">
+                <h4>Informations</h4>
+                <div className="offline-payment-readonly-row">
+                  <span>Part patient</span>
+                  <strong>{formatMoney(cart.patientShareUsd, 'USD')}</strong>
+                  <strong>{settings?.exchangeRate?.rate ? `${Math.round(cart.patientShareUsd * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong>
+                </div>
+                <div className="offline-payment-readonly-row">
+                  <span>Part assurance</span>
+                  <strong>{formatMoney(cart.insuranceShareUsd, 'USD')}</strong>
+                  <strong>{settings?.exchangeRate?.rate ? `${Math.round(cart.insuranceShareUsd * settings.exchangeRate.rate).toLocaleString('fr-FR')} FC` : '-'}</strong>
+                </div>
               </div>
             </section>
           </aside>

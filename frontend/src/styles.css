@@ -7712,6 +7712,18 @@ details.nav-group .nav-link {
   min-width: 0;
 }
 
+.offline-sale-note-card {
+  gap: 8px;
+  min-height: 0;
+  padding: 12px 14px;
+}
+
+.offline-sale-note-card .offline-note-input {
+  height: 68px;
+  min-height: 68px;
+  resize: vertical;
+}
+
 .offline-client-card,
 .offline-choice-card {
   gap: 8px;
@@ -8309,11 +8321,11 @@ details.nav-group .nav-link {
   align-items: center;
   cursor: pointer;
   display: inline-flex;
-  flex-shrink: 0;
-  height: 44px;
+  flex: 0 0 52px;
+  height: 52px;
   justify-content: space-between;
   margin-top: auto;
-  min-height: 44px;
+  min-height: 52px;
   width: 100%;
 }
 
@@ -8562,18 +8574,12 @@ details.nav-group .nav-link {
   display: grid;
 }
 
-.offline-payment-note .offline-note-input {
-  height: 64px;
-  max-height: 96px;
-  min-height: 64px;
-  resize: none;
-}
-
 .offline-checkout-feedback {
   align-items: flex-start;
   color: var(--danger);
   display: flex;
   flex-direction: column;
+  flex: 0 0 auto;
   font-size: 0.74rem;
   gap: 6px;
   line-height: 1.25;
@@ -8592,19 +8598,24 @@ details.nav-group .nav-link {
   flex-direction: column;
   gap: 8px;
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
   padding: 12px 14px 12px;
 }
 
-.offline-payment-secondary {
-  display: grid;
-  gap: 8px;
-  min-height: 0;
+.offline-payment-settlement-card {
+  flex: 0 0 auto;
 }
 
 .offline-payment-readonly {
   gap: 4px;
   padding-top: 6px;
+}
+
+.offline-payment-readonly-secondary {
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  flex: 0 0 auto;
+  margin-top: 0;
+  padding-top: 8px;
 }
 
 .offline-payment-readonly-row {
