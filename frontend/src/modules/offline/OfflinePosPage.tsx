@@ -99,11 +99,14 @@ export function OfflinePosPage() {
   const autoExactSelectionRef = useRef<string | null>(null);
   const returnedValuesAutofilledRef = useRef(false);
   const addToCartMetricsRef = useRef<Record<string, number>>({});
+  const lastAppliedSyncRef = useRef<string | null>(null);
   const syncEngine = useSyncEngine();
 
-  async function refresh(cartId?: string | null) {
-    setInitState('LOADING');
-    setInitError('');
+  async function refresh(cartId?: string | null, options?: { silent?: boolean }) {
+    if (!options?.silent) {
+      setInitState('LOADING');
+      setInitError('');
+    }
     try {
       const environment = await ensureOfflineEnvironmentReady({
         cartId: cartId ?? selectedCartId,
@@ -133,6 +136,13 @@ export function OfflinePosPage() {
   useEffect(() => {
     void refresh(selectedCartId);
   }, [selectedCartId]);
+
+  useEffect(() => {
+    const syncedAt = syncEngine.lastSuccessfulSyncAt;
+    if (!syncedAt || lastAppliedSyncRef.current === syncedAt) return;
+    lastAppliedSyncRef.current = syncedAt;
+    void refresh(selectedCartId, { silent: true });
+  }, [selectedCartId, syncEngine.lastSuccessfulSyncAt]);
 
   useEffect(() => {
     function handleOnline() {
