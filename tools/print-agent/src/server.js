@@ -34,7 +34,7 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === 'POST' && url.pathname === '/print') {
     return readJsonBody(req).then(
-      (body) => handlePrint(body, res),
+      (body) => handlePrint(body, res).catch((error) => sendJson(res, 400, { error: 'INVALID_PRINT_JOB', message: error.message })),
       (error) => sendJson(res, 400, { error: 'INVALID_PAYLOAD', message: error.message }),
     );
   }
@@ -98,7 +98,9 @@ function listPrinters() {
     "Select-Object @{Name='name';Expression={$_.Name}},@{Name='isDefault';Expression={$_.Default}}",
     'ConvertTo-Json -Depth 3',
   ].join(' | ');
-  return runPowerShell(['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command]).then((stdout) => {
+  return runPowerShell(['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command])
+    .catch(() => listPrintersFromRegistry())
+    .then((stdout) => {
     const raw = stdout.trim();
     if (!raw) return [];
     const parsed = JSON.parse(raw);
@@ -108,10 +110,24 @@ function listPrinters() {
   });
 }
 
-function handlePrint(body, res) {
+function listPrintersFromRegistry() {
+  const command = [
+    "$devices = Get-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Devices'",
+    "$default = (Get-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Windows' -Name Device -ErrorAction SilentlyContinue).Device",
+    "$defaultName = if ($default) { ($default -split ',')[0] } else { '' }",
+    "$devices.PSObject.Properties | Where-Object { $_.Name -notlike 'PS*' } | Select-Object @{Name='name';Expression={$_.Name}},@{Name='isDefault';Expression={$_.Name -eq $defaultName}} | ConvertTo-Json -Depth 3",
+  ].join('; ');
+  return runPowerShell(['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command]);
+}
+
+async function handlePrint(body, res) {
   const job = validatePrintJob(body);
   if (process.env.PRINT_AGENT_DRY_RUN === '1') {
     return sendJson(res, 200, { status: 'queued', dryRun: true });
+  }
+  const printers = await listPrinters();
+  if (!printers.some((printer) => printer.name === job.printerName)) {
+    throw new Error('printerName must match a detected local printer');
   }
 
   const jobPath = path.join(os.tmpdir(), `pharmaerp-print-${Date.now()}-${Math.random().toString(16).slice(2)}.json`);
