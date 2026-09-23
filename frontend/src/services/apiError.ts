@@ -27,6 +27,7 @@ const LABELS: Record<string, string> = {
   CHANGE_NOT_ALLOWED_FOR_NON_CASH: 'La monnaie rendue est reservee aux paiements especes.',
   SETTLEMENT_REASON_REQUIRED: 'Un motif est obligatoire pour cet ecart de reglement.',
   EXCHANGE_RATE_REQUIRED: 'Un taux de change valide est obligatoire pour ce reglement.',
+  INVALID_EXCHANGE_RATE: 'Veuillez saisir un taux USD/CDF valide.',
   INVALID_OLD_PASSWORD: 'Ancien mot de passe incorrect.',
   PASSWORD_CONFIRMATION_MISMATCH: 'La confirmation ne correspond pas au nouveau mot de passe.',
   PASSWORD_REUSE_NOT_ALLOWED: 'Le nouveau mot de passe doit etre different de l ancien.',
