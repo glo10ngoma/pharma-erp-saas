@@ -139,6 +139,13 @@ export class PosSyncService {
 
       try {
         const replayResult = await this.replayOperation(user, operation);
+        if (operation.operationType === 'SALE_VALIDATE') {
+          const refreshedAllocations = await this.repository.ensureAutomaticAllocationsForWorkstation(user, {
+            workstationId: operation.workstationId,
+            deviceId: operation.deviceId,
+          });
+          replayResult.allocations = this.mergeAllocationRefresh(replayResult.allocations ?? [], refreshedAllocations);
+        }
 
         await this.repository.recordProcessedOperation(user, {
           operationId: operation.operationId,
@@ -247,5 +254,43 @@ export class PosSyncService {
       default:
         throw new Error('OPERATION_NOT_SUPPORTED');
     }
+  }
+
+  private mergeAllocationRefresh(
+    acknowledgements: Array<{
+      allocationId: string;
+      lotId: string;
+      acknowledgedQuantity: number;
+      serverAllocatedQuantity?: number;
+      serverConsumedQuantity: number;
+      availableQuantity: number;
+      serverVersion: number;
+      status: string;
+    }>,
+    refreshedAllocations: Array<{
+      allocationId: string;
+      lotId: string;
+      serverAllocatedQuantity: number;
+      serverConsumedQuantity: number;
+      availableQuantityServer: number;
+      serverVersion: number;
+      status: string;
+    }>,
+  ) {
+    const byId = new Map(acknowledgements.map((item) => [item.allocationId, item]));
+    for (const allocation of refreshedAllocations) {
+      const existing = byId.get(allocation.allocationId);
+      byId.set(allocation.allocationId, {
+        allocationId: allocation.allocationId,
+        lotId: allocation.lotId,
+        acknowledgedQuantity: existing?.acknowledgedQuantity ?? 0,
+        serverAllocatedQuantity: allocation.serverAllocatedQuantity,
+        serverConsumedQuantity: allocation.serverConsumedQuantity,
+        availableQuantity: allocation.availableQuantityServer,
+        serverVersion: allocation.serverVersion,
+        status: allocation.status,
+      });
+    }
+    return Array.from(byId.values());
   }
 }

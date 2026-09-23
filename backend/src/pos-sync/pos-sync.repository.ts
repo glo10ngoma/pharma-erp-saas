@@ -1134,6 +1134,13 @@ export class PosSyncRepository {
     }));
   }
 
+  async ensureAutomaticAllocationsForWorkstation(user: AuthUser, params: { workstationId?: string; deviceId?: string }) {
+    const workstation = await this.resolveWorkstation(user, params);
+    const settings = await this.getOfflineSettings(user);
+    await this.ensureAutomaticOfflineAllocations(user, workstation, settings);
+    return this.getBootstrapAllocations(user, workstation);
+  }
+
   async ensureWorkstationOperational(user: AuthUser, params: { workstationId?: string; deviceId?: string }) {
     return this.resolveWorkstation(user, params);
   }

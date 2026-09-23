@@ -64,6 +64,7 @@ export type PosSyncOperationAllocationAck = {
   allocationId: string;
   lotId: string;
   acknowledgedQuantity: number;
+  serverAllocatedQuantity?: number;
   serverConsumedQuantity: number;
   availableQuantity: number;
   serverVersion: number;

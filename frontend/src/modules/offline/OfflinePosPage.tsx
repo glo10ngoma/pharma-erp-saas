@@ -31,7 +31,7 @@ import {
   finalizeOfflineCashSale,
 } from './offline-sale';
 import { canAttachOfflineCashSale } from './offline-cash';
-import { notifyOfflineSaleQueued } from './sync-engine';
+import { notifyOfflineSaleQueued, runSync } from './sync-engine';
 import { OfflineNetworkBanner, OfflineReceiptTicket, OfflineWorkspaceLayout, mapOfflineSellerMessage } from './offline-ui';
 import { posPrinterService } from './pos-printer.service';
 import {
@@ -566,7 +566,7 @@ export function OfflinePosPage() {
     if (result.status === 'READY') return `${result.offlineAvailableQuantity} dispo`;
     if (result.status === 'INACTIVE') return 'Inactif';
     if (result.status === 'NO_PRICE') return 'Prix indisponible';
-    return 'Quota epuise';
+    return viewModel.networkStatus === 'ONLINE' ? 'Actualisation stock' : 'Stock local epuise';
   }
 
   useEffect(() => {
@@ -589,12 +589,18 @@ export function OfflinePosPage() {
   async function handleSelectArticle(result: LocalCatalogSearchResult, quantityDelta = 1) {
     if (!cart) return;
     if (result.status !== 'READY') {
+      if (result.status === 'NO_QUOTA' && navigator.onLine) {
+        setMessage('Actualisation du stock...');
+        await runSync('manual');
+        await refresh(selectedCartId, { silent: true });
+        return;
+      }
       setMessage(
         result.status === 'INACTIVE'
           ? 'Article inactif dans le snapshot local.'
           : result.status === 'NO_PRICE'
             ? 'Prix de vente indisponible dans le snapshot local.'
-            : 'Quota offline epuise sur ce poste.',
+            : 'Stock local epuise - connexion requise.',
       );
       return;
     }

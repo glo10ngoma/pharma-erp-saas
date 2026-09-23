@@ -577,8 +577,8 @@ export function mapOfflineError(error: unknown) {
 }
 
 export function formatQuotaAlert(available: number) {
-  if (available <= 0) return 'Quota offline epuise sur ce poste.';
-  if (available <= 2) return `Quota offline faible : ${available} unite(s) restante(s).`;
+  if (available <= 0) return 'Stock local epuise - connexion requise.';
+  if (available <= 2) return `Stock local faible : ${available} unite(s) restante(s).`;
   return null;
 }
 

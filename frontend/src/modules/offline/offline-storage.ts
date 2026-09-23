@@ -635,6 +635,9 @@ export async function updateOfflineSyncOperationResult(params: {
         if (!ack) return normalizeAllocation(row);
         return normalizeAllocation({
           ...row,
+          serverAllocatedQuantity: Number.isFinite(Number(ack.serverAllocatedQuantity))
+            ? Math.max(Number(row.serverAllocatedQuantity ?? 0), Number(ack.serverAllocatedQuantity ?? 0))
+            : Number(row.serverAllocatedQuantity ?? 0),
           serverConsumedQuantity: Math.max(Number(row.serverConsumedQuantity ?? 0), Number(ack.serverConsumedQuantity ?? 0)),
           localPendingConsumption: Math.max(0, Number(row.localPendingConsumption ?? 0) - Number(ack.acknowledgedQuantity ?? 0)),
           allocationStatus: normalizeAllocationStatus(ack.status),
