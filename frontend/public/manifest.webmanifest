@@ -1,7 +1,7 @@
 {
   "name": "PharmaERP POS",
   "short_name": "PharmaERP POS",
-  "description": "Point de vente PharmaERP",
+  "description": "POS PharmaERP",
   "start_url": "/pos",
   "scope": "/",
   "display": "standalone",

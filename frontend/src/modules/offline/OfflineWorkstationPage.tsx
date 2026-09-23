@@ -7,6 +7,7 @@ import { readOfflineMetadata } from './offline-storage';
 import { buildOfflineDiagnosticExport, getOfflineStorageReport, requestOfflinePersistence, runOfflineRecovery, runOfflineRetention, type OfflineRecoveryReport, type OfflineRetentionReport, type OfflineStorageReport } from './offline-recovery';
 import { runSync } from './sync-engine';
 import { OfflineWorkspaceLayout } from './offline-ui';
+import { posPrinterService, type PosPrinterConfiguration, type PosPrinterStatus } from './pos-printer.service';
 import { type OfflineCart, type OfflineMetadataRecord } from './offline-types';
 
 const emptyViewModel: OfflineSnapshotViewModel = {
@@ -39,6 +40,8 @@ export function OfflineWorkstationPage() {
   const [recovery, setRecovery] = useState<OfflineRecoveryReport | null>(null);
   const [storage, setStorage] = useState<OfflineStorageReport | null>(null);
   const [retention, setRetention] = useState<OfflineRetentionReport | null>(null);
+  const [printerConfiguration, setPrinterConfiguration] = useState<PosPrinterConfiguration | null>(null);
+  const [printerStatus, setPrinterStatus] = useState<PosPrinterStatus | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -57,6 +60,9 @@ export function OfflineWorkstationPage() {
     setStorage(localStorage);
     setRecovery(localRecovery);
     setRetention(localRetention);
+    const workstationId = localView.snapshot.workstation?.workstationId;
+    setPrinterConfiguration(posPrinterService.getConfiguration(workstationId));
+    setPrinterStatus(await posPrinterService.getPrinterStatus(workstationId));
   }, []);
 
   useEffect(() => {
@@ -132,6 +138,14 @@ export function OfflineWorkstationPage() {
     setActionMessage('Diagnostic local exporte.');
   }
 
+  async function handleSavePrinterConfiguration() {
+    if (!workstation?.workstationId || !printerConfiguration) return;
+    const next = posPrinterService.saveConfiguration(workstation.workstationId, printerConfiguration);
+    setPrinterConfiguration(next);
+    setPrinterStatus(await posPrinterService.getPrinterStatus(workstation.workstationId));
+    setActionMessage('Configuration d impression enregistree pour ce poste.');
+  }
+
   return (
     <OfflineWorkspaceLayout
       mode="seller"
@@ -141,7 +155,7 @@ export function OfflineWorkstationPage() {
       subtitle="Sante locale du poste, stockage, snapshot, recovery et export diagnostic."
       topActions={(
         <>
-          <Link className="ghost-button compact-button" to="/pos">Point de vente</Link>
+          <Link className="ghost-button compact-button" to="/pos">POS</Link>
           <Link className="ghost-button compact-button" to="/offline/synchronisation">Synchronisation</Link>
         </>
       )}
@@ -281,6 +295,56 @@ export function OfflineWorkstationPage() {
             <p className="empty-state compact-empty-state">Aucune anomalie locale detectee.</p>
           )}
         </div>
+
+        <section className="card offline-panel">
+          <div className="offline-panel-heading">
+            <div>
+              <h3>Impression du poste</h3>
+              <p className="offline-row-meta">Configuration locale reservee au support. L impression directe exige un agent Windows loopback configure.</p>
+            </div>
+            <span className="badge compact-badge badge-neutral">{printerStatus?.status ?? 'UNKNOWN'}</span>
+          </div>
+          {printerConfiguration ? (
+            <div className="offline-printer-config">
+              <label>
+                <span>Mode impression</span>
+                <select className="input compact-input" value={printerConfiguration.mode} onChange={(event) => setPrinterConfiguration({ ...printerConfiguration, mode: event.target.value === 'DIRECT' ? 'DIRECT' : 'BROWSER' })}>
+                  <option value="BROWSER">Navigateur</option>
+                  <option value="DIRECT">Impression directe</option>
+                </select>
+              </label>
+              <label>
+                <span>Imprimante</span>
+                <input className="input compact-input" value={printerConfiguration.printerName} onChange={(event) => setPrinterConfiguration({ ...printerConfiguration, printerName: event.target.value })} placeholder="Epson TM-T20" disabled={printerConfiguration.mode !== 'DIRECT'} />
+              </label>
+              <label>
+                <span>Format</span>
+                <select className="input compact-input" value={printerConfiguration.paperWidthMm} onChange={(event) => setPrinterConfiguration({ ...printerConfiguration, paperWidthMm: event.target.value === '58' ? 58 : 80 })}>
+                  <option value="80">80 mm</option>
+                  <option value="58">58 mm</option>
+                </select>
+              </label>
+              <label>
+                <span>Exemplaires</span>
+                <input className="input compact-input" type="number" min="1" max="5" value={printerConfiguration.copies} onChange={(event) => setPrinterConfiguration({ ...printerConfiguration, copies: Number(event.target.value) || 1 })} />
+              </label>
+              <label className="offline-printer-config-wide">
+                <span>Agent local</span>
+                <input className="input compact-input" value={printerConfiguration.agentUrl} onChange={(event) => setPrinterConfiguration({ ...printerConfiguration, agentUrl: event.target.value })} placeholder="http://127.0.0.1:17373" disabled={printerConfiguration.mode !== 'DIRECT'} />
+              </label>
+              <label className="offline-printer-config-toggle">
+                <input type="checkbox" checked={printerConfiguration.autoPrint} onChange={(event) => setPrinterConfiguration({ ...printerConfiguration, autoPrint: event.target.checked })} />
+                <span>Imprimer automatiquement apres encaissement</span>
+              </label>
+              <div className="offline-panel-actions">
+                <button className="ghost-button compact-button" type="button" onClick={() => void handleSavePrinterConfiguration()} disabled={!workstation?.workstationId}>
+                  Enregistrer impression
+                </button>
+              </div>
+              <p className="offline-row-meta">{printerStatus?.message ?? 'Configuration non chargee.'}</p>
+            </div>
+          ) : <p className="loading-state">Chargement de la configuration d impression...</p>}
+        </section>
       </section>
     </OfflineWorkspaceLayout>
   );

@@ -1435,8 +1435,8 @@ export class SalesRepository {
         const movementRows = [
           settlement.amountPaidUsd > 0 ? { movementType: 'SALE_PAYMENT', amount: settlement.amountPaidUsd, currencyId: currencies.USD, description: `Paiement brut USD vente ${sale.sale_number}` } : null,
           settlement.amountPaidCdf > 0 ? { movementType: 'SALE_PAYMENT', amount: settlement.amountPaidCdf, currencyId: currencies.CDF, description: `Paiement brut CDF vente ${sale.sale_number}` } : null,
-          settlement.amountReturnedUsd > 0 ? { movementType: 'SALE_CHANGE', amount: settlement.amountReturnedUsd, currencyId: currencies.USD, description: `Monnaie rendue USD vente ${sale.sale_number}` } : null,
-          settlement.amountReturnedCdf > 0 ? { movementType: 'SALE_CHANGE', amount: settlement.amountReturnedCdf, currencyId: currencies.CDF, description: `Monnaie rendue CDF vente ${sale.sale_number}` } : null,
+          settlement.amountReturnedUsd > 0 ? { movementType: 'CASH_OUT', amount: settlement.amountReturnedUsd, currencyId: currencies.USD, description: `Monnaie rendue USD vente ${sale.sale_number}` } : null,
+          settlement.amountReturnedCdf > 0 ? { movementType: 'CASH_OUT', amount: settlement.amountReturnedCdf, currencyId: currencies.CDF, description: `Monnaie rendue CDF vente ${sale.sale_number}` } : null,
         ].filter(Boolean) as Array<{ movementType: string; amount: number; currencyId: string; description: string }>;
 
         for (const movement of movementRows) {

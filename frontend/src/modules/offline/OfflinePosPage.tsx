@@ -32,7 +32,8 @@ import {
 } from './offline-sale';
 import { canAttachOfflineCashSale } from './offline-cash';
 import { notifyOfflineSaleQueued } from './sync-engine';
-import { OfflineNetworkBanner, OfflineReceiptTicket, OfflineWorkspaceLayout, mapOfflineSellerMessage, printOfflineReceipt } from './offline-ui';
+import { OfflineNetworkBanner, OfflineReceiptTicket, OfflineWorkspaceLayout, mapOfflineSellerMessage } from './offline-ui';
+import { posPrinterService } from './pos-printer.service';
 import {
   calculateAuthorizationState,
   calculateSnapshotFreshness,
@@ -90,6 +91,7 @@ export function OfflinePosPage() {
   const [amountReturnedUsd, setAmountReturnedUsd] = useState('');
   const [amountReturnedCdf, setAmountReturnedCdf] = useState('');
   const [lastReceiptSale, setLastReceiptSale] = useState<OfflineSale | null>(null);
+  const [printRetrySale, setPrintRetrySale] = useState<OfflineSale | null>(null);
   const articleInputRef = useRef<HTMLInputElement | null>(null);
   const customerInputRef = useRef<HTMLInputElement | null>(null);
   const membershipInputRef = useRef<HTMLSelectElement | null>(null);
@@ -207,14 +209,27 @@ export function OfflinePosPage() {
   useEffect(() => {
     function handleKeys(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
-      const isTextArea = target?.tagName === 'TEXTAREA' || target?.isContentEditable;
+      const isTextEntryContext = target?.tagName === 'TEXTAREA' || target?.isContentEditable;
+      if (isTextEntryContext && event.key >= 'F2' && event.key <= 'F8') return;
       if (event.key === 'F2') {
         event.preventDefault();
-        articleInputRef.current?.focus();
+        focusAndSelect(articleInputRef.current);
       }
-      if (event.key === 'F4' && !isTextArea) {
+      if (event.key === 'F4') {
         event.preventDefault();
-        focusPrimaryPaymentField();
+        focusAndSelect(amountPaidUsdRef.current);
+      }
+      if (event.key === 'F5') {
+        event.preventDefault();
+        focusAndSelect(amountPaidCdfRef.current);
+      }
+      if (event.key === 'F6') {
+        event.preventDefault();
+        focusAndSelect(amountReturnedUsdRef.current);
+      }
+      if (event.key === 'F7') {
+        event.preventDefault();
+        focusAndSelect(amountReturnedCdfRef.current);
       }
       if (event.key === 'F8') {
         event.preventDefault();
@@ -387,21 +402,27 @@ export function OfflinePosPage() {
     return cart?.currency === 'CDF';
   }
 
+  function focusAndSelect(input: HTMLInputElement | HTMLSelectElement | null) {
+    if (!input || input.disabled) return;
+    input.focus();
+    if (input instanceof HTMLInputElement) input.select();
+  }
+
   function focusPrimaryPaymentField() {
     const primaryInput = isPrimaryCdfCurrency() ? amountPaidCdfRef.current : amountPaidUsdRef.current;
     const secondaryInput = isPrimaryCdfCurrency() ? amountPaidUsdRef.current : amountPaidCdfRef.current;
     const primaryAmount = isPrimaryCdfCurrency() ? Number(amountPaidCdf || 0) : Number(amountPaidUsd || 0);
 
     if (primaryAmount > 0 && settlementPreview.settlementDifferenceUsd < -0.02) {
-      secondaryInput?.focus();
+      focusAndSelect(secondaryInput);
       return;
     }
-    primaryInput?.focus();
+    focusAndSelect(primaryInput);
   }
 
   function focusCheckoutBlockingField() {
     if (!membershipValid) {
-      membershipInputRef.current?.focus();
+      focusAndSelect(membershipInputRef.current);
       return;
     }
     if (!paymentValid || settlementPreview.settlementDifferenceUsd < -0.02) {
@@ -410,10 +431,10 @@ export function OfflinePosPage() {
     }
     if (!returnedAmountValid) {
       if (settlementPreview.amountReturnedUsd > settlementPreview.amountPaidUsd) {
-        amountReturnedUsdRef.current?.focus();
+        focusAndSelect(amountReturnedUsdRef.current);
         return;
       }
-      amountReturnedCdfRef.current?.focus();
+      focusAndSelect(amountReturnedCdfRef.current);
     }
   }
 
@@ -724,17 +745,9 @@ export function OfflinePosPage() {
       flushSync(() => {
         setLastReceiptSale(result.sale);
       });
-      setMessage(`Vente offline ${result.sale.offlineReference} validee localement. Ticket pret a imprimer.`);
-      try {
-        printOfflineReceipt({
-          sale: result.sale,
-          siteName: workstation?.siteName ?? null,
-          sellerName: auth?.displayName ?? null,
-          workstationName: workstation?.workstationName ?? null,
-        });
-      } catch {
-        setMessage('Vente enregistree. Impression impossible. Vous pouvez reimprimer le ticket.');
-      }
+      setPrintRetrySale(null);
+      setMessage(`Vente offline ${result.sale.offlineReference} validee localement.`);
+      void printSaleTicket(result.sale, true);
       await refresh(null);
       setTimeout(() => articleInputRef.current?.focus(), 0);
     } catch (error) {
@@ -840,17 +853,17 @@ export function OfflinePosPage() {
     }
   }
 
-  function handlePrintReceipt() {
-    if (!lastReceiptSale) return;
-    try {
-      printOfflineReceipt({
-        sale: lastReceiptSale,
-        siteName: workstation?.siteName ?? null,
-        sellerName: auth?.displayName ?? null,
-        workstationName: workstation?.workstationName ?? null,
-      });
-    } catch {
-      setMessage('Vente enregistree. Impression impossible. Vous pouvez reimprimer le ticket.');
+  async function printSaleTicket(sale: OfflineSale, automatic = false) {
+    const result = await posPrinterService.printTicket({
+      workstationId: sale.workstationId,
+      sale,
+      siteName: workstation?.siteName ?? null,
+      sellerName: auth?.displayName ?? null,
+      workstationName: workstation?.workstationName ?? null,
+    }, { automatic });
+    if (!result.success) {
+      setPrintRetrySale(sale);
+      setMessage(result.message);
     }
   }
 
@@ -1218,7 +1231,7 @@ export function OfflinePosPage() {
               </div>
               <div className="offline-search-help">
                 <span>Le lot FEFO est applique automatiquement.</span>
-                <span>Entrer = selectionner, F4 = paiement, F8 = encaisser.</span>
+                <span>Entree = ajouter, F4 USD, F5 FC, F6/F7 rendu, F8 encaisser.</span>
               </div>
 
               <div className="offline-pos-footer-actions">
@@ -1251,11 +1264,11 @@ export function OfflinePosPage() {
                 </button>
                 <div className="detail-grid compact-detail-grid">
                   <label>
-                    <span>PAYE USD</span>
+                    <span className="offline-payment-field-label">PAYE USD <kbd>F4</kbd></span>
                     <input ref={amountPaidUsdRef} className="input compact-input" type="number" min="0" step="0.01" value={amountPaidUsd} onChange={(event) => handlePaidUsdChange(event.target.value)} />
                   </label>
                   <label>
-                    <span>PAYE FC</span>
+                    <span className="offline-payment-field-label">PAYE FC <kbd>F5</kbd></span>
                     <input ref={amountPaidCdfRef} className="input compact-input" type="number" min="0" step="1" value={amountPaidCdf} onChange={(event) => handlePaidCdfChange(event.target.value)} disabled={!hasConfiguredExchangeRate} title={!hasConfiguredExchangeRate ? 'Taux USD/CDF non configuré.' : undefined} />
                   </label>
                 </div>
@@ -1271,11 +1284,11 @@ export function OfflinePosPage() {
                 </div>
                 <div className="detail-grid compact-detail-grid">
                   <label>
-                    <span>Rendu USD</span>
+                    <span className="offline-payment-field-label">Rendu USD <kbd>F6</kbd></span>
                     <input ref={amountReturnedUsdRef} className="input compact-input" type="number" min="0" step="0.01" value={amountReturnedUsd} onChange={(event) => handleReturnedUsdChange(event.target.value)} />
                   </label>
                   <label>
-                    <span>Rendu FC</span>
+                    <span className="offline-payment-field-label">Rendu FC <kbd>F7</kbd></span>
                     <input ref={amountReturnedCdfRef} className="input compact-input" type="number" min="0" step="1" value={amountReturnedCdf} onChange={(event) => handleReturnedCdfChange(event.target.value)} disabled={!hasConfiguredExchangeRate} title={!hasConfiguredExchangeRate ? 'Taux USD/CDF non configuré.' : undefined} />
                   </label>
                 </div>
@@ -1302,29 +1315,18 @@ export function OfflinePosPage() {
                   onChange={(event) => handleNoteChange(event.target.value)}
                 />
               </label>
-              {requiresCashSessionForSettlement && !canAttachOfflineCashSale(snapshot.cashSession) ? (
-                <div className="offline-warning-text">
-                  {snapshot.cashSession
-                    ? 'La session locale restauree n est pas encore utilisable pour encaisser. Ouvrez ou reprenez une caisse offline active.'
-                    : 'Ouvrez la caisse avant d encaisser une vente.'}
-                </div>
-              ) : null}
-              {lastReceiptSale ? (
-                <div className="offline-panel-actions">
-                  <button className="ghost-button compact-button" type="button" onClick={handlePrintReceipt}>
-                    Imprimer ticket
-                  </button>
-                </div>
-              ) : null}
-              {!canFinalizeOfflineSale && checkoutDisabledReason ? (
-                <div className="offline-warning-text" role="status">
-                  {checkoutDisabledReason}
-                </div>
-              ) : null}
               <button className="button compact-button offline-checkout-button offline-checkout-button-inline offline-payment-checkout-button" type="button" onClick={() => void handleFinalizeOfflineSale()} disabled={busyAction !== null || !canFinalizeOfflineSale}>
                 <span>{busyAction === 'CHECKOUT' ? 'ENCAISSEMENT...' : 'ENCAISSER'}</span>
                 <span className="offline-checkout-shortcut">F8</span>
               </button>
+              <div className="offline-checkout-feedback" role="status" aria-live="polite">
+                {!canFinalizeOfflineSale && checkoutDisabledReason ? <span>{checkoutDisabledReason}</span> : null}
+                {printRetrySale ? (
+                  <button className="ghost-button compact-button" type="button" onClick={() => void printSaleTicket(printRetrySale)}>
+                    Ticket non imprime - Reessayer
+                  </button>
+                ) : null}
+              </div>
             </section>
           </aside>
         </section>

@@ -6,7 +6,8 @@ import { formatMoney } from '../../utils/money';
 import { loadLocalSnapshot, type OfflineSnapshotViewModel } from './offline-bootstrap';
 import { listOfflineSalesHistory } from './offline-sale';
 import { processPendingOfflineQueue } from './sync-engine';
-import { OfflineReceiptTicket, OfflineWorkspaceLayout, printOfflineReceipt } from './offline-ui';
+import { OfflineReceiptTicket, OfflineWorkspaceLayout } from './offline-ui';
+import { posPrinterService } from './pos-printer.service';
 import { type OfflineSale } from './offline-types';
 
 const emptyViewModel: OfflineSnapshotViewModel = {
@@ -63,16 +64,18 @@ export function OfflineSalesPage() {
     }
   }
 
-  function handlePrint(sale: OfflineSale) {
+  async function handlePrint(sale: OfflineSale) {
     flushSync(() => {
       setSelectedSale(sale);
     });
-    printOfflineReceipt({
+    const result = await posPrinterService.printTicket({
+      workstationId: sale.workstationId,
       sale,
       siteName: viewModel.snapshot.workstation?.siteName ?? null,
       sellerName: viewModel.snapshot.auth?.displayName ?? null,
       workstationName: viewModel.snapshot.workstation?.workstationName ?? null,
     });
+    setMessage(result.success ? 'Ticket envoye a l impression.' : result.message);
   }
 
   return (
@@ -135,7 +138,7 @@ export function OfflineSalesPage() {
                   </td>
                   <td>{sale.serverSaleNumber ?? '-'}</td>
                   <td>
-                    <button className="ghost-button compact-button" type="button" onClick={() => handlePrint(sale)}>
+                    <button className="ghost-button compact-button" type="button" onClick={() => void handlePrint(sale)}>
                       Reimprimer ticket
                     </button>
                   </td>

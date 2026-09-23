@@ -455,30 +455,3 @@ function formatReceiptMoneyValue(amount: number, suffix: string) {
     maximumFractionDigits: suffix === 'USD' ? 2 : 0,
   })} ${suffix}`;
 }
-
-export function printOfflineReceipt(params: {
-  sale: OfflineSale | null;
-  siteName?: string | null;
-  sellerName?: string | null;
-  workstationName?: string | null;
-}) {
-  if (!params.sale) {
-    throw new Error('OFFLINE_RECEIPT_MISSING');
-  }
-  const receiptHtml = buildOfflineReceiptHtml({
-    sale: params.sale,
-    siteName: params.siteName,
-    sellerName: params.sellerName,
-    workstationName: params.workstationName,
-  });
-  const printWindow = window.open('', '_blank', 'width=420,height=720');
-  if (!printWindow) {
-    throw new Error('PRINT_WINDOW_BLOCKED');
-  }
-  printWindow.document.open();
-  printWindow.document.write(receiptHtml);
-  printWindow.document.close();
-  printWindow.focus();
-  printWindow.print();
-  printWindow.close();
-}

@@ -7627,6 +7627,44 @@ details.nav-group .nav-link {
   text-transform: uppercase;
 }
 
+.offline-printer-config {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.offline-printer-config label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.offline-printer-config label > span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.offline-printer-config-wide,
+.offline-printer-config-toggle,
+.offline-printer-config .offline-panel-actions,
+.offline-printer-config .offline-row-meta {
+  grid-column: 1 / -1;
+}
+
+.offline-printer-config-toggle {
+  align-items: center;
+  display: flex !important;
+  font-size: 0.84rem;
+  font-weight: 700;
+  grid-template-columns: none !important;
+}
+
+.offline-printer-config-toggle input {
+  accent-color: var(--primary);
+}
+
 .offline-pos-context-premium .offline-pos-context-grid,
 .offline-pos-context-grid {
   display: grid;
@@ -8498,6 +8536,24 @@ details.nav-group .nav-link {
   text-transform: uppercase;
 }
 
+.offline-payment-field-label {
+  align-items: center;
+  display: flex;
+  gap: 5px;
+  justify-content: space-between;
+}
+
+.offline-payment-field-label kbd {
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 4px;
+  color: inherit;
+  font-family: inherit;
+  font-size: 0.64rem;
+  font-weight: 800;
+  line-height: 1;
+  padding: 2px 4px;
+}
+
 .offline-payment-settlement-card .compact-detail-grid label > span {
   color: rgba(255, 255, 255, 0.92);
 }
@@ -8511,6 +8567,21 @@ details.nav-group .nav-link {
   max-height: 52px;
   min-height: 52px;
   resize: none;
+}
+
+.offline-checkout-feedback {
+  align-items: center;
+  color: var(--danger);
+  display: flex;
+  font-size: 0.74rem;
+  line-height: 1.25;
+  min-height: 30px;
+}
+
+.offline-checkout-feedback .compact-button {
+  color: var(--danger);
+  min-height: 30px;
+  padding-block: 4px;
 }
 
 .offline-payment-card {
