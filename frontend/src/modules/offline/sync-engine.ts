@@ -429,12 +429,7 @@ async function startInternal() {
   window.addEventListener('online', onlineHandler);
   document.addEventListener('visibilitychange', visibilityHandler);
 
-  if (state.pendingCount > 0 || state.syncingCount > 0) {
-    void runSync('timer');
-    return;
-  }
-
-  scheduleNext();
+  void runSync('online');
 }
 
 function stopInternal() {

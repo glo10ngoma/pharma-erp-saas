@@ -1,5 +1,5 @@
 const SHELL_CACHE_PREFIX = 'pharmaerp-pos-shell-';
-const SHELL_CACHE = `${SHELL_CACHE_PREFIX}v2`;
+const SHELL_CACHE = `${SHELL_CACHE_PREFIX}v3`;
 const SHELL_ENTRY = '/';
 const STATIC_ASSET_DESTINATIONS = new Set(['script', 'style', 'font', 'image']);
 
