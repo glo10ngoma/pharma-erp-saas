@@ -51,7 +51,7 @@ export function DashboardLayout() {
         ['/offline-admin/conflicts', 'Conflits offline', 'pos_sync.conflicts.read'],
         ['/offline-admin/logs', 'Journal offline', 'pos_sync.logs.read'],
         ['/offline/synchronisation', 'Synchronisation', 'pos_sync.read'],
-        ['/offline/poste', 'Poste', 'pos_sync.read'],
+        ['/offline/poste', 'Parametres du poste', 'pos_sync.read'],
       ],
     },
     {

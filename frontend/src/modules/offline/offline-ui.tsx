@@ -85,7 +85,7 @@ export function OfflineWorkspaceLayout(props: {
     { to: '/offline-admin/cash-sessions', label: 'Sessions caisse', short: 'SES', permission: 'pos_sync.read' },
     { to: '/offline-admin/logs', label: 'Logs', short: 'LOG', permission: 'pos_sync.logs.read' },
     { to: '/offline/synchronisation', label: 'Synchronisation', short: 'SYN', permission: 'pos_sync.read' },
-    { to: '/offline/poste', label: 'Poste', short: 'PST', permission: 'pos_sync.read' },
+    { to: '/offline/poste', label: 'Parametres du poste', short: 'CFG', permission: 'pos_sync.read' },
   ].filter((item) => permissions.includes(item.permission));
   const workstation = props.viewModel.snapshot.workstation;
   const auth = props.viewModel.snapshot.auth;
