@@ -6574,6 +6574,20 @@ details.nav-group .nav-link {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.offline-metadata-grid > .offline-panel:nth-child(1),
+.offline-metadata-grid > .offline-panel:nth-child(2) {
+  order: 1;
+}
+
+.offline-printer-panel {
+  grid-column: 1 / -1;
+  order: 2;
+}
+
+.offline-metadata-grid > .offline-panel:not(.offline-printer-panel):nth-child(n + 3) {
+  order: 3;
+}
+
 .offline-layout {
   display: grid;
   gap: 14px;
@@ -7264,6 +7278,12 @@ details.nav-group .nav-link {
   padding: 18px 22px 22px;
 }
 
+.offline-workspace:not(.offline-pos-fullscreen-mode) .offline-workspace-content {
+  align-content: start;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
 .offline-pos-fullscreen-mode {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -7320,6 +7340,12 @@ details.nav-group .nav-link {
   min-height: 0;
   min-width: 0;
   overflow: hidden;
+}
+
+.offline-workspace:not(.offline-pos-fullscreen-mode) .offline-page {
+  height: auto;
+  min-height: min-content;
+  overflow: visible;
 }
 
 .offline-pos-page-fixed {

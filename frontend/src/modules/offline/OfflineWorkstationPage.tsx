@@ -349,10 +349,10 @@ export function OfflineWorkstationPage() {
           )}
         </div>
 
-        <section className="card offline-panel">
+        <section className="card offline-panel offline-printer-panel">
           <div className="offline-panel-heading">
             <div>
-              <h3>Service d impression</h3>
+              <h3>Impression locale</h3>
               <p className="offline-row-meta">Configuration locale de ce poste de caisse.</p>
             </div>
             <span className={`badge compact-badge ${printerStatus?.status === 'UNAVAILABLE' ? 'badge-danger' : 'badge-success'}`}>
