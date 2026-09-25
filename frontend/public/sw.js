@@ -1,5 +1,5 @@
 const SHELL_CACHE_PREFIX = 'pharmaerp-pos-shell-';
-const SHELL_CACHE = `${SHELL_CACHE_PREFIX}v3`;
+const SHELL_CACHE = `${SHELL_CACHE_PREFIX}v4`;
 const SHELL_ENTRY = '/';
 const STATIC_ASSET_DESTINATIONS = new Set(['script', 'style', 'font', 'image']);
 
@@ -45,7 +45,7 @@ async function updateShellFromResponse(response) {
 }
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(cacheShell());
+  event.waitUntil(cacheShell().then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (event) => {

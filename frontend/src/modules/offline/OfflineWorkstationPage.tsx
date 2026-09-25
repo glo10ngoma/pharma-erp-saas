@@ -43,6 +43,8 @@ export function OfflineWorkstationPage() {
   const [printerConfiguration, setPrinterConfiguration] = useState<PosPrinterConfiguration | null>(null);
   const [printerStatus, setPrinterStatus] = useState<PosPrinterStatus | null>(null);
   const [printerDevices, setPrinterDevices] = useState<PosPrinterDevice[]>([]);
+  const [printerLoading, setPrinterLoading] = useState(false);
+  const [printerLoadError, setPrinterLoadError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -63,12 +65,15 @@ export function OfflineWorkstationPage() {
     setRetention(localRetention);
     const workstationId = localView.snapshot.workstation?.workstationId;
     setPrinterConfiguration(posPrinterService.getConfiguration(workstationId));
+    setPrinterLoading(true);
     const [status, printerResult] = await Promise.all([
       posPrinterService.getPrinterStatus(workstationId),
       posPrinterService.listPrintersWithResult(workstationId),
     ]);
     setPrinterStatus(status);
     setPrinterDevices(printerResult.printers);
+    setPrinterLoadError(printerResult.error ?? null);
+    setPrinterLoading(false);
     if (printerResult.error) setActionMessage(`Impossible de charger les imprimantes : ${printerResult.error}`);
   }, []);
 
@@ -112,6 +117,13 @@ export function OfflineWorkstationPage() {
       && printerDevices.length > 0
       && !printerDevices.some((printer) => printer.name === printerConfiguration.printerName),
   );
+  const printerPlaceholder = printerLoading
+    ? 'Recherche des imprimantes...'
+    : printerLoadError
+      ? 'Erreur de chargement des imprimantes'
+      : printerDevices.length
+        ? 'Selectionner une imprimante'
+        : 'Aucune imprimante Windows detectee';
 
   function updatePrinterConfiguration(updates: Partial<PosPrinterConfiguration>) {
     if (!printerConfiguration) return;
@@ -163,12 +175,15 @@ export function OfflineWorkstationPage() {
     if (!workstation?.workstationId || !printerConfiguration) return;
     const next = posPrinterService.saveConfiguration(workstation.workstationId, { ...printerConfiguration, mode: 'DIRECT' });
     setPrinterConfiguration(next);
+    setPrinterLoading(true);
     const [status, printerResult] = await Promise.all([
       posPrinterService.getPrinterStatus(workstation.workstationId),
       posPrinterService.listPrintersWithResult(workstation.workstationId),
     ]);
     setPrinterStatus(status);
     setPrinterDevices(printerResult.printers);
+    setPrinterLoadError(printerResult.error ?? null);
+    setPrinterLoading(false);
     setActionMessage(
       printerResult.error
         ? `Configuration enregistree. Impossible de charger les imprimantes : ${printerResult.error}`
@@ -178,12 +193,16 @@ export function OfflineWorkstationPage() {
 
   async function handleRefreshPrinters() {
     if (!workstation?.workstationId) return;
-    setActionMessage('Actualisation des imprimantes...');
+    setPrinterLoading(true);
+    setPrinterLoadError(null);
+    setActionMessage('Recherche des imprimantes...');
     if (printerConfiguration) {
       setPrinterConfiguration(posPrinterService.saveConfiguration(workstation.workstationId, { ...printerConfiguration, mode: 'DIRECT' }));
     }
     const result = await posPrinterService.listPrintersWithResult(workstation.workstationId);
     setPrinterDevices(result.printers);
+    setPrinterLoadError(result.error ?? null);
+    setPrinterLoading(false);
     setPrinterStatus(await posPrinterService.getPrinterStatus(workstation.workstationId));
     setActionMessage(
       result.error
@@ -375,8 +394,8 @@ export function OfflineWorkstationPage() {
               <div className="offline-printer-config-wide offline-printer-picker">
                 <label>
                   <span>Imprimante ticket</span>
-                  <select className="input compact-input" value={printerConfiguration.printerName} onChange={(event) => updatePrinterConfiguration({ printerName: event.target.value })}>
-                    <option value="">{printerDevices.length ? 'Selectionner une imprimante' : 'Aucune imprimante chargee'}</option>
+                  <select className="input compact-input" value={printerConfiguration.printerName} onChange={(event) => updatePrinterConfiguration({ printerName: event.target.value })} disabled={printerLoading}>
+                    <option value="">{printerPlaceholder}</option>
                     {selectedPrinterMissing && (
                       <option value={printerConfiguration.printerName} disabled>
                         {printerConfiguration.printerName} (non disponible)
@@ -389,8 +408,8 @@ export function OfflineWorkstationPage() {
                     ))}
                   </select>
                 </label>
-                <button className="ghost-button compact-button" type="button" onClick={() => void handleRefreshPrinters()} disabled={!workstation?.workstationId}>
-                  Actualiser les imprimantes
+                <button className="ghost-button compact-button" type="button" onClick={() => void handleRefreshPrinters()} disabled={!workstation?.workstationId || printerLoading}>
+                  {printerLoading ? 'Recherche...' : 'Actualiser les imprimantes'}
                 </button>
               </div>
               {selectedPrinterMissing && <p className="offline-printer-warning">Imprimante configuree non disponible.</p>}
