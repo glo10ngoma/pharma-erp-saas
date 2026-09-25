@@ -28,6 +28,11 @@ export type PosPrinterDevice = {
   isDefault: boolean;
 };
 
+export type PosPrinterListResult = {
+  printers: PosPrinterDevice[];
+  error?: string;
+};
+
 type PosPrinterTicket = {
   workstationId: string;
   sale: OfflineSale;
@@ -86,19 +91,31 @@ export const posPrinterService = {
   },
 
   async listPrinters(workstationId: string | null | undefined): Promise<PosPrinterDevice[]> {
+    return (await this.listPrintersWithResult(workstationId)).printers;
+  },
+
+  async listPrintersWithResult(workstationId: string | null | undefined): Promise<PosPrinterListResult> {
     const configuration = this.getConfiguration(workstationId);
     const agentUrl = getLocalAgentUrl(configuration.agentUrl);
-    if (!agentUrl) return [];
+    if (!agentUrl) return { printers: [], error: 'URL agent local invalide.' };
     try {
-      const response = await fetch(`${agentUrl}/printers`, { signal: AbortSignal.timeout(2500) });
-      if (!response.ok) throw new Error('PRINT_AGENT_UNAVAILABLE');
+      const response = await fetch(`${agentUrl}/printers`, { signal: AbortSignal.timeout(10000) });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const payload = await response.json();
-      const printers = Array.isArray(payload?.printers) ? payload.printers : [];
-      return printers
+      if (!Array.isArray(payload?.printers)) {
+        return { printers: [], error: 'Format de reponse /printers inattendu.' };
+      }
+      const printers = payload.printers
         .map((row: unknown) => normalizePrinterDevice(row))
         .filter((row: PosPrinterDevice | null): row is PosPrinterDevice => Boolean(row));
-    } catch {
-      return [];
+      return { printers };
+    } catch (error) {
+      const message = error instanceof Error && error.name === 'TimeoutError'
+        ? 'delai depasse'
+        : error instanceof Error && error.message
+          ? error.message
+          : 'erreur inconnue';
+      return { printers: [], error: message };
     }
   },
 

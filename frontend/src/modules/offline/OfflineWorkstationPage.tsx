@@ -63,12 +63,13 @@ export function OfflineWorkstationPage() {
     setRetention(localRetention);
     const workstationId = localView.snapshot.workstation?.workstationId;
     setPrinterConfiguration(posPrinterService.getConfiguration(workstationId));
-    const [status, printers] = await Promise.all([
+    const [status, printerResult] = await Promise.all([
       posPrinterService.getPrinterStatus(workstationId),
-      posPrinterService.listPrinters(workstationId),
+      posPrinterService.listPrintersWithResult(workstationId),
     ]);
     setPrinterStatus(status);
-    setPrinterDevices(printers);
+    setPrinterDevices(printerResult.printers);
+    if (printerResult.error) setActionMessage(`Impossible de charger les imprimantes : ${printerResult.error}`);
   }, []);
 
   useEffect(() => {
@@ -162,13 +163,17 @@ export function OfflineWorkstationPage() {
     if (!workstation?.workstationId || !printerConfiguration) return;
     const next = posPrinterService.saveConfiguration(workstation.workstationId, { ...printerConfiguration, mode: 'DIRECT' });
     setPrinterConfiguration(next);
-    const [status, printers] = await Promise.all([
+    const [status, printerResult] = await Promise.all([
       posPrinterService.getPrinterStatus(workstation.workstationId),
-      posPrinterService.listPrinters(workstation.workstationId),
+      posPrinterService.listPrintersWithResult(workstation.workstationId),
     ]);
     setPrinterStatus(status);
-    setPrinterDevices(printers);
-    setActionMessage('Configuration d impression enregistree pour ce poste.');
+    setPrinterDevices(printerResult.printers);
+    setActionMessage(
+      printerResult.error
+        ? `Configuration enregistree. Impossible de charger les imprimantes : ${printerResult.error}`
+        : 'Configuration d impression enregistree pour ce poste.',
+    );
   }
 
   async function handleRefreshPrinters() {
@@ -177,10 +182,16 @@ export function OfflineWorkstationPage() {
     if (printerConfiguration) {
       setPrinterConfiguration(posPrinterService.saveConfiguration(workstation.workstationId, { ...printerConfiguration, mode: 'DIRECT' }));
     }
-    const printers = await posPrinterService.listPrinters(workstation.workstationId);
-    setPrinterDevices(printers);
+    const result = await posPrinterService.listPrintersWithResult(workstation.workstationId);
+    setPrinterDevices(result.printers);
     setPrinterStatus(await posPrinterService.getPrinterStatus(workstation.workstationId));
-    setActionMessage(printers.length ? `${printers.length} imprimante(s) detectee(s).` : 'Aucune imprimante detectee par l agent local.');
+    setActionMessage(
+      result.error
+        ? `Impossible de charger les imprimantes : ${result.error}`
+        : result.printers.length
+          ? `${result.printers.length} imprimante(s) detectee(s).`
+          : 'Aucune imprimante Windows detectee.',
+    );
   }
 
   async function handleTestPrint() {
