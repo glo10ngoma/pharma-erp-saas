@@ -7665,6 +7665,52 @@ details.nav-group .nav-link {
   accent-color: var(--primary);
 }
 
+.offline-printer-picker {
+  align-items: end;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.offline-printer-field {
+  display: grid;
+  gap: 4px;
+}
+
+.offline-printer-field > span,
+.offline-printer-advanced span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.offline-printer-format {
+  max-width: 220px;
+}
+
+.offline-printer-warning {
+  color: #a15c00;
+  font-size: 0.82rem;
+  font-weight: 800;
+  grid-column: 1 / -1;
+  margin: -2px 0 0;
+}
+
+.offline-printer-advanced {
+  grid-column: 1 / -1;
+}
+
+.offline-printer-advanced summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.offline-printer-advanced label {
+  margin-top: 8px;
+}
+
 .offline-pos-context-premium .offline-pos-context-grid,
 .offline-pos-context-grid {
   display: grid;

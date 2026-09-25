@@ -106,6 +106,20 @@ export function OfflineWorkstationPage() {
   const usagePercent = storage?.usageRatio !== null && storage?.usageRatio !== undefined
     ? `${Math.round(storage.usageRatio * 100)} %`
     : '-';
+  const selectedPrinterMissing = Boolean(
+    printerConfiguration?.printerName
+      && printerDevices.length > 0
+      && !printerDevices.some((printer) => printer.name === printerConfiguration.printerName),
+  );
+
+  function updatePrinterConfiguration(updates: Partial<PosPrinterConfiguration>) {
+    if (!printerConfiguration) return;
+    const next = { ...printerConfiguration, ...updates, mode: 'DIRECT' as const };
+    setPrinterConfiguration(next);
+    if (workstation?.workstationId) {
+      setPrinterConfiguration(posPrinterService.saveConfiguration(workstation.workstationId, next));
+    }
+  }
 
   async function handleCheckNow() {
     setActionMessage('Verification locale en cours...');
@@ -146,7 +160,7 @@ export function OfflineWorkstationPage() {
 
   async function handleSavePrinterConfiguration() {
     if (!workstation?.workstationId || !printerConfiguration) return;
-    const next = posPrinterService.saveConfiguration(workstation.workstationId, printerConfiguration);
+    const next = posPrinterService.saveConfiguration(workstation.workstationId, { ...printerConfiguration, mode: 'DIRECT' });
     setPrinterConfiguration(next);
     const [status, printers] = await Promise.all([
       posPrinterService.getPrinterStatus(workstation.workstationId),
@@ -159,8 +173,9 @@ export function OfflineWorkstationPage() {
 
   async function handleRefreshPrinters() {
     if (!workstation?.workstationId) return;
+    setActionMessage('Actualisation des imprimantes...');
     if (printerConfiguration) {
-      setPrinterConfiguration(posPrinterService.saveConfiguration(workstation.workstationId, printerConfiguration));
+      setPrinterConfiguration(posPrinterService.saveConfiguration(workstation.workstationId, { ...printerConfiguration, mode: 'DIRECT' }));
     }
     const printers = await posPrinterService.listPrinters(workstation.workstationId);
     setPrinterDevices(printers);
@@ -170,8 +185,13 @@ export function OfflineWorkstationPage() {
 
   async function handleTestPrint() {
     if (!workstation?.workstationId) return;
+    if (!printerConfiguration?.printerName.trim()) {
+      setActionMessage('Selectionnez une imprimante.');
+      return;
+    }
+    setActionMessage('Envoi vers l imprimante...');
     const next = printerConfiguration
-      ? posPrinterService.saveConfiguration(workstation.workstationId, printerConfiguration)
+      ? posPrinterService.saveConfiguration(workstation.workstationId, { ...printerConfiguration, mode: 'DIRECT' })
       : posPrinterService.getConfiguration(workstation.workstationId);
     setPrinterConfiguration(next);
     const result = await posPrinterService.printTest(workstation.workstationId);
@@ -332,61 +352,67 @@ export function OfflineWorkstationPage() {
         <section className="card offline-panel">
           <div className="offline-panel-heading">
             <div>
-              <h3>Impression du poste</h3>
-              <p className="offline-row-meta">Configuration locale reservee au support. L impression directe exige un agent Windows loopback configure.</p>
+              <h3>Service d impression</h3>
+              <p className="offline-row-meta">Configuration locale de ce poste de caisse.</p>
             </div>
-            <span className="badge compact-badge badge-neutral">{printerStatus?.status ?? 'UNKNOWN'}</span>
+            <span className={`badge compact-badge ${printerStatus?.status === 'UNAVAILABLE' ? 'badge-danger' : 'badge-success'}`}>
+              {printerStatus?.status === 'UNAVAILABLE' ? 'Indisponible' : 'Connecte'}
+            </span>
           </div>
           {printerConfiguration ? (
             <div className="offline-printer-config">
-              <label>
-                <span>Mode impression</span>
-                <select className="input compact-input" value={printerConfiguration.mode} onChange={(event) => setPrinterConfiguration({ ...printerConfiguration, mode: event.target.value === 'DIRECT' ? 'DIRECT' : 'BROWSER' })}>
-                  <option value="DIRECT">Impression directe</option>
-                  <option value="BROWSER">Navigateur manuel</option>
-                </select>
-              </label>
-              <label>
-                <span>Imprimante</span>
-                <select className="input compact-input" value={printerConfiguration.printerName} onChange={(event) => setPrinterConfiguration({ ...printerConfiguration, printerName: event.target.value })} disabled={printerConfiguration.mode !== 'DIRECT'}>
-                  <option value="">{printerDevices.length ? 'Selectionner une imprimante' : 'Aucune imprimante chargee'}</option>
-                  {printerDevices.map((printer) => (
-                    <option key={printer.name} value={printer.name}>
-                      {printer.name}{printer.isDefault ? ' (defaut)' : ''}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
+              <div className="offline-printer-config-wide offline-printer-picker">
+                <label>
+                  <span>Imprimante ticket</span>
+                  <select className="input compact-input" value={printerConfiguration.printerName} onChange={(event) => updatePrinterConfiguration({ printerName: event.target.value })}>
+                    <option value="">{printerDevices.length ? 'Selectionner une imprimante' : 'Aucune imprimante chargee'}</option>
+                    {selectedPrinterMissing && (
+                      <option value={printerConfiguration.printerName} disabled>
+                        {printerConfiguration.printerName} (non disponible)
+                      </option>
+                    )}
+                    {printerDevices.map((printer) => (
+                      <option key={printer.name} value={printer.name}>
+                        {printer.name}{printer.isDefault ? ' (defaut)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button className="ghost-button compact-button" type="button" onClick={() => void handleRefreshPrinters()} disabled={!workstation?.workstationId}>
+                  Actualiser les imprimantes
+                </button>
+              </div>
+              {selectedPrinterMissing && <p className="offline-printer-warning">Imprimante configuree non disponible.</p>}
+              <div className="offline-printer-field">
                 <span>Format</span>
-                <select className="input compact-input" value={printerConfiguration.paperWidthMm} onChange={(event) => setPrinterConfiguration({ ...printerConfiguration, paperWidthMm: event.target.value === '58' ? 58 : 80 })}>
-                  <option value="80">80 mm</option>
-                  <option value="58">58 mm</option>
-                </select>
-              </label>
+                <div className="offline-segmented-control offline-printer-format">
+                  <button type="button" className={printerConfiguration.paperWidthMm === 58 ? 'is-active' : ''} onClick={() => updatePrinterConfiguration({ paperWidthMm: 58 })}>58 mm</button>
+                  <button type="button" className={printerConfiguration.paperWidthMm === 80 ? 'is-active' : ''} onClick={() => updatePrinterConfiguration({ paperWidthMm: 80 })}>80 mm</button>
+                </div>
+              </div>
               <label>
-                <span>Exemplaires</span>
-                <input className="input compact-input" type="number" min="1" max="5" value={printerConfiguration.copies} onChange={(event) => setPrinterConfiguration({ ...printerConfiguration, copies: Number(event.target.value) || 1 })} />
-              </label>
-              <label className="offline-printer-config-wide">
-                <span>Agent local</span>
-                <input className="input compact-input" value={printerConfiguration.agentUrl} onChange={(event) => setPrinterConfiguration({ ...printerConfiguration, agentUrl: event.target.value })} placeholder="http://127.0.0.1:17373" disabled={printerConfiguration.mode !== 'DIRECT'} />
+                <span>Copies</span>
+                <input className="input compact-input" type="number" min="1" max="5" value={printerConfiguration.copies} onChange={(event) => updatePrinterConfiguration({ copies: Number(event.target.value) || 1 })} />
               </label>
               <label className="offline-printer-config-toggle">
-                <input type="checkbox" checked={printerConfiguration.autoPrint} onChange={(event) => setPrinterConfiguration({ ...printerConfiguration, autoPrint: event.target.checked })} />
+                <input type="checkbox" checked={printerConfiguration.autoPrint} onChange={(event) => updatePrinterConfiguration({ autoPrint: event.target.checked })} />
                 <span>Imprimer automatiquement apres encaissement</span>
               </label>
               <div className="offline-panel-actions">
-                <button className="ghost-button compact-button" type="button" onClick={() => void handleRefreshPrinters()} disabled={!workstation?.workstationId}>
-                  Charger imprimantes
-                </button>
-                <button className="ghost-button compact-button" type="button" onClick={() => void handleTestPrint()} disabled={!workstation?.workstationId || printerConfiguration.mode !== 'DIRECT'}>
-                  Test impression
+                <button className="button compact-button" type="button" onClick={() => void handleTestPrint()} disabled={!workstation?.workstationId || printerStatus?.status === 'UNAVAILABLE'}>
+                  Tester l'impression
                 </button>
                 <button className="ghost-button compact-button" type="button" onClick={() => void handleSavePrinterConfiguration()} disabled={!workstation?.workstationId}>
                   Enregistrer impression
                 </button>
               </div>
+              <details className="offline-printer-advanced">
+                <summary>Avance</summary>
+                <label>
+                  <span>Agent local</span>
+                  <input className="input compact-input" value={printerConfiguration.agentUrl} onChange={(event) => updatePrinterConfiguration({ agentUrl: event.target.value })} placeholder="http://127.0.0.1:17373" />
+                </label>
+              </details>
               <p className="offline-row-meta">{printerStatus?.message ?? 'Configuration non chargee.'}</p>
             </div>
           ) : <p className="loading-state">Chargement de la configuration d impression...</p>}

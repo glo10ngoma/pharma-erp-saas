@@ -69,13 +69,16 @@ export const posPrinterService = {
   async getPrinterStatus(workstationId: string | null | undefined): Promise<PosPrinterStatus> {
     const configuration = this.getConfiguration(workstationId);
     const agentUrl = getLocalAgentUrl(configuration.agentUrl);
-    if (!agentUrl || !configuration.printerName.trim()) {
-      return { status: 'NOT_CONFIGURED', message: 'Impression directe a configurer sur ce poste.' };
+    if (!agentUrl) {
+      return { status: 'UNAVAILABLE', message: 'Service d impression locale indisponible.' };
     }
 
     try {
       const response = await fetch(`${agentUrl}/health`, { signal: AbortSignal.timeout(1500) });
       if (!response.ok) throw new Error('PRINT_AGENT_UNAVAILABLE');
+      if (!configuration.printerName.trim()) {
+        return { status: 'NOT_CONFIGURED', message: 'Service d impression connecte. Selectionnez une imprimante.' };
+      }
       return { status: 'READY', message: `Agent local pret pour ${configuration.printerName}.` };
     } catch {
       return { status: 'UNAVAILABLE', message: 'Service d impression locale indisponible.' };
@@ -145,9 +148,10 @@ export const posPrinterService = {
   async printTest(workstationId: string): Promise<PosPrinterResult> {
     const configuration = this.getConfiguration(workstationId);
     const agentUrl = getLocalAgentUrl(configuration.agentUrl);
-    if (!agentUrl || !configuration.printerName.trim()) {
+    if (!agentUrl) {
       return { success: false, message: 'Service d impression locale indisponible.' };
     }
+    if (!configuration.printerName.trim()) return { success: false, message: 'Selectionnez une imprimante.' };
     try {
       const response = await fetch(`${agentUrl}/print`, {
         method: 'POST',
@@ -155,25 +159,39 @@ export const posPrinterService = {
         body: JSON.stringify({
           printerName: configuration.printerName,
           paperWidthMm: configuration.paperWidthMm,
-          copies: 1,
+          copies: configuration.copies,
           ticket: {
             offlineReference: 'TEST-PRINT',
             validatedAt: new Date().toISOString(),
             text: [
-              'PharmaERP POS',
-              'Test impression directe',
-              `Imprimante : ${configuration.printerName}`,
-              `Format : ${configuration.paperWidthMm} mm`,
-              new Date().toLocaleString('fr-FR'),
+              '--------------------------------',
+              'PharmaERP',
+              '',
+              'TEST IMPRESSION',
+              '',
+              'Poste :',
+              workstationId,
+              '',
+              'Imprimante :',
+              configuration.printerName,
+              '',
+              'Print Agent : OK',
+              '--------------------------------',
             ].join('\n'),
           },
         }),
         signal: AbortSignal.timeout(2500),
       });
-      if (!response.ok) throw new Error('PRINT_AGENT_FAILED');
-      return { success: true, message: 'Ticket test envoye a l imprimante configuree.' };
-    } catch {
-      return { success: false, message: 'Service d impression locale indisponible.' };
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.message || 'Impression refusee par Windows ou le Print Agent.');
+      }
+      return { success: true, message: `Ticket test envoye a ${configuration.printerName}.` };
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error && error.message ? error.message : 'Service d impression locale indisponible.',
+      };
     }
   },
 };
