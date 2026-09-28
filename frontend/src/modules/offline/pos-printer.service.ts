@@ -149,7 +149,7 @@ export const posPrinterService = {
             text: buildOfflineReceiptText(ticket),
           },
         }),
-        signal: AbortSignal.timeout(2500),
+        signal: AbortSignal.timeout(15000),
       });
       if (!response.ok) throw new Error('PRINT_AGENT_FAILED');
       return { success: true, message: 'Ticket envoye a l imprimante configuree.' };
@@ -197,7 +197,7 @@ export const posPrinterService = {
             ].join('\n'),
           },
         }),
-        signal: AbortSignal.timeout(2500),
+        signal: AbortSignal.timeout(15000),
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
