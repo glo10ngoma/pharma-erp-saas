@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, shell } = require('electron');
+const { app, BrowserWindow, shell } = require('electron');
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -24,7 +24,6 @@ app.on('second-instance', () => {
 });
 
 app.whenReady().then(() => {
-  Menu.setApplicationMenu(buildMenu());
   startPrintAgent();
   createWindow();
 });
@@ -46,6 +45,7 @@ function createWindow() {
     minWidth: 1024,
     minHeight: 700,
     title: 'PharmaERP',
+    autoHideMenuBar: true,
     backgroundColor: '#f8fafc',
     show: false,
     webPreferences: {
@@ -68,6 +68,8 @@ function createWindow() {
     return { action: 'deny' };
   });
 
+  mainWindow.removeMenu();
+  mainWindow.setMenuBarVisibility(false);
   mainWindow.loadURL(POS_URL);
 }
 
@@ -93,28 +95,4 @@ function getPrintAgentPath() {
     return path.join(process.resourcesPath, 'print-agent', 'PharmaERP-Print-Agent.exe');
   }
   return path.resolve(__dirname, '..', '..', 'tools', 'print-agent', 'dist', 'PharmaERP-Print-Agent.exe');
-}
-
-function buildMenu() {
-  return Menu.buildFromTemplate([
-    {
-      label: 'PharmaERP',
-      submenu: [
-        {
-          label: `Version ${app.getVersion()}`,
-          enabled: false,
-        },
-        {
-          label: 'Recharger',
-          accelerator: 'Ctrl+R',
-          click: () => mainWindow?.reload(),
-        },
-        {
-          label: 'Quitter',
-          accelerator: 'Alt+F4',
-          click: () => app.quit(),
-        },
-      ],
-    },
-  ]);
 }
