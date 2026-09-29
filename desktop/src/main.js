@@ -9,8 +9,8 @@ const PRINT_AGENT_PORT = '17373';
 let mainWindow = null;
 let printAgent = null;
 
-app.setName('PharmaERP POS');
-app.setPath('userData', path.join(app.getPath('appData'), 'PharmaERP POS'));
+app.setName('PharmaERP');
+app.setPath('userData', path.join(app.getPath('appData'), 'PharmaERP'));
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
@@ -45,7 +45,7 @@ function createWindow() {
     height: 768,
     minWidth: 1024,
     minHeight: 700,
-    title: 'PharmaERP POS',
+    title: 'PharmaERP',
     backgroundColor: '#f8fafc',
     show: false,
     webPreferences: {
@@ -98,7 +98,7 @@ function getPrintAgentPath() {
 function buildMenu() {
   return Menu.buildFromTemplate([
     {
-      label: 'PharmaERP POS',
+      label: 'PharmaERP',
       submenu: [
         {
           label: `Version ${app.getVersion()}`,

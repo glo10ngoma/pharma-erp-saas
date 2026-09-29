@@ -1198,18 +1198,7 @@ export function OfflinePosPage() {
               </section>
             </section>
 
-            <section className="card offline-panel offline-sale-note-card">
-              <div className="offline-panel-heading"><h3>Note</h3></div>
-              <textarea
-                className="input compact-input offline-note-input"
-                rows={3}
-                value={noteDraft}
-                placeholder="Commentaire interne optionnel"
-                onChange={(event) => handleNoteChange(event.target.value)}
-              />
-            </section>
-
-              <section className="card offline-panel offline-search-card">
+            <section className="card offline-panel offline-search-card">
                 <div className="offline-panel-heading">
                   <div>
                     <h3>Rechercher un article</h3>
@@ -1270,6 +1259,17 @@ export function OfflinePosPage() {
                   Annuler la vente
                 </button>
               </div>
+            </section>
+
+            <section className="card offline-panel offline-sale-note-card">
+              <div className="offline-panel-heading"><h3>Note</h3></div>
+              <textarea
+                className="input compact-input offline-note-input"
+                rows={2}
+                value={noteDraft}
+                placeholder="Commentaire interne optionnel"
+                onChange={(event) => handleNoteChange(event.target.value)}
+              />
             </section>
           </div>
 

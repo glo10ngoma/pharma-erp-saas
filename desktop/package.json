@@ -1,7 +1,7 @@
 {
   "name": "pharmaerp-pos-desktop",
-  "version": "1.0.1",
-  "description": "PharmaERP POS desktop shell for Windows cashier workstations.",
+  "version": "1.0.2",
+  "description": "PharmaERP desktop shell for Windows workstations.",
   "private": true,
   "main": "src/main.js",
   "author": "PharmaERP",
@@ -16,8 +16,8 @@
   },
   "build": {
     "appId": "com.pharmaerp.pos",
-    "productName": "PharmaERP POS",
-    "artifactName": "PharmaERP-POS-Setup.exe",
+    "productName": "PharmaERP",
+    "artifactName": "PharmaERP-Setup.exe",
     "directories": {
       "output": "release"
     },
@@ -45,7 +45,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "PharmaERP POS",
+      "shortcutName": "PharmaERP",
       "deleteAppDataOnUninstall": false
     }
   }

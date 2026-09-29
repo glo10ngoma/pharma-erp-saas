@@ -7294,6 +7294,10 @@ details.nav-group .nav-link {
   padding: 10px 18px;
 }
 
+.offline-pos-fullscreen-mode .offline-workspace-topbar-pos {
+  display: none;
+}
+
 .offline-workspace-topbar-main {
   align-items: center;
   display: flex;
@@ -7792,12 +7796,13 @@ details.nav-group .nav-link {
 .offline-sale-note-card {
   gap: 8px;
   min-height: 0;
-  padding: 12px 14px;
+  padding: 10px 12px;
 }
 
 .offline-sale-note-card .offline-note-input {
-  height: 68px;
-  min-height: 68px;
+  height: 48px;
+  min-height: 48px;
+  overflow-y: auto;
   resize: vertical;
 }
 
@@ -8546,9 +8551,9 @@ details.nav-group .nav-link {
   border-radius: 14px;
   color: #fff;
   display: grid;
-  gap: 12px;
-  margin-bottom: 14px;
-  padding: 14px;
+  gap: 10px;
+  margin-bottom: 6px;
+  padding: 12px;
 }
 
 .offline-payment-settlement-card .offline-payment-card-heading h3,
@@ -8675,7 +8680,9 @@ details.nav-group .nav-link {
   flex-direction: column;
   gap: 8px;
   min-height: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 12px 14px 12px;
 }
 
@@ -8696,12 +8703,12 @@ details.nav-group .nav-link {
 
 .offline-checkout-secondary-area {
   display: flex;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   flex-direction: column;
   gap: 8px;
-  min-height: 82px;
-  overflow-y: auto;
-  padding-right: 2px;
+  min-height: 0;
+  overflow: visible;
+  padding-right: 0;
 }
 
 .offline-payment-readonly-row {
@@ -9215,6 +9222,7 @@ details.nav-group .nav-link {
   }
 
   .offline-pos-page-fixed .offline-search-card,
+  .offline-pos-page-fixed .offline-sale-note-card,
   .offline-pos-page-fixed .offline-client-card,
   .offline-pos-page-fixed .offline-choice-card,
   .offline-pos-page-fixed .offline-cart-panel-premium,
@@ -9322,6 +9330,35 @@ details.nav-group .nav-link {
 
   .offline-pos-page-fixed .offline-payment-shortcuts {
     gap: 6px;
+  }
+
+  .offline-pos-page-fixed .offline-sale-note-card .offline-note-input {
+    height: 44px;
+    min-height: 44px;
+  }
+
+  .offline-pos-page-fixed .offline-payment-settlement-card {
+    gap: 7px;
+    margin-bottom: 4px;
+    padding: 9px;
+  }
+
+  .offline-pos-page-fixed .offline-payment-settlement-card .offline-payment-exact-button {
+    min-height: 32px;
+  }
+
+  .offline-pos-page-fixed .offline-payment-card .compact-detail-grid,
+  .offline-pos-page-fixed .offline-payment-settlement-card .compact-detail-grid {
+    gap: 6px;
+  }
+
+  .offline-pos-page-fixed .offline-payment-card .compact-detail-grid label > span {
+    font-size: 0.68rem;
+    margin-bottom: 3px;
+  }
+
+  .offline-pos-page-fixed .offline-payment-readonly {
+    padding-top: 4px;
   }
 
   .offline-pos-page-fixed .offline-payment-shortcuts .compact-button,
