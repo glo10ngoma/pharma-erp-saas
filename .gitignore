@@ -19,3 +19,8 @@ frontend/.env.local
 frontend/.env.production
 
 *.log
+
+desktop/release/
+desktop/dist/
+desktop/node_modules/
+tools/print-agent/dist/

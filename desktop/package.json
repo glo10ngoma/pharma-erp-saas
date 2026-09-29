@@ -1,0 +1,52 @@
+{
+  "name": "pharmaerp-pos-desktop",
+  "version": "1.0.0",
+  "description": "PharmaERP POS desktop shell for Windows cashier workstations.",
+  "private": true,
+  "main": "src/main.js",
+  "author": "PharmaERP",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win nsis --x64"
+  },
+  "devDependencies": {
+    "electron": "^32.3.3",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.pharmaerp.pos",
+    "productName": "PharmaERP POS",
+    "artifactName": "PharmaERP-POS-Setup.exe",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../tools/print-agent/dist/PharmaERP-Print-Agent.exe",
+        "to": "print-agent/PharmaERP-Print-Agent.exe",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "PharmaERP POS",
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}

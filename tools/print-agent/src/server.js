@@ -132,11 +132,21 @@ async function handlePrint(body, res) {
 
   const jobPath = path.join(os.tmpdir(), `pharmaerp-print-${Date.now()}-${Math.random().toString(16).slice(2)}.json`);
   fs.writeFileSync(jobPath, JSON.stringify(job), 'utf8');
-  const scriptPath = path.resolve(__dirname, '..', 'scripts', 'print-ticket.ps1');
+  const scriptPath = resolvePrintScriptPath();
   runPowerShell(['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, '-JobPath', jobPath])
     .then(() => sendJson(res, 200, { status: 'queued' }))
     .catch((error) => sendJson(res, 500, { error: 'PRINT_FAILED', message: error.message }))
     .finally(() => fs.promises.rm(jobPath, { force: true }).catch(() => undefined));
+}
+
+function resolvePrintScriptPath() {
+  const bundledPath = path.resolve(__dirname, '..', 'scripts', 'print-ticket.ps1');
+  if (!process.pkg && fs.existsSync(bundledPath)) return bundledPath;
+
+  const extractedPath = path.join(os.tmpdir(), 'pharmaerp-print-agent', 'print-ticket.ps1');
+  fs.mkdirSync(path.dirname(extractedPath), { recursive: true });
+  fs.writeFileSync(extractedPath, fs.readFileSync(bundledPath, 'utf8'), 'utf8');
+  return extractedPath;
 }
 
 function validatePrintJob(body) {
