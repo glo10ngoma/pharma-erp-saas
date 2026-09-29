@@ -7483,14 +7483,15 @@ details.nav-group .nav-link {
   align-items: stretch;
   display: grid;
   gap: 16px;
-  grid-template-columns: minmax(0, 1.68fr) minmax(300px, 0.58fr);
+  grid-template-columns: minmax(0, 1.68fr) minmax(280px, 0.58fr);
   height: 100%;
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
 }
 
 .offline-pos-grid-fullscreen {
-  grid-template-columns: minmax(410px, 440px) minmax(0, 1fr) minmax(312px, 330px);
+  grid-template-columns: clamp(280px, 27vw, 420px) minmax(0, 1fr) clamp(280px, 23vw, 330px);
 }
 
 .offline-pos-left,
@@ -7504,7 +7505,8 @@ details.nav-group .nav-link {
 
 .offline-pos-left {
   grid-template-rows: auto auto minmax(0, 1fr);
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .offline-pos-cart-column,
@@ -7533,7 +7535,8 @@ details.nav-group .nav-link {
   height: 100%;
   min-height: 0;
   min-width: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   position: static;
   width: 100%;
 }
@@ -7772,11 +7775,13 @@ details.nav-group .nav-link {
   display: grid;
   align-items: stretch;
   gap: 10px;
-  grid-template-columns: minmax(200px, 1.08fr) minmax(190px, 0.96fr) minmax(210px, 1.05fr) minmax(220px, 1.12fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
+  min-width: 0;
 }
 
 .offline-pos-control-grid > .offline-panel {
   min-height: 0;
+  min-width: 0;
 }
 
 .offline-choice-card {
@@ -8190,10 +8195,11 @@ details.nav-group .nav-link {
 }
 
 .offline-search-card {
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto auto;
   height: 100%;
   min-height: 0;
-  overflow: hidden;
+  min-width: 0;
+  overflow: visible;
 }
 
 .offline-payment-summary-card {
@@ -9087,7 +9093,7 @@ details.nav-group .nav-link {
   }
 
   .offline-pos-grid-fullscreen {
-    grid-template-columns: minmax(340px, 392px) minmax(0, 1fr) minmax(280px, 304px);
+    grid-template-columns: clamp(292px, 26vw, 392px) minmax(0, 1fr) clamp(280px, 23vw, 304px);
   }
 
   .offline-pos-context-premium .offline-pos-context-grid,
@@ -9097,7 +9103,7 @@ details.nav-group .nav-link {
   }
 
   .offline-pos-control-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
   }
 
   .offline-inline-results {
@@ -9191,7 +9197,7 @@ details.nav-group .nav-link {
   }
 
   .offline-pos-page-fixed .offline-pos-grid-fullscreen {
-    grid-template-columns: minmax(320px, 368px) minmax(0, 1fr) minmax(280px, 304px);
+    grid-template-columns: clamp(280px, 26vw, 352px) minmax(0, 1fr) clamp(272px, 23vw, 296px);
   }
 
   .offline-pos-page-fixed .offline-pos-left,
@@ -9205,7 +9211,7 @@ details.nav-group .nav-link {
 
   .offline-pos-page-fixed .offline-pos-control-grid {
     gap: 8px;
-    grid-template-columns: minmax(0, 1.35fr) repeat(3, minmax(140px, 0.8fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr));
   }
 
   .offline-pos-page-fixed .offline-search-card,

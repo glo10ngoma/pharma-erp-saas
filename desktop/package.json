@@ -1,6 +1,6 @@
 {
   "name": "pharmaerp-pos-desktop",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "PharmaERP POS desktop shell for Windows cashier workstations.",
   "private": true,
   "main": "src/main.js",
