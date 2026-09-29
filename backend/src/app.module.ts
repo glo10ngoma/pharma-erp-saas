@@ -45,6 +45,7 @@ import { PurchaseReturnsModule } from './purchase-returns/purchase-returns.modul
 import { CustomerReturnsModule } from './customer-returns/customer-returns.module';
 import { PosSyncModule } from './pos-sync/pos-sync.module';
 import { OfflineAllocationsModule } from './offline-allocations/offline-allocations.module';
+import { PriceChecksModule } from './price-checks/price-checks.module';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { OfflineAllocationsModule } from './offline-allocations/offline-allocati
     CustomerReturnsModule,
     PosSyncModule,
     OfflineAllocationsModule,
+    PriceChecksModule,
     LotsModule,
     StocksModule,
     StockMovementsModule,

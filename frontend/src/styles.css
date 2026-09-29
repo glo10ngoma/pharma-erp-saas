@@ -8936,6 +8936,84 @@ details.nav-group .nav-link {
   display: none;
 }
 
+.price-check-page {
+  display: grid;
+  gap: 16px;
+}
+
+.price-check-layout {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+}
+
+.price-check-editor,
+.price-check-history,
+.price-check-preview {
+  min-width: 0;
+}
+
+.price-check-results,
+.price-check-history-list {
+  display: grid;
+  gap: 8px;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.price-check-result,
+.price-check-history-item {
+  background: #f9fbfa;
+  border: 1px solid #dce5e0;
+  border-radius: 8px;
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  padding: 9px 10px;
+  text-align: left;
+}
+
+.price-check-history-item {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.price-check-result strong,
+.price-check-history-item strong {
+  color: #18241f;
+}
+
+.price-check-manual-line {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 110px auto;
+}
+
+.price-check-qty {
+  max-width: 92px;
+}
+
+.price-check-total-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.price-check-document {
+  display: grid;
+  gap: 8px;
+}
+
+.price-check-disclaimer {
+  border-top: 1px solid #dce5e0;
+  color: #5f6e67;
+  font-size: 0.86rem;
+  padding-top: 10px;
+}
+
 [data-theme='dark'] .offline-kpi {
   border-left-color: var(--primary);
 }
@@ -9357,6 +9435,15 @@ details.nav-group .nav-link {
     padding-top: 4px;
   }
 
+  .offline-workspace-topbar-pos .offline-topbar-actions {
+    gap: 6px;
+  }
+
+  .offline-workspace-topbar-pos .offline-topbar-actions .compact-button {
+    min-height: 32px;
+    padding-inline: 10px;
+  }
+
   .offline-pos-page-fixed .offline-payment-shortcuts .compact-button,
   .offline-pos-page-fixed .offline-cart-remove-button,
   .offline-pos-page-fixed .offline-draft-save-button,
@@ -9374,6 +9461,14 @@ details.nav-group .nav-link {
 }
 
 @media (max-width: 1180px) {
+  .price-check-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .price-check-manual-line {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .purchase-return-stepper {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

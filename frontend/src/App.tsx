@@ -36,6 +36,7 @@ import { SalesDashboardPage } from './modules/sales/SalesDashboardPage';
 import { SalesListPage } from './modules/sales/SalesListPage';
 import { YesterdaySalesReportPage, EndOfDaySalesReportPage } from './modules/sales/SalesReportsPages';
 import { SaleDetailPage } from './modules/sales/SaleDetailPage';
+import { PriceChecksPage } from './modules/sales/PriceChecksPage';
 import { CashPage } from './modules/cash/CashPage';
 import { OrganizationsPage } from './modules/insurance/OrganizationsPage';
 import { InsurancePlansPage } from './modules/insurance/InsurancePlansPage';
@@ -146,6 +147,7 @@ export function App() {
                   <Route index element={<SalesIndexRedirect />} />
                   <Route path="dashboard" element={<SalesDashboardPage />} />
                   <Route path="list" element={<SalesListPage />} />
+                  <Route path="price-checks" element={<PriceChecksPage />} />
                   <Route path="reports/yesterday" element={<YesterdaySalesReportPage />} />
                   <Route path="reports/end-of-day" element={<EndOfDaySalesReportPage />} />
                 </Route>
@@ -154,6 +156,7 @@ export function App() {
                 <Route path="/offline/cash" element={<OfflineCashPage />} />
                 <Route path="/offline/drafts" element={<OfflineDraftsPage />} />
                 <Route path="/offline/sales" element={<OfflineSalesPage />} />
+                <Route path="/offline/price-checks" element={<PriceChecksPage />} />
                 <Route path="/offline/synchronisation" element={<OfflineSynchronizationPage />} />
                 <Route path="/offline/poste" element={<OfflineWorkstationPage />} />
                 <Route path="/offline-admin/dashboard" element={<OfflineAdminDashboardPage />} />

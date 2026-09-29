@@ -955,9 +955,14 @@ export function OfflinePosPage() {
       title="POS"
       exitTo="/reports/dashboard"
       topActions={(
-        <Link className="ghost-button compact-button" to="/offline/drafts">
-          Brouillons
-        </Link>
+        <>
+          <Link className="ghost-button compact-button" to="/offline/price-checks">
+            Verifier les prix
+          </Link>
+          <Link className="ghost-button compact-button" to="/offline/drafts">
+            Brouillons
+          </Link>
+        </>
       )}
     >
       <section className="offline-page offline-pos-page offline-pos-page-fixed">

@@ -33,6 +33,7 @@ export function DashboardLayout() {
       icon: 'VN',
       links: [
         ['/pos', 'POS', 'sales.create'],
+        ['/sales/price-checks', 'Verification de prix', 'price_checks.create'],
         ['/sales/dashboard', 'Dashboard ventes', 'sales.read'],
         ['/sales/list', 'Liste des ventes', 'sales.read'],
         ['/sales/list?saleMode=ADVANCE', 'Paiements en avance', 'sales.read'],
