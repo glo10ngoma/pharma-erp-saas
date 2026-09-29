@@ -45,6 +45,14 @@ CREATE INDEX IF NOT EXISTS idx_price_checks_tenant_site_created
 CREATE INDEX IF NOT EXISTS idx_price_checks_customer
   ON price_checks(customer_id);
 
+CREATE TABLE IF NOT EXISTS price_check_counters (
+  tenant_id UUID NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+  counter_date DATE NOT NULL,
+  last_sequence INTEGER NOT NULL DEFAULT 0,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (tenant_id, counter_date)
+);
+
 CREATE TABLE IF NOT EXISTS price_check_items (
   price_check_item_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   tenant_id UUID NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,

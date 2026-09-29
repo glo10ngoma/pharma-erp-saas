@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { PoolClient } from 'pg';
 import { AuthUser } from '../common/types/auth-user';
 import { DatabaseService } from '../database/database.service';
 import { CreatePriceCheckDto, CreatePriceCheckItemDto } from './dto/create-price-check.dto';
@@ -168,12 +169,12 @@ export class PriceChecksRepository {
 
   async create(user: AuthUser, dto: CreatePriceCheckDto) {
     const exchangeRate = await this.getExchangeRate(user);
-    const checkNumber = await this.nextCheckNumber(user);
     const quotedItems = await this.quoteItems(user, dto.siteId, dto.items);
     const totalUsd = this.roundMoney(quotedItems.reduce((sum, item) => sum + item.subtotal, 0));
     const totalCdf = this.roundMoney(totalUsd * exchangeRate);
 
     const createdId = await this.db.transaction(async (client) => {
+      const checkNumber = await this.nextCheckNumber(user, client);
       const header = await client.query<{ price_check_id: string }>(
         `
         INSERT INTO price_checks (
@@ -358,15 +359,20 @@ export class PriceChecksRepository {
     return Number.isFinite(rate) && rate > 0 ? rate : 1;
   }
 
-  private async nextCheckNumber(user: AuthUser) {
-    const prefix = `CHK-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`;
-    const result = await this.db.query<{ next_number: string }>(
+  private async nextCheckNumber(user: AuthUser, client: Pick<PoolClient, 'query'>) {
+    const today = new Date().toISOString().slice(0, 10);
+    const prefix = `CHK-${today.replace(/-/g, '')}`;
+    const result = await client.query<{ next_number: number }>(
       `
-      SELECT COALESCE(MAX((regexp_match(check_number, '-([0-9]+)$'))[1]::int), 0) + 1 AS next_number
-      FROM price_checks
-      WHERE tenant_id = $1 AND check_number LIKE $2
+      INSERT INTO price_check_counters (tenant_id, counter_date, last_sequence)
+      VALUES ($1, $2::date, 1)
+      ON CONFLICT (tenant_id, counter_date)
+      DO UPDATE SET
+        last_sequence = price_check_counters.last_sequence + 1,
+        updated_at = CURRENT_TIMESTAMP
+      RETURNING last_sequence AS next_number
       `,
-      [user.tenantId, `${prefix}-%`],
+      [user.tenantId, today],
     );
     return `${prefix}-${String(Number(result.rows[0]?.next_number ?? 1)).padStart(4, '0')}`;
   }

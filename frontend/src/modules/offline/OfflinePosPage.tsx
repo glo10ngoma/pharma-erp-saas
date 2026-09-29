@@ -43,6 +43,7 @@ import { ensureOfflineEnvironmentReady, type OfflineEnvironmentState } from './o
 import { type OfflineCart, type OfflineCustomerMembership, type OfflinePosCustomer, type OfflineSale } from './offline-types';
 import { writeOfflineSettings } from './offline-storage';
 import { useSyncEngine } from './useSyncEngine';
+import { PriceCheckModal } from '../sales/PriceChecksPage';
 
 type OfflinePageModel = Awaited<ReturnType<typeof getOfflineCartPageModel>>;
 type OfflinePosInitState = 'LOADING' | OfflineEnvironmentState | 'ERROR';
@@ -92,6 +93,7 @@ export function OfflinePosPage() {
   const [amountReturnedCdf, setAmountReturnedCdf] = useState('');
   const [lastReceiptSale, setLastReceiptSale] = useState<OfflineSale | null>(null);
   const [printRetrySale, setPrintRetrySale] = useState<OfflineSale | null>(null);
+  const [priceCheckOpen, setPriceCheckOpen] = useState(false);
   const articleInputRef = useRef<HTMLInputElement | null>(null);
   const customerInputRef = useRef<HTMLInputElement | null>(null);
   const membershipInputRef = useRef<HTMLSelectElement | null>(null);
@@ -208,6 +210,7 @@ export function OfflinePosPage() {
 
   useEffect(() => {
     function handleKeys(event: KeyboardEvent) {
+      if (priceCheckOpen) return;
       const target = event.target as HTMLElement | null;
       const isTextEntryContext = target?.tagName === 'TEXTAREA' || target?.isContentEditable;
       if (isTextEntryContext && event.key >= 'F2' && event.key <= 'F8') return;
@@ -956,9 +959,9 @@ export function OfflinePosPage() {
       exitTo="/reports/dashboard"
       topActions={(
         <>
-          <Link className="ghost-button compact-button" to="/offline/price-checks">
+          <button className="ghost-button compact-button" type="button" onClick={() => setPriceCheckOpen(true)}>
             Verifier les prix
-          </Link>
+          </button>
           <Link className="ghost-button compact-button" to="/offline/drafts">
             Brouillons
           </Link>
@@ -1367,6 +1370,12 @@ export function OfflinePosPage() {
         siteName={workstation?.siteName ?? null}
         sellerName={auth?.displayName ?? null}
         workstationName={workstation?.workstationName ?? null}
+      />
+      <PriceCheckModal
+        isOpen={priceCheckOpen}
+        onClose={() => setPriceCheckOpen(false)}
+        siteId={workstation?.siteId ?? auth?.siteId ?? null}
+        siteName={workstation?.siteName ?? null}
       />
     </OfflineWorkspaceLayout>
   );
