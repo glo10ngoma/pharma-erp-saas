@@ -9787,16 +9787,30 @@ details.nav-group .nav-link {
 }
 
 .erp-content {
+  align-content: start;
   display: grid;
   gap: 14px;
   padding: 20px 24px 28px;
+  position: relative;
+}
+
+.erp-content > :not(.app-topbar) {
+  min-width: 0;
 }
 
 .erp-content .app-topbar {
   align-items: center;
   display: flex;
   justify-content: flex-end;
-  min-height: 34px;
+  min-height: 0;
+  position: absolute;
+  right: 18px;
+  top: 12px;
+  z-index: 4;
+}
+
+.erp-content .notification-bell {
+  box-shadow: 0 8px 18px rgba(15, 23, 42, .08);
 }
 
 .erp-content > h1,
@@ -9818,7 +9832,8 @@ details.nav-group .nav-link {
   display: flex;
   gap: 14px;
   justify-content: space-between;
-  margin-bottom: 2px;
+  margin-bottom: 0;
+  padding-right: 52px;
 }
 
 .erp-content .page-heading p,
@@ -9846,14 +9861,26 @@ details.nav-group .nav-link {
   border: 1px solid var(--line);
   border-radius: 8px;
   box-shadow: 0 8px 20px rgba(15, 23, 42, .04);
-  margin-bottom: 10px;
+  margin-bottom: 6px;
   padding: 10px 12px;
+}
+
+.erp-content .toolbar h1,
+.erp-content .toolbar h2 {
+  font-size: 1.22rem;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.erp-content .toolbar p {
+  color: #64748b;
+  margin: 2px 0 0;
 }
 
 .erp-content .card {
   border-color: #dbe7e3;
   box-shadow: 0 8px 22px rgba(15, 23, 42, .055);
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   padding: 14px;
 }
 
@@ -9929,7 +9956,11 @@ details.nav-group .nav-link {
 .erp-content .reference-filters,
 .erp-content .sales-filters,
 .erp-content .stock-movements-filter-bar,
-.erp-content .bi-filters {
+.erp-content .bi-filters,
+.erp-content .purchase-filters,
+.erp-content .lots-filters,
+.erp-content .stock-filters,
+.erp-content .inventory-filters {
   padding: 12px;
 }
 
@@ -9955,6 +9986,43 @@ details.nav-group .nav-link {
 .erp-content .inventory-filters .input {
   max-width: 260px;
   min-width: 160px;
+}
+
+.erp-content .sales-module-nav,
+.erp-content .stocks-subnav,
+.erp-content .cash-subnav {
+  align-items: center;
+  background: #f8fbfa;
+  border: 1px solid #dfeae6;
+  border-radius: 8px;
+  display: flex;
+  gap: 4px;
+  margin: 0 0 10px;
+  overflow-x: auto;
+  padding: 4px;
+}
+
+.erp-content .sales-module-nav-link,
+.erp-content .stocks-subnav-link,
+.erp-content .cash-subnav-link {
+  align-items: center;
+  border-radius: 7px;
+  color: #49645b;
+  display: inline-flex;
+  font-size: .84rem;
+  font-weight: 800;
+  min-height: 34px;
+  padding: 7px 11px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.erp-content .sales-module-nav-link.active,
+.erp-content .stocks-subnav-link.active,
+.erp-content .cash-subnav-link.active {
+  background: var(--surface);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, .08);
+  color: var(--primary);
 }
 
 .erp-content .table-wrap {
@@ -10005,6 +10073,16 @@ details.nav-group .nav-link {
 
 .erp-content .empty-state {
   border-color: #dbe7e3;
+}
+
+.erp-content .empty-state h2,
+.erp-content .empty-state h3 {
+  margin: 0 0 6px;
+}
+
+.erp-content .empty-state p {
+  color: #64748b;
+  margin: 0;
 }
 
 .erp-content .modal-panel {
@@ -10081,6 +10159,144 @@ details.nav-group .nav-link {
   padding: 14px;
 }
 
+.erp-content .chat-page {
+  display: grid;
+  gap: 12px;
+  min-height: calc(100vh - 92px);
+}
+
+.erp-content .chat-layout {
+  align-items: stretch;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
+  min-height: min(680px, calc(100vh - 170px));
+}
+
+.erp-content .chat-threads {
+  max-width: none;
+  min-width: 0;
+}
+
+.erp-content .chat-messages-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
+}
+
+.erp-content .chat-thread-list,
+.erp-content .chat-message-list {
+  min-height: 0;
+  overflow: auto;
+}
+
+.erp-content .chat-message-list {
+  max-height: none;
+}
+
+.erp-content .chat-composer {
+  margin-top: 0;
+}
+
+.erp-content .profile-page {
+  display: grid;
+  gap: 12px;
+}
+
+.erp-content .profile-grid {
+  align-items: start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(280px, 360px) minmax(360px, 560px);
+}
+
+.erp-content .profile-identity-card {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+}
+
+.erp-content .profile-avatar {
+  align-items: center;
+  background: linear-gradient(135deg, #155e75, #047857);
+  border-radius: 8px;
+  color: #fff;
+  display: inline-flex;
+  flex: 0 0 56px;
+  font-size: 1.2rem;
+  font-weight: 900;
+  height: 56px;
+  justify-content: center;
+}
+
+.erp-content .profile-identity-main h2,
+.erp-content .profile-security-card h2 {
+  margin: 0 0 4px;
+}
+
+.erp-content .profile-identity-main p,
+.erp-content .profile-security-card p {
+  color: #64748b;
+  margin: 0;
+}
+
+.erp-content .profile-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.erp-content .profile-meta span {
+  background: #eef7f3;
+  border: 1px solid #d6e8e0;
+  border-radius: 999px;
+  color: #25634f;
+  font-size: .75rem;
+  font-weight: 800;
+  padding: 4px 8px;
+}
+
+.erp-content .profile-security-card {
+  display: grid;
+  gap: 12px;
+}
+
+.erp-content .profile-form {
+  display: grid;
+  gap: 10px;
+  max-width: 460px;
+}
+
+.erp-content .cash-metric-card,
+.erp-content .cash-balance-hero-card,
+.erp-content .offline-kpi {
+  min-height: 0;
+  padding: 12px;
+}
+
+.erp-content .cash-metric-card span,
+.erp-content .cash-balance-hero-card span,
+.erp-content .offline-kpi span {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.erp-content .cash-metric-card strong,
+.erp-content .cash-balance-hero-card strong,
+.erp-content .offline-kpi strong {
+  display: block;
+  line-height: 1.15;
+}
+
+.erp-content .cash-toolbar,
+.erp-content .sales-module-shell,
+.erp-content .stocks-page,
+.erp-content .inventory-page {
+  display: grid;
+  gap: 10px;
+}
+
 .erp-content .erp-home-page {
   display: grid;
   gap: 12px;
@@ -10140,6 +10356,15 @@ details.nav-group .nav-link {
   .erp-content .bi-kpi-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .erp-content .chat-layout,
+  .erp-content .profile-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .erp-content .chat-layout {
+    min-height: auto;
+  }
 }
 
 @media (max-width: 980px) {
@@ -10165,6 +10390,18 @@ details.nav-group .nav-link {
   .erp-content .bi-kpi-grid,
   .erp-content .bi-hero-meta {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .erp-content .page-heading {
+    padding-right: 0;
+  }
+
+  .erp-content .app-topbar {
+    position: static;
+  }
+
+  .erp-content .profile-identity-card {
+    align-items: flex-start;
   }
 }
 
