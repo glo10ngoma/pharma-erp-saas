@@ -3978,10 +3978,14 @@ details.nav-group .nav-link {
 .sales-dashboard-hero,
 .sales-list-summary,
 .sales-report-page-hero {
-  align-items: flex-start;
+  align-items: center;
   display: flex;
   gap: 16px;
   justify-content: space-between;
+}
+
+.sales-dashboard-hero {
+  padding: 12px 14px;
 }
 
 .sales-dashboard-hero p,
@@ -3991,10 +3995,23 @@ details.nav-group .nav-link {
 }
 
 .sales-dashboard-hero-meta {
-  display: grid;
-  gap: 6px;
-  text-align: right;
+  align-items: center;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  justify-content: flex-end;
   white-space: nowrap;
+}
+
+.sales-dashboard-hero-meta div {
+  align-items: center;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  display: inline-flex;
+  gap: 6px;
+  min-height: 30px;
+  padding: 4px 9px;
 }
 
 .sales-dashboard-hero-meta span {
@@ -4012,11 +4029,33 @@ details.nav-group .nav-link {
   gap: 8px;
 }
 
+.sales-dashboard-filters {
+  display: grid;
+  gap: 14px;
+}
+
+.sales-dashboard-filter-row {
+  row-gap: 10px;
+}
+
 .sales-dashboard-filter-grid,
 .sales-list-filter-grid {
   display: grid;
   gap: 10px;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.sales-dashboard-date-field {
+  align-items: center;
+  display: grid;
+  gap: 4px;
+}
+
+.sales-dashboard-date-field span {
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 
 .sales-dashboard-kpis {
@@ -5195,7 +5234,7 @@ details.nav-group .nav-link {
 }
 
 .articles-table-wrap {
-  max-height: calc(100vh - 360px);
+  max-height: calc(100vh - 330px);
 }
 
 .articles-table .article-view-button {
@@ -5207,9 +5246,16 @@ details.nav-group .nav-link {
 }
 
 .articles-table .article-action-group {
+  align-items: center;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
+  white-space: nowrap;
+}
+
+.articles-table .article-action-group .ghost-button {
+  min-height: 30px;
+  padding: 5px 9px;
 }
 
 .articles-table .article-edit-button {
@@ -5218,6 +5264,12 @@ details.nav-group .nav-link {
   color: #0f4f4a;
   margin-top: 0;
   width: auto;
+}
+
+.articles-table th,
+.articles-table td {
+  padding-bottom: 5px;
+  padding-top: 5px;
 }
 
 .articles-table .article-view-button:hover {

@@ -73,8 +73,6 @@ export function SalesDashboardPage() {
   const kpis = dashboard?.summary;
   const activeChips = useMemo(() => {
     const chips: Array<{ key: string; label: string }> = [];
-    if (period !== 'custom') chips.push({ key: 'period', label: periodLabel(period, periodRange.from, periodRange.to) });
-    else if (periodRange.from || periodRange.to) chips.push({ key: 'period', label: `Periode : ${periodRange.from || '...'} - ${periodRange.to || '...'}` });
     if (siteId) chips.push({ key: 'siteId', label: `Site : ${selectedSite?.siteName ?? siteId}` });
     if (seller) chips.push({ key: 'seller', label: `Caissier : ${seller}` });
     if (saleType) chips.push({ key: 'saleType', label: `Type : ${saleType}` });
@@ -167,8 +165,14 @@ export function SalesDashboardPage() {
             <option value="USD">Vue USD</option>
             <option value="CDF">Vue FC</option>
           </select>
-          <input className="input compact-input" type="date" value={from} onChange={(event) => setCustomFrom(event.target.value)} />
-          <input className="input compact-input" type="date" value={to} onChange={(event) => setCustomTo(event.target.value)} />
+          <label className="sales-dashboard-date-field">
+            <span>Du</span>
+            <input className="input compact-input" type="date" value={from} onChange={(event) => setCustomFrom(event.target.value)} />
+          </label>
+          <label className="sales-dashboard-date-field">
+            <span>Au</span>
+            <input className="input compact-input" type="date" value={to} onChange={(event) => setCustomTo(event.target.value)} />
+          </label>
         </div>
 
         <div className="sales-active-chips">
