@@ -132,11 +132,13 @@ export function OfflinePosPage() {
         nextParams.set('draft', nextCartId);
         setSearchParams(nextParams, { replace: true });
       }
+      return environment;
     } catch (error) {
       setPageModel(null);
       setViewModel(emptyViewModel);
       setInitState('ERROR');
       setInitError(mapOfflineSellerMessage(error));
+      return null;
     }
   }
 
@@ -591,32 +593,8 @@ export function OfflinePosPage() {
     if (!articleQuery.trim()) autoExactSelectionRef.current = null;
   }, [articleQuery]);
 
-  async function handleSelectArticle(result: LocalCatalogSearchResult, quantityDelta = 1) {
+  async function addReadyArticleToCart(result: LocalCatalogSearchResult, quantityDelta = 1, context = cartContext) {
     if (!cart) return;
-    if (result.status !== 'READY') {
-      if (result.status === 'NO_QUOTA' && navigator.onLine) {
-        setStockRefreshArticleId(result.article.articleId);
-        setMessage('Actualisation du stock...');
-        try {
-          await runSync('manual');
-          await refresh(selectedCartId, { silent: true });
-          setMessage('Stock local actualise. Si aucune quantite n apparait, aucune allocation locale vendable n est disponible pour ce poste.');
-        } catch (error) {
-          setMessage(`Synchronisation impossible : ${mapOfflineError(error)}. Le POS conserve les allocations locales disponibles.`);
-        } finally {
-          setStockRefreshArticleId(null);
-        }
-        return;
-      }
-      setMessage(
-        result.status === 'INACTIVE'
-          ? 'Article inactif dans le snapshot local.'
-          : result.status === 'NO_PRICE'
-            ? 'Prix de vente indisponible dans le snapshot local.'
-            : 'Stock local epuise - connexion requise.',
-      );
-      return;
-    }
     setBusyAction('ITEM');
     setSaveLabel('SAVING');
     try {
@@ -628,7 +606,7 @@ export function OfflinePosPage() {
         cartId: cart.cartId,
         articleId: result.article.articleId,
         quantityDelta,
-      }, cartContext);
+      }, context);
       const fefoSelectionMs = typeof performance !== 'undefined' ? performance.now() - fefoStart : 0;
       const cartUpdateStart = typeof performance !== 'undefined' ? performance.now() : 0;
       flushSync(() => {
@@ -666,6 +644,53 @@ export function OfflinePosPage() {
       setMessage(mapOfflineError(error));
       setBusyAction(null);
     }
+  }
+
+  async function handleSelectArticle(result: LocalCatalogSearchResult, quantityDelta = 1) {
+    if (!cart) return;
+    if (result.status === 'READY') {
+      await addReadyArticleToCart(result, quantityDelta);
+      return;
+    }
+    if (result.status === 'NO_QUOTA' && navigator.onLine) {
+      setStockRefreshArticleId(result.article.articleId);
+      setMessage('Actualisation du stock...');
+      try {
+        await runSync('manual');
+        const refreshed = await refresh(selectedCartId, { silent: true });
+        const freshPageModel = refreshed?.pageModel;
+        const freshCart = freshPageModel?.cart;
+        if (!freshPageModel || !freshCart) {
+          setMessage('Synchronisation terminee, mais le panier local n a pas pu etre relu.');
+          return;
+        }
+        const freshIndex = buildOfflineArticleSearchIndex(freshPageModel.snapshot, freshPageModel.reservations, freshCart.cartId);
+        const freshResult = freshIndex.articlesById.has(result.article.articleId)
+          ? freshIndex.rows.find((row) => row.article.articleId === result.article.articleId) ?? null
+          : null;
+        if (freshResult?.status === 'READY' && freshResult.offlineAvailableQuantity > 0) {
+          await addReadyArticleToCart(freshResult, quantityDelta, {
+            snapshot: freshPageModel.snapshot,
+            carts: freshPageModel.drafts,
+            reservations: freshPageModel.reservations,
+          });
+          return;
+        }
+        setMessage('Stock non disponible sur ce poste.');
+      } catch (error) {
+        setMessage(`Synchronisation impossible : ${mapOfflineError(error)}. Le POS conserve les allocations locales disponibles.`);
+      } finally {
+        setStockRefreshArticleId(null);
+      }
+      return;
+    }
+    setMessage(
+      result.status === 'INACTIVE'
+        ? 'Article inactif dans le snapshot local.'
+        : result.status === 'NO_PRICE'
+          ? 'Prix de vente indisponible dans le snapshot local.'
+          : 'Stock local epuise - connexion requise.',
+    );
   }
 
   async function handleQuantityChange(item: OfflineCart['items'][number], nextQuantity: number) {
