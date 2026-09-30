@@ -17,6 +17,7 @@
     "validate:offline7": "node scripts/validate-offline-7.js",
     "validate:offline8": "node scripts/validate-offline-8.js",
     "validate:offline9": "node scripts/validate-offline-9.js",
+    "validate:offline-allocation-sync": "node scripts/validate-offline-allocation-sync.js",
     "validate:offline-autosync": "node scripts/validate-offline-autosync.js",
     "import:catalog": "node scripts/import-catalog.js",
     "catalog:full-import": "node scripts/catalog-full-import.js",

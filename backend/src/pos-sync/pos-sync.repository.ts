@@ -2071,7 +2071,11 @@ export class PosSyncRepository {
       WHERE tenant_id = $1
         AND site_id = $2
         AND workstation_id = $3
-        AND ($4::timestamptz IS NULL OR updated_at > $4::timestamptz)
+        AND (
+          $4::timestamptz IS NULL
+          OR updated_at > $4::timestamptz
+          OR status = 'ACTIVE'
+        )
       ORDER BY updated_at ASC, allocation_id ASC
       `,
       [user.tenantId, workstation.siteId, workstation.workstationId, since ? since.toISOString() : null],
