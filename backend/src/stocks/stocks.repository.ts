@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AuthUser } from '../common/types/auth-user';
 import { DatabaseService } from '../database/database.service';
+import { ListStockAsOfDto } from './dto/list-stock-as-of.dto';
 import { ListStockSummaryDto } from './dto/list-stock-summary.dto';
 import { StockDetailQueryDto } from './dto/stock-detail-query.dto';
 
@@ -52,6 +53,120 @@ export class StocksRepository {
   constructor(private readonly db: DatabaseService) {}
   async findAll(user: AuthUser) { const r = await this.db.query<StockRow>(this.baseSql('WHERE st.tenant_id=$1 AND ($2::uuid IS NULL OR st.site_id=$2::uuid) ORDER BY a.commercial_name, l.expiry_date'), [user.tenantId, user.siteId ?? null]); return r.rows.map(this.toDto); }
   async findByArticle(user: AuthUser, articleId: string) { const r = await this.db.query<StockRow>(this.baseSql('WHERE st.tenant_id=$1 AND l.article_id=$2 AND ($3::uuid IS NULL OR st.site_id=$3::uuid) ORDER BY l.expiry_date'), [user.tenantId, articleId, user.siteId ?? null]); return r.rows.map(this.toDto); }
+  async findAsOf(user: AuthUser, query: ListStockAsOfDto) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 25;
+    const offset = (page - 1) * limit;
+    const params: unknown[] = [user.tenantId, user.siteId ?? null, query.siteId ?? null, query.stockDate];
+    const filters = ['1=1'];
+
+    if (query.search?.trim()) {
+      params.push(`%${query.search.trim()}%`);
+      filters.push(`(
+        article_code ILIKE $${params.length}
+        OR commercial_name ILIKE $${params.length}
+        OR dci ILIKE $${params.length}
+        OR site_name ILIKE $${params.length}
+      )`);
+    }
+
+    if (query.categoryId) {
+      params.push(query.categoryId);
+      filters.push(`category_id = $${params.length}::uuid`);
+    }
+
+    if (query.status && query.status !== 'ALL') {
+      params.push(query.status);
+      filters.push(`status_code = $${params.length}`);
+    }
+
+    params.push(limit, offset);
+    const rows = await this.db.query<StockSummaryRow>(
+      `
+      WITH signed_movements AS (
+        SELECT
+          sm.article_id,
+          sm.site_id,
+          sm.lot_id,
+          SUM(
+            CASE
+              WHEN sm.movement_type IN ('PURCHASE_IN', 'INVENTORY_GAIN', 'TRANSFER_IN', 'PURCHASE_EXCHANGE_IN', 'MANUAL_ADJUSTMENT_IN', 'STOCK_ENTRY', 'ADJUSTMENT_IN', 'RETURN_IN') THEN sm.quantity
+              WHEN sm.movement_type IN ('SALE_OUT', 'INVENTORY_LOSS', 'TRANSFER_OUT', 'PURCHASE_RETURN_OUT', 'MANUAL_ADJUSTMENT_OUT', 'STOCK_OUTPUT', 'ADJUSTMENT_OUT', 'RETURN_OUT', 'EXPIRED_OUT', 'DAMAGED_OUT') THEN -sm.quantity
+              ELSE 0
+            END
+          )::numeric AS quantity_available
+        FROM stock_movements sm
+        WHERE sm.tenant_id = $1
+          AND ($2::uuid IS NULL OR sm.site_id = $2::uuid)
+          AND ($3::uuid IS NULL OR sm.site_id = $3::uuid)
+          AND sm.movement_date < ($4::date + INTERVAL '1 day')
+        GROUP BY sm.article_id, sm.site_id, sm.lot_id
+      ),
+      aggregated AS (
+        SELECT
+          a.article_id,
+          a.article_code,
+          a.commercial_name,
+          a.dci,
+          a.category_id,
+          sm.site_id,
+          s.site_name,
+          SUM(sm.quantity_available)::numeric AS quantity_available,
+          0::numeric AS quantity_reserved,
+          SUM(sm.quantity_available)::numeric AS quantity_total,
+          MAX(COALESCE(a.default_stock_min, 0))::numeric AS stock_min,
+          SUM(GREATEST(sm.quantity_available, 0) * COALESCE(l.purchase_price, 0))::numeric AS purchase_value,
+          SUM(GREATEST(sm.quantity_available, 0) * COALESCE(l.selling_price, 0))::numeric AS sale_value,
+          MIN(l.expiry_date) FILTER (WHERE sm.quantity_available > 0 AND l.expiry_date IS NOT NULL) AS next_expiry_date
+        FROM signed_movements sm
+        JOIN articles a ON a.article_id = sm.article_id AND a.tenant_id = $1
+        JOIN sites s ON s.site_id = sm.site_id AND s.tenant_id = $1
+        LEFT JOIN lots l ON l.lot_id = sm.lot_id AND l.tenant_id = $1
+        GROUP BY a.article_id, a.article_code, a.commercial_name, a.dci, a.category_id, sm.site_id, s.site_name
+      ),
+      filtered AS (
+        SELECT
+          *,
+          CASE
+            WHEN quantity_available <= 0 THEN 'OUT'
+            WHEN quantity_reserved > 0 THEN 'RESERVED'
+            WHEN quantity_available <= stock_min THEN 'LOW'
+            ELSE 'AVAILABLE'
+          END AS status_code
+        FROM aggregated
+        WHERE ${filters.join(' AND ')}
+      )
+      SELECT
+        article_id,
+        article_code,
+        commercial_name,
+        dci,
+        site_id,
+        site_name,
+        quantity_available,
+        quantity_reserved,
+        quantity_total,
+        stock_min,
+        purchase_value,
+        sale_value,
+        next_expiry_date,
+        COUNT(*) OVER()::int AS total_count
+      FROM filtered
+      ORDER BY commercial_name ASC, site_name ASC
+      LIMIT $${params.length - 1}
+      OFFSET $${params.length}
+      `,
+      params,
+    );
+
+    return {
+      items: rows.rows.map((row) => this.toSummaryDto(row)),
+      page,
+      limit,
+      total: Number(rows.rows[0]?.total_count ?? 0),
+      totalPages: Math.max(1, Math.ceil(Number(rows.rows[0]?.total_count ?? 0) / limit)),
+    };
+  }
   async findSummary(user: AuthUser, query: ListStockSummaryDto) {
     const page = query.page ?? 1;
     const limit = query.limit ?? 25;

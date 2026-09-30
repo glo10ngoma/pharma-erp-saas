@@ -9789,8 +9789,8 @@ details.nav-group .nav-link {
 .erp-content {
   align-content: start;
   display: grid;
-  gap: 14px;
-  padding: 20px 24px 28px;
+  gap: 8px;
+  padding: 12px 24px 28px;
   position: relative;
 }
 
@@ -9802,11 +9802,9 @@ details.nav-group .nav-link {
   align-items: center;
   display: flex;
   justify-content: flex-end;
-  min-height: 0;
-  position: absolute;
-  right: 18px;
-  top: 12px;
-  z-index: 4;
+  min-height: 34px;
+  position: static;
+  z-index: 1;
 }
 
 .erp-content .notification-bell {
@@ -9833,7 +9831,7 @@ details.nav-group .nav-link {
   gap: 14px;
   justify-content: space-between;
   margin-bottom: 0;
-  padding-right: 52px;
+  padding-right: 0;
 }
 
 .erp-content .page-heading p,
@@ -9845,7 +9843,12 @@ details.nav-group .nav-link {
 
 .erp-content .page-heading-actions,
 .erp-content .table-actions,
-.erp-content .toolbar {
+.erp-content .toolbar,
+.erp-content .export-actions,
+.erp-content .sales-list-actions,
+.erp-content .stock-export-actions,
+.erp-content .stock-movements-filter-actions,
+.erp-content .sales-export-actions {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
@@ -9967,6 +9970,9 @@ details.nav-group .nav-link {
 .erp-content .reference-filters,
 .erp-content .sales-filters,
 .erp-content .bi-filters,
+.erp-content .sales-list-filters,
+.erp-content .sales-list-filter-grid,
+.erp-content .stock-movements-filter-row,
 .erp-content .purchase-filters,
 .erp-content .lots-filters,
 .erp-content .stock-filters,
@@ -9979,6 +9985,7 @@ details.nav-group .nav-link {
 
 .erp-content .reference-filters .search-box,
 .erp-content .sales-filters .search-box,
+.erp-content .sales-list-filters .input,
 .erp-content .bi-filters .input,
 .erp-content .purchase-filters .input,
 .erp-content .lots-filters .input,
@@ -10019,6 +10026,7 @@ details.nav-group .nav-link {
 
 .erp-content .sales-module-nav-link.active,
 .erp-content .stocks-subnav-link.active,
+.erp-content .stocks-subnav-link.is-active,
 .erp-content .cash-subnav-link.active {
   background: var(--surface);
   box-shadow: 0 6px 16px rgba(15, 23, 42, .08);
@@ -10038,7 +10046,8 @@ details.nav-group .nav-link {
 
 .erp-content .data-table th,
 .erp-content .data-table td {
-  padding: 7px 9px;
+  padding: 6px 8px;
+  vertical-align: middle;
 }
 
 .erp-content .data-table th {
@@ -10055,6 +10064,41 @@ details.nav-group .nav-link {
 
 .erp-content .data-table td strong {
   color: #13251f;
+}
+
+.erp-content .data-table .ghost-button,
+.erp-content .data-table .compact-button,
+.erp-content .table-action-button {
+  min-height: 30px;
+  padding: 5px 9px;
+}
+
+.erp-content .data-table td:last-child,
+.erp-content .stock-movement-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.erp-content .sales-list-context {
+  align-items: center;
+  border-bottom: 1px solid #e3ece8;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+}
+
+.erp-content .sales-list-context h2 {
+  margin: 0 0 3px;
+}
+
+.erp-content .sales-list-context p {
+  color: #64748b;
+  margin: 0;
 }
 
 .erp-content .badge,

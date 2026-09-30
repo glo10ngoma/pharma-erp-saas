@@ -32,9 +32,10 @@ const DEFAULT_FILTERS: SalesModuleFilters = {
   period: 'custom',
 };
 
-export function SalesListPage() {
+export function SalesListPage({ mode = 'all' }: { mode?: 'all' | 'advance' }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const isAdvanceView = mode === 'advance';
   const initialPeriod = (searchParams.get('period') as PeriodPreset) || 'custom';
   const [page, setPage] = useState(Number(searchParams.get('page') || '1'));
   const [period, setPeriod] = useState<PeriodPreset>(initialPeriod);
@@ -45,7 +46,7 @@ export function SalesListPage() {
     seller: searchParams.get('seller') || '',
     siteId: searchParams.get('siteId') || '',
     saleType: searchParams.get('saleType') || '',
-    saleMode: searchParams.get('saleMode') || '',
+    saleMode: isAdvanceView ? 'ADVANCE' : searchParams.get('saleMode') || '',
     status: searchParams.get('status') || '',
     paymentMode: searchParams.get('paymentMode') || '',
     from: searchParams.get('from') || '',
@@ -56,12 +57,12 @@ export function SalesListPage() {
   const sites = useQuery({ queryKey: ['sales-list-sites'], queryFn: async () => (await sitesService.getAll()).data, staleTime: 5 * 60 * 1000 });
   const query = useMemo(() => buildSalesListParams(filters), [filters]);
   const sales = useQuery({
-    queryKey: ['sales-list', query, page],
+    queryKey: [isAdvanceView ? 'sales-advance-list' : 'sales-list', query, page],
     queryFn: async () => (await salesService.getList({ ...query, page, limit: PAGE_SIZE })).data,
     placeholderData: (previous) => previous,
   });
   const summary = useQuery({
-    queryKey: ['sales-list-summary', query],
+    queryKey: [isAdvanceView ? 'sales-advance-summary' : 'sales-list-summary', query],
     queryFn: async () => (await salesService.getSummary(query)).data,
     placeholderData: (previous) => previous,
   });
@@ -83,10 +84,12 @@ export function SalesListPage() {
   }, [filters.customer, filters.from, filters.paymentMode, filters.saleMode, filters.saleType, filters.seller, filters.siteId, filters.status, filters.to, period, sites.data]);
 
   function syncFilters(nextFilters: SalesModuleFilters, nextPage = 1) {
-    setFilters(nextFilters);
+    const scopedFilters = isAdvanceView ? { ...nextFilters, saleMode: 'ADVANCE' } : nextFilters;
+    setFilters(scopedFilters);
     setPage(nextPage);
     const params = new URLSearchParams();
-    Object.entries(nextFilters).forEach(([key, value]) => {
+    Object.entries(scopedFilters).forEach(([key, value]) => {
+      if (isAdvanceView && key === 'saleMode') return;
       if (value) params.set(key, String(value));
     });
     if (nextPage > 1) params.set('page', String(nextPage));
@@ -112,7 +115,7 @@ export function SalesListPage() {
 
   function resetFilters() {
     setPeriod('custom');
-    syncFilters({ ...DEFAULT_FILTERS }, 1);
+    syncFilters({ ...DEFAULT_FILTERS, saleMode: isAdvanceView ? 'ADVANCE' : '' }, 1);
   }
 
   async function exportList(format: 'xlsx' | 'csv' | 'json') {
@@ -135,6 +138,13 @@ export function SalesListPage() {
   return (
     <section className="sales-module-page">
       <div className="card sales-list-summary">
+        <div className="sales-list-context">
+          <div>
+            <h2>{isAdvanceView ? 'Paiements en avance' : 'Liste des ventes'}</h2>
+            <p>{isAdvanceView ? 'Ventes encaissees maintenant avec livraison ou retrait ulterieur.' : 'Toutes les ventes selon les filtres actifs.'}</p>
+          </div>
+          {isAdvanceView && <span className="badge badge-warning">Mode ADVANCE</span>}
+        </div>
         <div className="sales-list-summary-grid">
           <div><span>CA net</span><strong>{formatMoney(summary.data?.revenueNet ?? 0, 'USD')}</strong></div>
           <div><span>Ventes valides</span><strong>{summary.data?.saleCount ?? 0}</strong></div>
@@ -157,11 +167,13 @@ export function SalesListPage() {
             <option value="CASH">CASH</option>
             <option value="INSURANCE">ASSURANCE</option>
           </select>
-          <select className="input compact-input" value={filters.saleMode || ''} onChange={(event) => updateFilters({ saleMode: event.target.value })}>
-            <option value="">Mode</option>
-            <option value="IMMEDIATE">Immediate</option>
-            <option value="ADVANCE">Avance</option>
-          </select>
+          {!isAdvanceView && (
+            <select className="input compact-input" value={filters.saleMode || ''} onChange={(event) => updateFilters({ saleMode: event.target.value })}>
+              <option value="">Mode</option>
+              <option value="IMMEDIATE">Immediate</option>
+              <option value="ADVANCE">Avance</option>
+            </select>
+          )}
           <select className="input compact-input" value={filters.status || ''} onChange={(event) => updateFilters({ status: event.target.value })}>
             <option value="">Statut</option>
             <option value="DRAFT">DRAFT</option>

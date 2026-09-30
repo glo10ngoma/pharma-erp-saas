@@ -147,6 +147,7 @@ export function App() {
                   <Route index element={<SalesIndexRedirect />} />
                   <Route path="dashboard" element={<SalesDashboardPage />} />
                   <Route path="list" element={<SalesListPage />} />
+                  <Route path="advance" element={<SalesListPage mode="advance" />} />
                   <Route path="price-checks" element={<PriceChecksPage />} />
                   <Route path="reports/yesterday" element={<YesterdaySalesReportPage />} />
                   <Route path="reports/end-of-day" element={<EndOfDaySalesReportPage />} />

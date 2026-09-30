@@ -53,6 +53,9 @@ export function SalesModuleLayout() {
         <NavLink className={({ isActive }) => navClass(isActive)} to={`/sales/list${querySuffix}`}>
           Liste des ventes
         </NavLink>
+        <NavLink className={({ isActive }) => navClass(isActive)} to="/sales/advance">
+          Paiements en avance
+        </NavLink>
         <NavLink className={({ isActive }) => navClass(isActive)} to="/sales/price-checks">
           Verification de prix
         </NavLink>

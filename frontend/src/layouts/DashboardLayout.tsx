@@ -36,7 +36,7 @@ export function DashboardLayout() {
         ['/sales/price-checks', 'Verification de prix', 'price_checks.create'],
         ['/sales/dashboard', 'Dashboard ventes', 'sales.read'],
         ['/sales/list', 'Liste des ventes', 'sales.read'],
-        ['/sales/list?saleMode=ADVANCE', 'Paiements en avance', 'sales.read'],
+        ['/sales/advance', 'Paiements en avance', 'sales.read'],
         ['/customer-returns', 'Retours clients', 'customer_returns.read'],
         ['/cash', 'Caisse', 'cash_registers.read'],
       ],

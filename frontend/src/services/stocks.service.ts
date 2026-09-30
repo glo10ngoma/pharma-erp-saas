@@ -125,5 +125,6 @@ export const stocksService = {
   getMovements: (params?: Record<string, string | number | undefined>) => apiClient.get<StockMovementListResponse>('/stock-movements', { params }),
   exportMovements: (params?: Record<string, string | number | undefined>) => apiClient.get<StockMovementExportResponse>('/stock-movements/export', { params }),
   getSummary: (params: Record<string, string | number | undefined>) => apiClient.get<StockSummaryResponse>('/stocks/summary', { params }),
+  getAsOf: (params: Record<string, string | number | undefined>) => apiClient.get<StockSummaryResponse>('/stocks/as-of', { params }),
   getDetail: (params: { articleId: string; siteId: string }) => apiClient.get<StockDetail>('/stocks/detail', { params }),
 };

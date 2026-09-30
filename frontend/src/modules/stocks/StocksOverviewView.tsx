@@ -5,14 +5,11 @@ import { Modal } from '../../components/Modal';
 import { SearchBox } from '../../components/SearchBox';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { filterRows } from '../../lib/search';
-import { Article, articlesService } from '../../services/articles.service';
-import { Lot, lotsService } from '../../services/lots.service';
 import { apiErrorMessage } from '../../services/apiError';
 import { sitesService } from '../../services/sites.service';
 import { Stock, StockDetail, StockMovement, StockSummary, stocksService } from '../../services/stocks.service';
 import { formatDate, fileDateStamp } from '../../utils/date';
 import { downloadCsv, downloadJson, downloadXlsx } from '../../utils/export';
-import { fetchAllPages } from '../../utils/fetchAllPages';
 import { formatMoney } from '../../utils/money';
 import { stockMovementLabel, stockMovementSourceRoute } from './stockMovementLabels';
 
@@ -87,40 +84,28 @@ export function StocksOverviewView({ mode }: { mode: 'current' | 'as-of' }) {
   });
 
   const snapshotMovements = useQuery({
-    queryKey: ['stock-movements', 'snapshot', stockDate],
-    queryFn: async () => fetchAllSnapshotMovements(stockDate),
+    queryKey: ['stocks-as-of', { page, search: debouncedSearch, statusFilter, siteFilter, stockDate }],
+    queryFn: async () =>
+      (await stocksService.getAsOf({
+        page,
+        limit: PAGE_LIMIT,
+        stockDate,
+        search: debouncedSearch || undefined,
+        status: statusFilter,
+        siteId: siteFilter || undefined,
+      })).data,
     enabled: isSnapshot,
-  });
-  const snapshotLots = useQuery({
-    queryKey: ['lots', 'stocks-snapshot'],
-    queryFn: async () => (await lotsService.getAll()).data,
-    enabled: isSnapshot,
-  });
-  const snapshotArticles = useQuery({
-    queryKey: ['articles', 'stocks-snapshot'],
-    queryFn: fetchAllSnapshotArticles,
-    enabled: isSnapshot,
+    placeholderData: (previous) => previous,
   });
 
   const currentRows = useMemo(() => (summary.data?.items ?? []).map(toCurrentStockRow), [summary.data?.items]);
-  const snapshotRows = useMemo(() => {
-    const lotsById = new Map((snapshotLots.data ?? []).map((lot) => [lot.lotId, lot]));
-    const articlesById = new Map((snapshotArticles.data ?? []).map((article) => [article.articleId, article]));
-    return buildSnapshotRows(stockDate, snapshotMovements.data ?? [], lotsById, articlesById);
-  }, [snapshotArticles.data, snapshotLots.data, snapshotMovements.data, stockDate]);
+  const snapshotRows = useMemo(() => (snapshotMovements.data?.items ?? []).map(toCurrentStockRow), [snapshotMovements.data?.items]);
   const rows = isSnapshot ? snapshotRows : currentRows;
 
   const filteredSnapshotRows = useMemo(() => {
     if (!isSnapshot) return rows;
-    const searched = filterRows(rows, debouncedSearch, (row) => [
-      row.articleCode,
-      row.articleName,
-      row.dci,
-      row.siteName,
-      row.statusLabel,
-    ]);
-    return searched.filter((row) => matchesStatus(row, statusFilter) && (!siteFilter || row.siteId === siteFilter));
-  }, [debouncedSearch, isSnapshot, rows, siteFilter, statusFilter]);
+    return filterRows(rows, debouncedSearch, (row) => [row.articleCode, row.articleName, row.dci, row.siteName, row.statusLabel]);
+  }, [debouncedSearch, isSnapshot, rows]);
 
   const visibleRows = isSnapshot ? filteredSnapshotRows : rows;
   const selectedSummaryRow = !isSnapshot ? currentRows.find((row) => row.key === selectedKey) ?? null : null;
@@ -150,29 +135,23 @@ export function StocksOverviewView({ mode }: { mode: 'current' | 'as-of' }) {
   );
 
   const loading = isSnapshot
-    ? snapshotMovements.isLoading || snapshotLots.isLoading || snapshotArticles.isLoading
+    ? snapshotMovements.isLoading
     : summary.isLoading;
   const error = isSnapshot
-    ? snapshotMovements.error ?? snapshotLots.error ?? snapshotArticles.error
+    ? snapshotMovements.error
     : summary.error;
   const isRefreshing = isSnapshot
-    ? snapshotMovements.isFetching || snapshotLots.isFetching || snapshotArticles.isFetching
+    ? snapshotMovements.isFetching
     : summary.isFetching;
   const errorMessage = !error
     ? 'Impossible de charger les stocks pour le moment.'
     : snapshotMovements.error
-      ? `Impossible de charger les mouvements necessaires au stock a date : ${apiErrorMessage(snapshotMovements.error)}`
-      : snapshotArticles.error
-        ? `Impossible de charger les articles necessaires au stock a date : ${apiErrorMessage(snapshotArticles.error)}`
-        : snapshotLots.error
-          ? `Impossible de charger les lots necessaires au stock a date : ${apiErrorMessage(snapshotLots.error)}`
-          : apiErrorMessage(error);
+      ? `Impossible de charger le stock a date : ${apiErrorMessage(snapshotMovements.error)}`
+      : apiErrorMessage(error);
 
   function retry() {
     if (isSnapshot) {
       snapshotMovements.refetch();
-      snapshotLots.refetch();
-      snapshotArticles.refetch();
       return;
     }
     summary.refetch();
@@ -241,9 +220,9 @@ export function StocksOverviewView({ mode }: { mode: 'current' | 'as-of' }) {
         </div>
       </div>
 
-      {!isSnapshot && summary.data && (
+      {(isSnapshot ? snapshotMovements.data : summary.data) && (
         <div className="stocks-table-meta">
-          <span>{summary.data.total} lignes</span>
+          <span>{isSnapshot ? `${snapshotMovements.data?.total ?? 0} lignes a date` : `${summary.data?.total ?? 0} lignes`}</span>
           {isRefreshing && <span className="muted">Mise a jour...</span>}
         </div>
       )}
@@ -257,7 +236,7 @@ export function StocksOverviewView({ mode }: { mode: 'current' | 'as-of' }) {
             <button className="ghost-button compact-button" type="button" onClick={retry}>Reessayer</button>
           </div>
         ) : visibleRows.length === 0 ? (
-          <p className="empty-state">Aucun stock trouve. Ajustez la recherche ou les filtres.</p>
+          <p className="empty-state">{isSnapshot ? 'Aucun stock a date trouve pour ces filtres.' : 'Aucun stock trouve. Ajustez la recherche ou les filtres.'}</p>
         ) : (
           <div className="table-wrap">
             <table className="data-table stocks-table">
@@ -293,6 +272,14 @@ export function StocksOverviewView({ mode }: { mode: 'current' | 'as-of' }) {
         </div>
       )}
 
+      {isSnapshot && snapshotMovements.data && snapshotMovements.data.totalPages > 1 && (
+        <div className="table-pagination">
+          <button className="ghost-button compact-button" type="button" disabled={page <= 1 || snapshotMovements.isFetching} onClick={() => setPage((current) => Math.max(1, current - 1))}>Precedent</button>
+          <span>Page {snapshotMovements.data.page} / {snapshotMovements.data.totalPages}</span>
+          <button className="ghost-button compact-button" type="button" disabled={page >= snapshotMovements.data.totalPages || snapshotMovements.isFetching} onClick={() => setPage((current) => current + 1)}>Suivant</button>
+        </div>
+      )}
+
       <Modal title="Detail stock" open={Boolean(selectedRowForModal)} onClose={() => setSelectedKey(null)}>
         {isSnapshot ? (
           selectedSnapshotRow && <StockDetailPanel row={selectedSnapshotRow} isSnapshot stockDate={stockDate} />
@@ -305,29 +292,6 @@ export function StocksOverviewView({ mode }: { mode: 'current' | 'as-of' }) {
         )}
       </Modal>
     </>
-  );
-}
-
-async function fetchAllSnapshotMovements(stockDate: string) {
-  return fetchAllPages(
-    async ({ page, limit }) =>
-      (
-        await stocksService.getMovements({
-          page,
-          limit,
-          dateTo: stockDate,
-          sortBy: 'movementDate',
-          sortOrder: 'asc',
-        })
-      ).data,
-    { getKey: (movement) => movement.movementId },
-  );
-}
-
-async function fetchAllSnapshotArticles() {
-  return fetchAllPages(
-    async ({ page, limit }) => (await articlesService.getAll({ page, limit })).data,
-    { getKey: (article) => article.articleId },
   );
 }
 
@@ -467,90 +431,6 @@ function toCurrentStockRow(row: StockSummary): StockRow {
     lots: [],
     movements: [],
   };
-}
-
-function buildSnapshotRows(stockDate: string, movements: StockMovement[], lotsById: Map<string, Lot>, articlesById: Map<string, Article>) {
-  const grouped = new Map<string, StockRow>();
-  const lotRows = new Map<string, StockLotDetail>();
-  const cutoff = new Date(`${stockDate}T23:59:59`).getTime();
-  for (const movement of movements) {
-    const movementTime = new Date(movement.movementDate).getTime();
-    if (!Number.isFinite(movementTime) || movementTime > cutoff) continue;
-    const articleId = movement.articleId ?? '';
-    const siteId = movement.siteId ?? movement.siteName ?? 'site';
-    if (!articleId) continue;
-    const article = articlesById.get(articleId);
-    const lot = movement.lotId ? lotsById.get(movement.lotId) : undefined;
-    const key = `${articleId}-${siteId}`;
-    const row = grouped.get(key) ?? emptyRow(key, articleId, movement.articleCode, movement.commercialName, article, siteId, movement.siteName);
-    const signed = movementSign(movement.movementType) * Number(movement.quantity ?? 0);
-    const purchasePrice = Number(lot?.purchasePrice ?? 0);
-    const sellingPrice = Number(lot?.sellingPrice ?? article?.sellingPrice ?? 0);
-    row.quantityAvailable += signed;
-    row.quantityTotal += signed;
-    row.stockMin = Math.max(row.stockMin, Number(article?.defaultStockMin ?? 0));
-    row.purchaseValue += signed * purchasePrice;
-    row.saleValue += signed * sellingPrice;
-    if (movement.lotId) {
-      const lotKey = `${key}-${movement.lotId}`;
-      const current = lotRows.get(lotKey) ?? {
-        lotId: movement.lotId,
-        lotNumber: movement.lotNumber ?? '-',
-        expiryDate: lot?.expiryDate ?? '',
-        quantityAvailable: 0,
-        quantityReserved: 0,
-        purchasePrice,
-        sellingPrice,
-      };
-      current.quantityAvailable += signed;
-      lotRows.set(lotKey, current);
-    }
-    row.movements.push(movement);
-    grouped.set(key, row);
-  }
-  for (const row of grouped.values()) {
-    row.lots = [...lotRows.entries()].filter(([key]) => key.startsWith(`${row.key}-`)).map(([, lot]) => lot).filter((lot) => lot.quantityAvailable !== 0);
-  }
-  return finalizeRows([...grouped.values()], movements);
-}
-
-function emptyRow(key: string, articleId: string, articleCode: string | null | undefined, articleName: string | null | undefined, article: Article | undefined, siteId: string, siteName: string | null | undefined): StockRow {
-  return {
-    key,
-    articleId,
-    articleCode: articleCode ?? article?.articleCode ?? '-',
-    articleName: articleName ?? article?.commercialName ?? '-',
-    dci: article?.dci ?? null,
-    siteId,
-    siteName: siteName ?? '-',
-    quantityAvailable: 0,
-    quantityReserved: 0,
-    quantityTotal: 0,
-    stockMin: Number(article?.defaultStockMin ?? 0),
-    purchaseValue: 0,
-    saleValue: 0,
-    statusLabel: '',
-    statusClass: '',
-    lots: [],
-    movements: [],
-  };
-}
-
-function finalizeRows(rows: StockRow[], movements: StockMovement[]) {
-  return rows.map((row) => {
-    const status = stockStatus(row);
-    return {
-      ...row,
-      quantityAvailable: roundQuantity(row.quantityAvailable),
-      quantityReserved: roundQuantity(row.quantityReserved),
-      quantityTotal: roundQuantity(row.quantityTotal),
-      purchaseValue: Math.max(0, row.purchaseValue),
-      saleValue: Math.max(0, row.saleValue),
-      statusLabel: status.label,
-      statusClass: status.className,
-      movements: row.movements.length ? row.movements : movements.filter((movement) => movement.articleId === row.articleId && (movement.siteId === row.siteId || movement.siteName === row.siteName)).slice(0, 12),
-    };
-  }).sort((a, b) => a.articleName.localeCompare(b.articleName));
 }
 
 function stockStatus(row: Pick<StockRow, 'quantityAvailable' | 'quantityReserved' | 'stockMin'>) {
