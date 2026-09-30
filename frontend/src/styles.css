@@ -9735,6 +9735,112 @@ details.nav-group .nav-link {
   }
 }
 
+/* POS desktop lock: the seller screen is a fixed workstation layout, not a responsive document page. */
+.offline-pos-fullscreen-mode .offline-workspace-content {
+  overflow: hidden;
+}
+
+.offline-pos-page-fixed {
+  --pos-layout-scale: 1;
+  --pos-cart-width: clamp(292px, 26vw, 420px);
+  --pos-payment-width: clamp(276px, 21vw, 330px);
+  --pos-layout-gap: 16px;
+  transform-origin: top left;
+}
+
+.offline-pos-page-fixed .offline-pos-grid-fullscreen,
+.offline-pos-page-fixed.offline-pos-page .offline-pos-grid,
+.offline-pos-page-fixed.offline-pos-page .offline-pos-grid-premium {
+  display: grid;
+  gap: var(--pos-layout-gap);
+  grid-template-columns: var(--pos-cart-width) minmax(0, 1fr) var(--pos-payment-width);
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.offline-pos-page-fixed .offline-pos-cart-column,
+.offline-pos-page-fixed .offline-pos-center-column,
+.offline-pos-page-fixed .offline-pos-payment-column {
+  min-height: 0;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.offline-pos-page-fixed .offline-pos-cart-column,
+.offline-pos-page-fixed .offline-pos-center-column,
+.offline-pos-page-fixed .offline-pos-payment-column,
+.offline-pos-page-fixed .offline-pos-right {
+  overflow-y: auto;
+}
+
+.offline-pos-page-fixed .offline-pos-control-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.offline-pos-page-fixed .offline-sale-note-card {
+  order: 20;
+}
+
+.offline-pos-page-fixed .offline-workspace-topbar-pos,
+.offline-pos-fullscreen-mode .offline-workspace-topbar-pos,
+.offline-pos-fullscreen-mode .offline-workspace-topbar-main,
+.offline-pos-fullscreen-mode .offline-workspace-topbar-right,
+.offline-pos-fullscreen-mode .offline-topbar-actions,
+.offline-pos-page-fixed .offline-pos-summary-strip {
+  flex-wrap: nowrap;
+}
+
+.offline-pos-fullscreen-mode .offline-workspace-topbar-pos {
+  align-items: center;
+  flex-direction: row;
+  overflow: hidden;
+}
+
+.offline-pos-fullscreen-mode .offline-workspace-topbar-main {
+  min-width: 0;
+}
+
+.offline-pos-fullscreen-mode .offline-workspace-topbar-right {
+  flex: 0 0 auto;
+}
+
+.offline-pos-fullscreen-mode .offline-workspace-topbar-main p,
+.offline-pos-page-fixed .offline-pos-summary-field strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 1535px) {
+  .offline-pos-page-fixed {
+    --pos-layout-gap: 14px;
+    --pos-cart-width: clamp(292px, 25vw, 384px);
+    --pos-payment-width: clamp(272px, 21vw, 316px);
+  }
+}
+
+@media (max-width: 1366px) {
+  .offline-pos-page-fixed {
+    --pos-layout-gap: 12px;
+    --pos-cart-width: clamp(280px, 25vw, 352px);
+    --pos-payment-width: clamp(272px, 22vw, 296px);
+  }
+}
+
+@media (max-width: 1280px) {
+  .offline-pos-page-fixed {
+    --pos-layout-gap: 10px;
+    --pos-cart-width: 276px;
+    --pos-payment-width: 270px;
+  }
+
+  .offline-pos-page-fixed .offline-pos-control-grid {
+    gap: 8px;
+  }
+}
+
 @media print {
   body:has(.offline-receipt-print) * {
     visibility: hidden;

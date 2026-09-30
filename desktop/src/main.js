@@ -42,8 +42,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1366,
     height: 768,
-    minWidth: 1024,
-    minHeight: 700,
+    minWidth: 1280,
+    minHeight: 720,
     title: 'PharmaERP',
     autoHideMenuBar: true,
     backgroundColor: '#f8fafc',
@@ -70,6 +70,8 @@ function createWindow() {
 
   mainWindow.removeMenu();
   mainWindow.setMenuBarVisibility(false);
+  mainWindow.webContents.setZoomFactor(1);
+  mainWindow.webContents.setVisualZoomLevelLimits(1, 1);
   mainWindow.loadURL(POS_URL);
 }
 
