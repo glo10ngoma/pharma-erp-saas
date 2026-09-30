@@ -83,6 +83,7 @@ export function OfflinePosPage() {
   const [articleOpen, setArticleOpen] = useState(false);
   const [customerOpen, setCustomerOpen] = useState(false);
   const [articleHighlightedIndex, setArticleHighlightedIndex] = useState(0);
+  const [stockRefreshArticleId, setStockRefreshArticleId] = useState<string | null>(null);
   const [message, setMessage] = useState('Le panier offline reste local a ce poste et n envoie aucune vente.');
   const [saveLabel, setSaveLabel] = useState<'SAVED' | 'SAVING' | 'ERROR'>('SAVED');
   const [busyAction, setBusyAction] = useState<'NEW' | 'ITEM' | 'CUSTOMER' | 'NOTE' | 'CHECKOUT' | null>(null);
@@ -569,7 +570,8 @@ export function OfflinePosPage() {
     if (result.status === 'READY') return `${result.offlineAvailableQuantity} dispo`;
     if (result.status === 'INACTIVE') return 'Inactif';
     if (result.status === 'NO_PRICE') return 'Prix indisponible';
-    return viewModel.networkStatus === 'ONLINE' ? 'Actualisation stock' : 'Stock local epuise';
+    if (stockRefreshArticleId === result.article.articleId) return 'Actualisation stock';
+    return viewModel.networkStatus === 'ONLINE' ? 'Actualiser stock' : 'Stock local epuise';
   }
 
   useEffect(() => {
@@ -593,9 +595,17 @@ export function OfflinePosPage() {
     if (!cart) return;
     if (result.status !== 'READY') {
       if (result.status === 'NO_QUOTA' && navigator.onLine) {
+        setStockRefreshArticleId(result.article.articleId);
         setMessage('Actualisation du stock...');
-        await runSync('manual');
-        await refresh(selectedCartId, { silent: true });
+        try {
+          await runSync('manual');
+          await refresh(selectedCartId, { silent: true });
+          setMessage('Stock local actualise. Si aucune quantite n apparait, aucune allocation locale vendable n est disponible pour ce poste.');
+        } catch (error) {
+          setMessage(`Synchronisation impossible : ${mapOfflineError(error)}. Le POS conserve les allocations locales disponibles.`);
+        } finally {
+          setStockRefreshArticleId(null);
+        }
         return;
       }
       setMessage(
@@ -1232,25 +1242,28 @@ export function OfflinePosPage() {
                     {articleResults.length === 0 && (
                       <div className="offline-local-search-empty">Aucun article local disponible</div>
                     )}
-                    {articleResults.map((result, index) => (
-                      <button
-                        className={`offline-local-search-option ${index === articleHighlightedIndex ? 'selected' : ''} ${result.status !== 'READY' ? 'is-disabled' : ''}`}
-                        type="button"
-                        key={result.article.articleId}
-                        role="option"
-                        aria-selected={index === articleHighlightedIndex}
-                        disabled={result.status !== 'READY'}
-                        onMouseEnter={() => setArticleHighlightedIndex(index)}
-                        onClick={() => void handleSelectArticle(result, 1)}
-                      >
-                        <span>
-                          <strong>{formatDisplayArticleName(result.article.commercialName, result.article.articleCode)}</strong>
-                          <small>{formatDisplayCode(result.article.articleCode)}</small>
-                        </span>
-                        <span>{result.unitPrice ? formatMoney(result.unitPrice, cart.currency) : '-'}</span>
-                        <span>{getArticleResultStatusLabel(result)}</span>
-                      </button>
-                    ))}
+                    {articleResults.map((result, index) => {
+                      const canRefreshQuota = result.status === 'NO_QUOTA' && viewModel.networkStatus === 'ONLINE';
+                      return (
+                        <button
+                          className={`offline-local-search-option ${index === articleHighlightedIndex ? 'selected' : ''} ${result.status !== 'READY' && !canRefreshQuota ? 'is-disabled' : ''}`}
+                          type="button"
+                          key={result.article.articleId}
+                          role="option"
+                          aria-selected={index === articleHighlightedIndex}
+                          disabled={result.status !== 'READY' && !canRefreshQuota}
+                          onMouseEnter={() => setArticleHighlightedIndex(index)}
+                          onClick={() => void handleSelectArticle(result, 1)}
+                        >
+                          <span>
+                            <strong>{formatDisplayArticleName(result.article.commercialName, result.article.articleCode)}</strong>
+                            <small>{formatDisplayCode(result.article.articleCode)}</small>
+                          </span>
+                          <span>{result.unitPrice ? formatMoney(result.unitPrice, cart.currency) : '-'}</span>
+                          <span>{getArticleResultStatusLabel(result)}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>

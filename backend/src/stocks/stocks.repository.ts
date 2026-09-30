@@ -66,6 +66,7 @@ export class StocksRepository {
         article_code ILIKE $${params.length}
         OR commercial_name ILIKE $${params.length}
         OR dci ILIKE $${params.length}
+        OR COALESCE(barcode, '') ILIKE $${params.length}
         OR site_name ILIKE $${params.length}
       )`);
     }
@@ -212,30 +213,54 @@ export class StocksRepository {
     params.push(limit, offset);
     const rows = await this.db.query<StockSummaryRow>(
       `
-      WITH aggregated AS (
+      WITH selected_sites AS (
+        SELECT site_id, site_name
+        FROM sites
+        WHERE tenant_id = $1
+          AND ($2::uuid IS NULL OR site_id = $2::uuid)
+          AND ($3::uuid IS NULL OR site_id = $3::uuid)
+      ),
+      stock_by_article_site AS (
         SELECT
-          a.article_id,
-          a.article_code,
-          a.commercial_name,
-          a.dci,
-          a.category_id,
+          l.article_id,
           st.site_id,
-          s.site_name,
           SUM(st.quantity_available)::numeric AS quantity_available,
           SUM(st.quantity_reserved)::numeric AS quantity_reserved,
           (SUM(st.quantity_available) + SUM(st.quantity_reserved))::numeric AS quantity_total,
-          MAX(COALESCE(st.stock_min, a.default_stock_min, 0))::numeric AS stock_min,
           SUM(st.quantity_available * COALESCE(l.purchase_price, 0))::numeric AS purchase_value,
           SUM(st.quantity_available * COALESCE(l.selling_price, 0))::numeric AS sale_value,
           MIN(l.expiry_date) FILTER (WHERE st.quantity_available > 0 AND l.expiry_date IS NOT NULL) AS next_expiry_date
         FROM stocks st
         JOIN lots l ON l.lot_id = st.lot_id AND l.tenant_id = st.tenant_id
-        JOIN articles a ON a.article_id = l.article_id AND a.tenant_id = st.tenant_id
-        JOIN sites s ON s.site_id = st.site_id AND s.tenant_id = st.tenant_id
         WHERE st.tenant_id = $1
           AND ($2::uuid IS NULL OR st.site_id = $2::uuid)
           AND ($3::uuid IS NULL OR st.site_id = $3::uuid)
-        GROUP BY a.article_id, a.article_code, a.commercial_name, a.dci, a.category_id, st.site_id, s.site_name
+        GROUP BY l.article_id, st.site_id
+      ),
+      aggregated AS (
+        SELECT
+          a.article_id,
+          a.article_code,
+          a.commercial_name,
+          a.dci,
+          a.barcode,
+          a.category_id,
+          s.site_id,
+          s.site_name,
+          COALESCE(st.quantity_available, 0)::numeric AS quantity_available,
+          COALESCE(st.quantity_reserved, 0)::numeric AS quantity_reserved,
+          COALESCE(st.quantity_total, 0)::numeric AS quantity_total,
+          COALESCE(a.default_stock_min, 0)::numeric AS stock_min,
+          COALESCE(st.purchase_value, 0)::numeric AS purchase_value,
+          COALESCE(st.sale_value, 0)::numeric AS sale_value,
+          st.next_expiry_date
+        FROM articles a
+        CROSS JOIN selected_sites s
+        LEFT JOIN stock_by_article_site st
+          ON st.article_id = a.article_id
+         AND st.site_id = s.site_id
+        WHERE a.tenant_id = $1
+          AND a.is_active = true
       ),
       filtered AS (
         SELECT
