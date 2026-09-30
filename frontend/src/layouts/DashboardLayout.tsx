@@ -209,8 +209,8 @@ export function DashboardLayout() {
   }
 
   return (
-    <div className="layout">
-      <aside className="sidebar">
+    <div className="layout erp-layout">
+      <aside className="sidebar erp-sidebar">
         <div className="brand">
           <h2>PharmaERP</h2>
           <span>SaaS pharmacie V1</span>
@@ -229,7 +229,7 @@ export function DashboardLayout() {
               <details className="nav-group" key={group.title} open>
                 <summary className="nav-group-title"><span>{group.icon}</span> {group.title}</summary>
                 {visibleLinks.map(([to, label]) => (
-                  <Link className="nav-link" key={to} to={to}>
+                  <Link className={`nav-link ${isActiveNavLink(location.pathname, to) ? 'active' : ''}`} key={to} to={to}>
                     {label}
                   </Link>
                 ))}
@@ -241,7 +241,7 @@ export function DashboardLayout() {
           Deconnexion
         </button>
       </aside>
-      <main className="content">
+      <main className="content erp-content">
         <div className="app-topbar">
           <Link className="notification-bell" to="/notifications" aria-label="Notifications">
             <svg aria-hidden="true" className="notification-bell-icon" viewBox="0 0 24 24">
@@ -262,4 +262,10 @@ export function DashboardLayout() {
       </main>
     </div>
   );
+}
+
+function isActiveNavLink(pathname: string, to: string) {
+  const target = to.split('?')[0];
+  if (target === '/') return pathname === '/';
+  return pathname === target || pathname.startsWith(`${target}/`);
 }
