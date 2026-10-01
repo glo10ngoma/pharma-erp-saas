@@ -1166,7 +1166,7 @@ export async function applyPosChanges(
 ) {
   const db = await openOfflineDatabase();
   const tx = db.transaction(
-    [ARTICLES_STORE, LOTS_STORE, ALLOCATIONS_STORE, CUSTOMERS_STORE, ORGANIZATIONS_STORE, INSURANCE_PLANS_STORE, MEMBERSHIPS_STORE, SETTINGS_STORE, CASH_SESSION_STORE, SYNC_STATE_STORE],
+    [ARTICLES_STORE, LOTS_STORE, ALLOCATIONS_STORE, CUSTOMERS_STORE, ORGANIZATIONS_STORE, INSURANCE_PLANS_STORE, MEMBERSHIPS_STORE, SETTINGS_STORE, CASH_SESSION_STORE, SYNC_STATE_STORE, SYNC_CONFLICTS_STORE, OFFLINE_PENDING_CONSUMPTIONS_STORE],
     'readwrite',
   );
 
@@ -1180,6 +1180,7 @@ export async function applyPosChanges(
   const settingsStore = tx.objectStore(SETTINGS_STORE);
   const cashSessionStore = tx.objectStore(CASH_SESSION_STORE);
   const conflictsStore = tx.objectStore(SYNC_CONFLICTS_STORE);
+  const pendingStore = tx.objectStore(OFFLINE_PENDING_CONSUMPTIONS_STORE);
 
   const currentArticles = new Map((await readAllFromTransaction<OfflinePosArticle>(articleStore)).map((row) => [row.articleId, row]));
   const currentLots = new Map((await readAllFromTransaction<OfflinePosLot>(lotStore)).map((row) => [row.lotId, row]));
@@ -1190,6 +1191,15 @@ export async function applyPosChanges(
   const currentMemberships = new Map((await readAllFromTransaction<OfflineCustomerMembership>(membershipsStore)).map((row) => [row.membershipId, row]));
   const currentSettings = (await readAllFromTransaction<OfflinePosSettings>(settingsStore))[0] ?? null;
   const currentConflicts = new Map((await readAllFromTransaction<OfflineSyncConflictEntry>(conflictsStore)).map((row) => [row.conflictId ?? row.localId, row]));
+  const pendingRows = await readAllFromTransaction<OfflinePendingConsumption>(pendingStore);
+  const outstandingPendingByAllocation = new Map<string, number>();
+  for (const row of pendingRows) {
+    if (row.status !== 'PENDING' && row.status !== 'CONFLICT') continue;
+    outstandingPendingByAllocation.set(
+      row.allocationId,
+      (outstandingPendingByAllocation.get(row.allocationId) ?? 0) + Number(row.quantity ?? 0),
+    );
+  }
 
   for (const row of changesPayload.changes.articles) {
     currentArticles.set(row.articleId, {
@@ -1242,7 +1252,7 @@ export async function applyPosChanges(
       blockingReason: lot?.blockReason ?? current?.blockingReason ?? null,
       serverAllocatedQuantity: row.serverAllocatedQuantity,
       serverConsumedQuantity: row.serverConsumedQuantity,
-      localPendingConsumption: current?.localPendingConsumption ?? 0,
+      localPendingConsumption: outstandingPendingByAllocation.get(row.allocationId) ?? 0,
       allocationStatus: normalizeAllocationStatus(row.operation === 'REVOKE' ? 'REVOKED' : row.status),
       serverVersion: row.serverVersion,
       updatedAt: row.updatedAt,

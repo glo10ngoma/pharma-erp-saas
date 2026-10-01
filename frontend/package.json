@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "test": "node scripts/validate-pos-allocation-sync.js",
     "preview": "vite preview"
   },
   "dependencies": {
