@@ -81,6 +81,19 @@ export async function readOfflineLots() {
   }));
 }
 
+export function hasMissingQuantityAvailableInLots(rows: Array<Partial<OfflinePosLot>>) {
+  return rows.some((row) =>
+    !Object.prototype.hasOwnProperty.call(row, 'quantityAvailable')
+    || !Number.isFinite(Number(row.quantityAvailable)),
+  );
+}
+
+export async function hasOfflineLotsMissingQuantityAvailable() {
+  const db = await openOfflineDatabase();
+  const rows = await readAll<Partial<OfflinePosLot>>(db, LOTS_STORE);
+  return hasMissingQuantityAvailableInLots(rows);
+}
+
 export async function readOfflineAllocations(): Promise<OfflineStockAllocation[]> {
   const db = await openOfflineDatabase();
   const rows = await readAll<OfflineStockAllocation>(db, ALLOCATIONS_STORE);

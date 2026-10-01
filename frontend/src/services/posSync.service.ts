@@ -42,6 +42,7 @@ export type PosSyncChangesParams = {
   workstationId?: string;
   deviceId?: string;
   cursor?: string;
+  forceLotStockSnapshot?: boolean;
 };
 
 export type PosSyncHeartbeatPayload = {
@@ -236,6 +237,7 @@ export const posSyncService = {
       cursor: params.cursor ?? null,
       workstationId: params.workstationId ?? null,
       deviceIdPresent: Boolean(params.deviceId),
+      forceLotStockSnapshot: Boolean(params.forceLotStockSnapshot),
       allocation,
     });
     logPosClientAllocationProbe('GET_CHANGES_RESOLVED', {

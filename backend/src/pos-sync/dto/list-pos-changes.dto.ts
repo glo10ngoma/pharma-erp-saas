@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsBoolean, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
 export class ListPosChangesDto {
   @ApiPropertyOptional()
@@ -18,5 +19,10 @@ export class ListPosChangesDto {
   @IsString()
   @MaxLength(500)
   cursor?: string;
-}
 
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true' || value === '1')
+  @IsBoolean()
+  forceLotStockSnapshot?: boolean;
+}

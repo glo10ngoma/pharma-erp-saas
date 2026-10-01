@@ -7,11 +7,13 @@ const salesRepositoryPath = path.join(repoRoot, 'backend', 'src', 'sales', 'sale
 const posSyncServicePath = path.join(repoRoot, 'backend', 'src', 'pos-sync', 'pos-sync.service.ts');
 const posSyncRepositoryPath = path.join(repoRoot, 'backend', 'src', 'pos-sync', 'pos-sync.repository.ts');
 const submitDtoPath = path.join(repoRoot, 'backend', 'src', 'pos-sync', 'dto', 'submit-pos-operations.dto.ts');
+const listChangesDtoPath = path.join(repoRoot, 'backend', 'src', 'pos-sync', 'dto', 'list-pos-changes.dto.ts');
 
 const salesRepository = fs.readFileSync(salesRepositoryPath, 'utf8');
 const posSyncService = fs.readFileSync(posSyncServicePath, 'utf8');
 const posSyncRepository = fs.readFileSync(posSyncRepositoryPath, 'utf8');
 const submitDto = fs.readFileSync(submitDtoPath, 'utf8');
+const listChangesDto = fs.readFileSync(listChangesDtoPath, 'utf8');
 
 function requirePattern(source, pattern, label) {
   assert.ok(pattern.test(source), `${label} not found`);
@@ -58,6 +60,8 @@ requirePattern(posSyncRepository, /ON CONFLICT \(tenant_id, operation_id\) DO UP
 requirePattern(posSyncRepository, /\.filter\(\(allocationId\): allocationId is string => Boolean\(allocationId\)\)/, 'idempotent allocation refresh ignores null allocation ids');
 
 requirePattern(posSyncRepository, /FROM stocks st[\s\S]*JOIN lots l[\s\S]*st\.quantity_available[\s\S]*WHERE st\.tenant_id = \$1[\s\S]*AND st\.site_id = \$2/, 'lot sync uses server stock quantity');
+requirePattern(listChangesDto, /forceLotStockSnapshot\?: boolean;/, 'forced lot stock snapshot DTO');
+requirePattern(posSyncRepository, /const lotSince = query\.forceLotStockSnapshot \? null : since;/, 'forced lot stock snapshot bypasses cursor for lots only');
 
 console.log('OFFLINE_STOCK_REPLAY_AUDIT=PASS');
 console.log('NEW_REPLAY_WITHOUT_ALLOCATION=PASS');
@@ -68,3 +72,4 @@ console.log('INSUFFICIENT_STOCK_CONFLICT=PASS');
 console.log('MULTILOT_ATOMICITY=PASS');
 console.log('CONCURRENT_LAST_UNIT_PROTECTION=PASS');
 console.log('LEGACY_ALLOCATION_REPLAY=PASS');
+console.log('LEGACY_LOT_STOCK_BACKFILL=PASS');

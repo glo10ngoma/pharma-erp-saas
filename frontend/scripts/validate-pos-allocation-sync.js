@@ -8,6 +8,7 @@ const { webcrypto } = require('crypto');
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const OFFLINE_CART_PATH = path.join(REPO_ROOT, 'frontend', 'src', 'modules', 'offline', 'offline-cart.ts');
 const OFFLINE_FEFO_PATH = path.join(REPO_ROOT, 'frontend', 'src', 'modules', 'offline', 'offline-fefo.ts');
+const OFFLINE_STORAGE_PATH = path.join(REPO_ROOT, 'frontend', 'src', 'modules', 'offline', 'offline-storage.ts');
 
 function loadTsModule(filePath, moduleStubs = {}) {
   const source = fs.readFileSync(filePath, 'utf8');
@@ -43,6 +44,22 @@ function loadTsModule(filePath, moduleStubs = {}) {
 }
 
 const fefo = loadTsModule(OFFLINE_FEFO_PATH, { './offline-types': {} });
+const storageModule = loadTsModule(OFFLINE_STORAGE_PATH, {
+  './offline-types': {},
+  './offline-fefo': { normalizeAllocationStatus: fefo.normalizeAllocationStatus },
+  '../../services/posSync.service': {},
+  './offline-config': {
+    OFFLINE_APP_VERSION: 'test',
+    OFFLINE_DB_NAME: 'test',
+    OFFLINE_DB_VERSION: 7,
+    OFFLINE_SNAPSHOT_SCHEMA_VERSION: 3,
+  },
+  './pos-client-allocation-probe': {
+    logPosClientAllocationProbe: () => undefined,
+    summarizeProbeChangeAllocation: () => null,
+    summarizeProbeOfflineAllocation: () => null,
+  },
+});
 const cartModule = loadTsModule(OFFLINE_CART_PATH, {
   '../../utils/money': { formatMoney: (amount) => String(amount) },
   './offline-fefo': fefo,
@@ -204,6 +221,27 @@ assert.strictEqual(realBugPlan.cart.items.length, 1);
 assert.strictEqual(realBugPlan.cart.items[0].quantity, 1);
 assert.strictEqual(realBugPlan.cart.items[0].lotAllocations[0].allocationId, null);
 
+assert.strictEqual(storageModule.hasMissingQuantityAvailableInLots([{ lotId }]), true);
+assert.strictEqual(storageModule.hasMissingQuantityAvailableInLots([{ lotId, quantityAvailable: 192 }]), false);
+
+const backfilledContext = buildContext({ lots: [buildLot({ quantityAvailable: 192 })] });
+const backfilledRow = getSearchRow(backfilledContext);
+assert.strictEqual(backfilledRow.status, 'READY');
+assert.strictEqual(backfilledRow.offlineAvailableQuantity, 192);
+const backfilledPlan = addOne(backfilledContext);
+assert.strictEqual(backfilledPlan.cart.items.length, 1);
+assert.strictEqual(backfilledPlan.cart.items[0].quantity, 1);
+
+const stockDeltaContext = buildContext({ lots: [buildLot({ quantityAvailable: 191 })] });
+const stockDeltaRow = getSearchRow(stockDeltaContext);
+assert.strictEqual(stockDeltaRow.status, 'READY');
+assert.strictEqual(stockDeltaRow.offlineAvailableQuantity, 191);
+
+const stockZeroContext = buildContext({ lots: [buildLot({ quantityAvailable: 0 })] });
+const stockZeroRow = getSearchRow(stockZeroContext);
+assert.strictEqual(stockZeroRow.status, 'OUT_OF_STOCK');
+assert.strictEqual(stockZeroRow.offlineAvailableQuantity, 0);
+
 const pendingContext = buildContext({
   lots: [buildLot({ quantityAvailable: 4 })],
   pendingConsumptions: [buildPending(buildLot(), 1)],
@@ -295,3 +333,6 @@ console.log('OFFLINE_AVAILABLE=4');
 console.log('ARTICLE_STATUS=READY');
 console.log('CART_QUANTITY=1');
 console.log('FEFO_MULTILOT=PASS');
+console.log('LEGACY_LOT_BACKFILL_DETECTION=PASS');
+console.log('STOCK_DELTA_WITHOUT_LOT_UPDATE=PASS');
+console.log('STOCK_ZERO_DELTA=PASS');

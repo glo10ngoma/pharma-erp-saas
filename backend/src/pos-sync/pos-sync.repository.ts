@@ -411,9 +411,10 @@ export class PosSyncRepository {
     const settingsSnapshot = await this.getOfflineSettings(user);
     await this.ensureAutomaticOfflineAllocations(user, workstation, settingsSnapshot);
     const since = decodeCursor(query.cursor);
+    const lotSince = query.forceLotStockSnapshot ? null : since;
     const [articles, lots, allocations, customers, organizations, insurancePlans, memberships, settings, conflicts] = await Promise.all([
       this.getArticleChanges(user, workstation, since),
-      this.getLotChanges(user, workstation, since),
+      this.getLotChanges(user, workstation, lotSince),
       this.getAllocationChanges(user, workstation, since),
       this.getCustomerChanges(user, since),
       this.getOrganizationChanges(user, since),

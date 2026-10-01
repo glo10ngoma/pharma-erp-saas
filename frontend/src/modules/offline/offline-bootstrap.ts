@@ -9,6 +9,7 @@ import {
   applyPosChanges,
   computeSnapshotStatus,
   createDefaultSyncState,
+  hasOfflineLotsMissingQuantityAvailable,
   persistBootstrapSnapshot,
   readOfflineConflicts,
   readOfflineSnapshot,
@@ -289,10 +290,12 @@ export async function applyChanges(options?: { workstationId?: string | null }) 
       throw new Error('POS_SYNC_LOCAL_CONTEXT_MISSING');
     }
 
+    const forceLotStockSnapshot = await hasOfflineLotsMissingQuantityAvailable();
     const response = await posSyncService.getChanges({
       workstationId,
       deviceId: getStableDeviceId(),
       cursor: syncState.syncCursor ?? undefined,
+      forceLotStockSnapshot,
     });
     validateChangesPayload(response.data);
     const inputAllocation = summarizeProbeChangeAllocation(response.data);
