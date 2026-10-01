@@ -1,16 +1,22 @@
 import { formatMoney } from '../../utils/money';
 import {
   allocateOfflineQuantity,
+  allocateLocalStockQuantity,
   getOfflineAvailableQuantity,
+  getLocalLotAvailability,
   isExpiredForOffline,
   isOfflineAllocationVendable,
   sortOfflineAllocationsByFefo,
+  sortLotsByFefo,
+  sumDraftReservationsByLot,
+  sumPendingConsumptionsByLot,
 } from './offline-fefo';
 import {
   readOfflineActivityLog,
   readOfflineCart,
   readOfflineCarts,
   readOfflineDraftReservations,
+  readOfflinePendingConsumptions,
   readOfflineSnapshot,
   saveOfflineCart,
   saveOfflineCarts,
@@ -30,6 +36,7 @@ import {
   type OfflineSaleType,
   type OfflinePosArticle,
   type OfflinePosCustomer,
+  type OfflinePendingConsumption,
   type OfflineCustomerMembership,
   type OfflineSaleDraftOperation,
   type OfflineStockAllocation,
@@ -44,10 +51,10 @@ const COUNTER_CUSTOMER_CODE = 'CASH-COUNTER';
 
 export type LocalCatalogSearchResult = {
   article: OfflinePosArticle;
-  nextLot: OfflineStockAllocation | null;
+  nextLot: OfflineLocalSnapshot['lots'][number] | null;
   offlineAvailableQuantity: number;
   unitPrice: number | null;
-  status: 'READY' | 'INACTIVE' | 'NO_PRICE' | 'NO_QUOTA';
+  status: 'READY' | 'INACTIVE' | 'NO_PRICE' | 'OUT_OF_STOCK' | 'NO_QUOTA';
 };
 
 type IndexedCatalogSearchRow = LocalCatalogSearchResult & {
@@ -76,6 +83,7 @@ export type OfflineCartContext = {
   snapshot: OfflineLocalSnapshot;
   carts: OfflineCart[];
   reservations: OfflineDraftReservation[];
+  pendingConsumptions: OfflinePendingConsumption[];
 };
 
 export function normalizeOfflineSearch(value: string) {
@@ -91,6 +99,7 @@ export function buildOfflineArticleSearchIndex(
   snapshot: OfflineLocalSnapshot,
   reservations: OfflineDraftReservation[],
   currentCartId: string | null,
+  pendingConsumptions: OfflinePendingConsumption[] = [],
 ) {
   const articlesById = new Map(snapshot.articles.map((article) => [article.articleId, article]));
   const lotsById = new Map(snapshot.lots.map((lot) => [lot.lotId, lot]));
@@ -108,9 +117,18 @@ export function buildOfflineArticleSearchIndex(
     current.push(allocation);
     allocationsByArticleId.set(allocation.articleId, current);
   }
+  const pendingByLot = sumPendingConsumptionsByLot(pendingConsumptions);
+  const reservedByLot = sumDraftReservationsByLot(reservations, currentCartId);
 
   const rows = snapshot.articles.map((article) => {
-    const result = buildCatalogSearchResult(article, snapshot, quotaByArticleId.get(article.articleId) ?? [], allocationsByArticleId.get(article.articleId) ?? []);
+    const result = buildCatalogSearchResult(
+      article,
+      snapshot,
+      quotaByArticleId.get(article.articleId) ?? [],
+      allocationsByArticleId.get(article.articleId) ?? [],
+      pendingByLot,
+      reservedByLot,
+    );
     if (article.articleId === PROBE_ARTICLE_ID) {
       logPosClientAllocationProbe('SEARCH_INDEX_ARTICLE_FOUND', {
         articleFound: true,
@@ -514,6 +532,7 @@ export async function getOfflineCartPageModel(cartId?: string | null) {
       .slice(0, 20),
     quotaBreakdown,
     reservations: context.reservations,
+    pendingConsumptions: context.pendingConsumptions,
   };
 }
 
@@ -624,21 +643,27 @@ function buildCatalogSearchResult(
   snapshot: OfflineLocalSnapshot,
   quotaRows: OfflineCartQuotaBreakdown[],
   articleAllocations: OfflineStockAllocation[],
+  pendingByLot: Map<string, number>,
+  reservedByLot: Map<string, number>,
 ): LocalCatalogSearchResult {
-  const vendableAllocations = sortOfflineAllocationsByFefo(
-    articleAllocations.filter((allocation) => isAllocationVendableForCart(allocation, quotaRows)),
+  void articleAllocations;
+  void quotaRows;
+  const articleLots = sortLotsByFefo(snapshot.lots.filter((lot) => lot.articleId === article.articleId));
+  const vendableLots = articleLots.filter((lot) => getLocalLotAvailability(lot, pendingByLot.get(lot.lotId) ?? 0, reservedByLot.get(lot.lotId) ?? 0) > 0);
+  const offlineAvailableQuantity = articleLots.reduce(
+    (sum, lot) => sum + getLocalLotAvailability(lot, pendingByLot.get(lot.lotId) ?? 0, reservedByLot.get(lot.lotId) ?? 0),
+    0,
   );
-  const offlineAvailableQuantity = quotaRows.reduce((sum, row) => sum + row.availableForCart, 0);
   const unitPrice = resolveUnitPrice(article, snapshot);
 
   let status: LocalCatalogSearchResult['status'] = 'READY';
   if (!article.isActive) status = 'INACTIVE';
   else if (!Number.isFinite(unitPrice) || unitPrice <= 0) status = 'NO_PRICE';
-  else if (offlineAvailableQuantity <= 0) status = 'NO_QUOTA';
+  else if (offlineAvailableQuantity <= 0) status = 'OUT_OF_STOCK';
 
   return {
     article,
-    nextLot: vendableAllocations[0] ?? null,
+    nextLot: vendableLots[0] ?? null,
     offlineAvailableQuantity,
     unitPrice: Number.isFinite(unitPrice) && unitPrice > 0 ? unitPrice : null,
     status,
@@ -683,8 +708,9 @@ function upsertOfflineCartItem(
     throw new Error('PRICE_MISSING');
   }
 
-  const adjustedAllocations = buildAllocationsForCart(context.snapshot.allocations, context.reservations, cart.cartId);
-  const result = allocateOfflineQuantity(adjustedAllocations, article.articleId, quantity);
+  const pendingByLot = sumPendingConsumptionsByLot(context.pendingConsumptions);
+  const reservedByLot = sumDraftReservationsByLot(context.reservations, cart.cartId);
+  const result = allocateLocalStockQuantity(context.snapshot.lots, article.articleId, quantity, pendingByLot, reservedByLot);
   if (result.conflict) {
     throw new Error('OFFLINE_ALLOCATION_INSUFFICIENT');
   }
@@ -692,7 +718,7 @@ function upsertOfflineCartItem(
   const existing = cart.items.find((item) => item.articleId === article.articleId);
   const now = new Date().toISOString();
   const normalizedAllocations: OfflineCartLotAllocation[] = result.consumptions.map((line) => ({
-    allocationId: findAllocationIdForConsumption(adjustedAllocations, line.lotId, line.lotNumber, line.allocationVersion),
+    allocationId: findAllocationIdForConsumption(context.snapshot.allocations, line.lotId, line.lotNumber, line.allocationVersion),
     lotId: line.lotId,
     lotNumber: line.lotNumber,
     expiryDate: line.expiryDate,
@@ -732,22 +758,25 @@ function upsertOfflineCartItem(
     reservations: [
       ...context.reservations.filter((entry) => entry.cartId !== cart.cartId),
       ...normalizedAllocations.map((allocation) => ({
-        reservationId: `${cart.cartId}:${allocation.allocationId}`,
+        reservationId: `${cart.cartId}:${allocation.lotId}`,
         cartId: cart.cartId,
         allocationId: allocation.allocationId,
+        articleId: article.articleId,
         lotId: allocation.lotId,
         quantity: allocation.quantity,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
       })),
     ],
+    pendingConsumptions: context.pendingConsumptions,
   });
 
   const nextReservations = context.reservations.filter((entry) => entry.cartId !== cart.cartId);
   const ownReservations = normalizedAllocations.map((allocation) => ({
-    reservationId: `${cart.cartId}:${allocation.allocationId}`,
+    reservationId: `${cart.cartId}:${allocation.lotId}`,
     cartId: cart.cartId,
     allocationId: allocation.allocationId,
+    articleId: article.articleId,
     lotId: allocation.lotId,
     quantity: allocation.quantity,
     createdAt: existing?.createdAt ?? now,
@@ -797,6 +826,7 @@ function buildAllocationsForCart(
   const reservedByAllocation = new Map<string, number>();
   for (const entry of reservations) {
     if (entry.cartId === cartId) continue;
+    if (!entry.allocationId) continue;
     reservedByAllocation.set(entry.allocationId, (reservedByAllocation.get(entry.allocationId) ?? 0) + Number(entry.quantity ?? 0));
   }
 
@@ -814,6 +844,7 @@ export function buildQuotaBreakdown(
   const reservedByAllocation = new Map<string, number>();
   for (const entry of reservations) {
     if (entry.cartId === currentCartId) continue;
+    if (!entry.allocationId) continue;
     reservedByAllocation.set(entry.allocationId, (reservedByAllocation.get(entry.allocationId) ?? 0) + Number(entry.quantity ?? 0));
   }
 
@@ -856,6 +887,8 @@ function validateOfflineCart(cart: OfflineCart, context: OfflineCartContext): Of
   const lotMap = new Map(context.snapshot.lots.map((item) => [item.lotId, item]));
   const quota = buildQuotaBreakdown(context.snapshot, context.reservations, cart.cartId);
   const quotaByAllocation = new Map(quota.map((item) => [item.allocationId, item]));
+  const pendingByLot = sumPendingConsumptionsByLot(context.pendingConsumptions);
+  const reservedByLot = sumDraftReservationsByLot(context.reservations, cart.cartId);
 
   for (const item of cart.items) {
     const article = articleMap.get(item.articleId);
@@ -869,7 +902,7 @@ function validateOfflineCart(cart: OfflineCart, context: OfflineCartContext): Of
     for (const allocation of item.lotAllocations) {
       requestedFromLots += Number(allocation.quantity ?? 0);
       const lot = lotMap.get(allocation.lotId);
-      const allocationQuota = quotaByAllocation.get(allocation.allocationId);
+      const allocationQuota = allocation.allocationId ? quotaByAllocation.get(allocation.allocationId) : null;
 
       if (!lot) {
         reasons.add('ALLOCATION_REVOKED');
@@ -883,10 +916,14 @@ function validateOfflineCart(cart: OfflineCart, context: OfflineCartContext): Of
         reasons.add('LOT_EXPIRY_DATE_INVALID');
       }
 
-      if (!allocationQuota) reasons.add('ALLOCATION_REVOKED');
-      else if (allocationQuota.status === 'REVOKED') reasons.add('ALLOCATION_REVOKED');
-      else if (allocationQuota.status === 'SUSPENDED') reasons.add('ALLOCATION_SUSPENDED');
-      else if (allocation.quantity > allocationQuota.availableForCart) reasons.add('OFFLINE_ALLOCATION_INSUFFICIENT');
+      const localAvailable = getLocalLotAvailability(
+        lot,
+        pendingByLot.get(lot.lotId) ?? 0,
+        reservedByLot.get(lot.lotId) ?? 0,
+      );
+      if (allocation.quantity > localAvailable) reasons.add('OFFLINE_ALLOCATION_INSUFFICIENT');
+      if (allocationQuota?.status === 'REVOKED') reasons.add('ALLOCATION_REVOKED');
+      else if (allocationQuota?.status === 'SUSPENDED') reasons.add('ALLOCATION_SUSPENDED');
     }
 
     if (requestedFromLots !== item.quantity) {
@@ -935,12 +972,13 @@ function hasCartDiff(previous: OfflineCart[], next: OfflineCart[]) {
 }
 
 async function loadCartContext(): Promise<OfflineCartContext> {
-  const [snapshot, carts, reservations] = await Promise.all([
+  const [snapshot, carts, reservations, pendingConsumptions] = await Promise.all([
     readOfflineSnapshot(),
     readOfflineCarts(),
     readOfflineDraftReservations(),
+    readOfflinePendingConsumptions(),
   ]);
-  return { snapshot, carts, reservations };
+  return { snapshot, carts, reservations, pendingConsumptions };
 }
 
 async function requireCart(cartId: string) {
@@ -991,7 +1029,7 @@ function findAllocationIdForConsumption(
     allocation.lotId === lotId
     && allocation.lotNumber === lotNumber
     && allocation.serverVersion === allocationVersion,
-  )?.allocationId ?? crypto.randomUUID();
+  )?.allocationId ?? null;
 }
 
 function roundMoney(value: number) {

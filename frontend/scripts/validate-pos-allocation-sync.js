@@ -51,6 +51,7 @@ const cartModule = loadTsModule(OFFLINE_CART_PATH, {
     readOfflineCart: async () => null,
     readOfflineCarts: async () => [],
     readOfflineDraftReservations: async () => [],
+    readOfflinePendingConsumptions: async () => [],
     readOfflineSnapshot: async () => null,
     saveOfflineCart: async () => undefined,
     saveOfflineCarts: async () => undefined,
@@ -65,11 +66,52 @@ const cartModule = loadTsModule(OFFLINE_CART_PATH, {
 });
 
 const articleId = 'c4ce1658-145b-4531-8059-dc45738712c1';
-const allocationId = 'cea23721-ee1e-4601-90d8-69d5c04c8b23';
 const lotId = '87c31f89-ea60-44e9-a056-338d9d68a906';
+const now = new Date().toISOString();
 
-function buildContext({ localPendingConsumption = 0, reservations = [] } = {}) {
-  const now = new Date().toISOString();
+function buildLot(overrides = {}) {
+  const lot = {
+    localKey: `tenant-1:${overrides.lotId ?? lotId}`,
+    tenantId: 'tenant-1',
+    siteId: 'site-1',
+    articleId,
+    lotId,
+    lotNumber: 'DMCSER00-20260916-001',
+    expiryDate: '2027-07-16',
+    isBlocked: false,
+    blockReason: null,
+    sellingPrice: 3,
+    quantityAvailable: 4,
+    updatedAt: now,
+    lastSyncedAt: now,
+    ...overrides,
+  };
+  lot.localKey = `tenant-1:${lot.lotId}`;
+  return lot;
+}
+
+function buildPending(lot, quantity, status = 'PENDING') {
+  return {
+    pendingConsumptionId: `pending-${lot.lotId}-${quantity}-${status}`,
+    tenantId: 'tenant-1',
+    siteId: 'site-1',
+    workstationId: 'workstation-1',
+    operationId: 'operation-1',
+    cartId: 'cart-other',
+    articleId,
+    allocationId: null,
+    lotId: lot.lotId,
+    lotNumber: lot.lotNumber,
+    expiryDate: lot.expiryDate,
+    quantity,
+    allocationServerVersion: undefined,
+    status,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function buildContext({ lots = [buildLot()], pendingConsumptions = [], reservations = [], allocations = [] } = {}) {
   const snapshot = {
     articles: [{
       localKey: `tenant-1:${articleId}`,
@@ -86,39 +128,8 @@ function buildContext({ localPendingConsumption = 0, reservations = [] } = {}) {
       updatedAt: now,
       lastSyncedAt: now,
     }],
-    lots: [{
-      localKey: `tenant-1:${lotId}`,
-      tenantId: 'tenant-1',
-      articleId,
-      lotId,
-      lotNumber: 'DMCSER00-20260916-001',
-      expiryDate: '2027-07-16',
-      isBlocked: false,
-      blockReason: null,
-      sellingPrice: 3,
-      updatedAt: now,
-      lastSyncedAt: now,
-    }],
-    allocations: [{
-      localId: allocationId,
-      allocationId,
-      tenantId: 'tenant-1',
-      siteId: 'site-1',
-      workstationId: 'workstation-1',
-      articleId,
-      lotId,
-      lotNumber: 'DMCSER00-20260916-001',
-      expiryDate: '2027-07-16',
-      isBlocked: false,
-      blockingReason: null,
-      serverAllocatedQuantity: 12,
-      serverConsumedQuantity: 8,
-      localPendingConsumption,
-      allocationStatus: 'ACTIVE',
-      serverVersion: 5,
-      updatedAt: now,
-      lastSyncedAt: now,
-    }],
+    lots,
+    allocations,
     customers: [],
     organizations: [],
     insurancePlans: [],
@@ -156,38 +167,131 @@ function buildContext({ localPendingConsumption = 0, reservations = [] } = {}) {
       status: 'DRAFT',
       saveState: 'SAVED',
       blockedReasons: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: now,
+      updatedAt: now,
     }],
     reservations,
+    pendingConsumptions,
   };
 }
 
-const readyContext = buildContext();
-const readyIndex = cartModule.buildOfflineArticleSearchIndex(readyContext.snapshot, readyContext.reservations, 'cart-1');
-const readyRow = readyIndex.rows.find((row) => row.article.articleId === articleId);
-assert.strictEqual(readyRow.status, 'READY');
-assert.strictEqual(readyRow.offlineAvailableQuantity, 4);
+function getSearchRow(context) {
+  const index = cartModule.buildOfflineArticleSearchIndex(
+    context.snapshot,
+    context.reservations,
+    'cart-1',
+    context.pendingConsumptions,
+  );
+  const row = index.rows.find((entry) => entry.article.articleId === articleId);
+  assert.ok(row, 'article should be indexed');
+  return row;
+}
 
-const plan = cartModule.prepareOfflineCartItemUpdateWithContext({
+function addOne(context) {
+  return cartModule.prepareOfflineCartItemUpdateWithContext({
+    cartId: 'cart-1',
+    articleId,
+    quantityDelta: 1,
+  }, context);
+}
+
+const realBugContext = buildContext({ lots: [buildLot({ quantityAvailable: 4 })] });
+const realBugRow = getSearchRow(realBugContext);
+assert.strictEqual(realBugRow.status, 'READY');
+assert.strictEqual(realBugRow.offlineAvailableQuantity, 4);
+const realBugPlan = addOne(realBugContext);
+assert.strictEqual(realBugPlan.cart.items.length, 1);
+assert.strictEqual(realBugPlan.cart.items[0].quantity, 1);
+assert.strictEqual(realBugPlan.cart.items[0].lotAllocations[0].allocationId, null);
+
+const pendingContext = buildContext({
+  lots: [buildLot({ quantityAvailable: 4 })],
+  pendingConsumptions: [buildPending(buildLot(), 1)],
+});
+const pendingRow = getSearchRow(pendingContext);
+assert.strictEqual(pendingRow.status, 'READY');
+assert.strictEqual(pendingRow.offlineAvailableQuantity, 3);
+
+const syncedContext = buildContext({
+  lots: [buildLot({ quantityAvailable: 3 })],
+  pendingConsumptions: [buildPending(buildLot(), 1, 'SYNCED')],
+});
+const syncedRow = getSearchRow(syncedContext);
+assert.strictEqual(syncedRow.status, 'READY');
+assert.strictEqual(syncedRow.offlineAvailableQuantity, 3);
+
+const exhaustedContext = buildContext({
+  lots: [buildLot({ quantityAvailable: 1 })],
+  pendingConsumptions: [buildPending(buildLot(), 1)],
+});
+const exhaustedRow = getSearchRow(exhaustedContext);
+assert.strictEqual(exhaustedRow.status, 'OUT_OF_STOCK');
+assert.strictEqual(exhaustedRow.offlineAvailableQuantity, 0);
+
+const legacyQuotaZeroContext = buildContext({
+  lots: [buildLot({ quantityAvailable: 10 })],
+  allocations: [{
+    localId: 'legacy-allocation',
+    allocationId: 'legacy-allocation',
+    tenantId: 'tenant-1',
+    siteId: 'site-1',
+    workstationId: 'workstation-1',
+    articleId,
+    lotId,
+    lotNumber: 'DMCSER00-20260916-001',
+    expiryDate: '2027-07-16',
+    isBlocked: false,
+    blockingReason: null,
+    serverAllocatedQuantity: 12,
+    serverConsumedQuantity: 12,
+    localPendingConsumption: 0,
+    allocationStatus: 'EXHAUSTED',
+    serverVersion: 99,
+    updatedAt: now,
+    lastSyncedAt: now,
+  }],
+});
+const legacyQuotaZeroRow = getSearchRow(legacyQuotaZeroContext);
+assert.strictEqual(legacyQuotaZeroRow.status, 'READY');
+assert.strictEqual(legacyQuotaZeroRow.offlineAvailableQuantity, 10);
+
+const fefoContext = buildContext({
+  lots: [
+    buildLot({ lotId, lotNumber: 'A-EARLY', expiryDate: '2027-01-01', quantityAvailable: 2 }),
+    buildLot({ lotId: 'later-lot-1', lotNumber: 'B-LATER', expiryDate: '2027-12-31', quantityAvailable: 5 }),
+  ],
+});
+const fefoPlan = cartModule.prepareOfflineCartItemUpdateWithContext({
   cartId: 'cart-1',
   articleId,
-  quantityDelta: 1,
-}, readyContext);
-assert.strictEqual(plan.cart.items.length, 1);
-assert.strictEqual(plan.cart.items[0].quantity, 1);
-assert.strictEqual(plan.cart.quantityTotal, 1);
+  quantityDelta: 3,
+}, fefoContext);
+assert.strictEqual(
+  JSON.stringify(fefoPlan.cart.items[0].lotAllocations.map((allocation) => ({
+    lotNumber: allocation.lotNumber,
+    quantity: allocation.quantity,
+    allocationId: allocation.allocationId,
+  }))),
+  JSON.stringify([
+    { lotNumber: 'A-EARLY', quantity: 2, allocationId: null },
+    { lotNumber: 'B-LATER', quantity: 1, allocationId: null },
+  ]),
+);
 
-const protectedContext = buildContext({ localPendingConsumption: 4 });
-const protectedIndex = cartModule.buildOfflineArticleSearchIndex(protectedContext.snapshot, protectedContext.reservations, 'cart-1');
-const protectedRow = protectedIndex.rows.find((row) => row.article.articleId === articleId);
-assert.strictEqual(protectedRow.status, 'NO_QUOTA');
-assert.strictEqual(protectedRow.offlineAvailableQuantity, 0);
+const blockedExpiredContext = buildContext({
+  lots: [
+    buildLot({ lotId: 'blocked', lotNumber: 'BLOCKED', isBlocked: true, quantityAvailable: 8 }),
+    buildLot({ lotId: 'expired', lotNumber: 'EXPIRED', expiryDate: '2020-01-01', quantityAvailable: 8 }),
+  ],
+});
+const blockedExpiredRow = getSearchRow(blockedExpiredContext);
+assert.strictEqual(blockedExpiredRow.status, 'OUT_OF_STOCK');
+assert.strictEqual(blockedExpiredRow.offlineAvailableQuantity, 0);
 
-console.log('POS_ALLOCATION_SYNC_REGRESSION=PASS');
-console.log('SERVER_ALLOCATED=12');
-console.log('SERVER_CONSUMED=8');
-console.log('LOCAL_PENDING=0');
+console.log('POS_LOCAL_STOCK_REGRESSION=PASS');
+console.log('SERVER_SNAPSHOT_AVAILABLE=4');
+console.log('PENDING_LOCAL_CONSUMPTION=0');
 console.log('OFFLINE_AVAILABLE=4');
 console.log('ARTICLE_STATUS=READY');
 console.log('CART_QUANTITY=1');
+console.log('FEFO_MULTILOT=PASS');

@@ -31,7 +31,7 @@ import {
   finalizeOfflineCashSale,
 } from './offline-sale';
 import { canAttachOfflineCashSale } from './offline-cash';
-import { notifyOfflineSaleQueued, runSync } from './sync-engine';
+import { notifyOfflineSaleQueued } from './sync-engine';
 import { logPosClientAllocationProbe, PROBE_ARTICLE_ID } from './pos-client-allocation-probe';
 import { OfflineNetworkBanner, OfflineReceiptTicket, OfflineWorkspaceLayout, mapOfflineSellerMessage } from './offline-ui';
 import { posPrinterService } from './pos-printer.service';
@@ -84,7 +84,6 @@ export function OfflinePosPage() {
   const [articleOpen, setArticleOpen] = useState(false);
   const [customerOpen, setCustomerOpen] = useState(false);
   const [articleHighlightedIndex, setArticleHighlightedIndex] = useState(0);
-  const [stockRefreshArticleId, setStockRefreshArticleId] = useState<string | null>(null);
   const [message, setMessage] = useState('Le panier offline reste local a ce poste et n envoie aucune vente.');
   const [saveLabel, setSaveLabel] = useState<'SAVED' | 'SAVING' | 'ERROR'>('SAVED');
   const [busyAction, setBusyAction] = useState<'NEW' | 'ITEM' | 'CUSTOMER' | 'NOTE' | 'CHECKOUT' | null>(null);
@@ -264,12 +263,13 @@ export function OfflinePosPage() {
       snapshot,
       carts: pageModel?.drafts ?? [],
       reservations: pageModel?.reservations ?? [],
+      pendingConsumptions: pageModel?.pendingConsumptions ?? [],
     }),
-    [pageModel?.drafts, pageModel?.reservations, snapshot],
+    [pageModel?.drafts, pageModel?.pendingConsumptions, pageModel?.reservations, snapshot],
   );
   const articleSearchIndex = useMemo(
-    () => buildOfflineArticleSearchIndex(snapshot, pageModel?.reservations ?? [], cart?.cartId ?? null),
-    [cart?.cartId, pageModel?.reservations, snapshot],
+    () => buildOfflineArticleSearchIndex(snapshot, pageModel?.reservations ?? [], cart?.cartId ?? null, pageModel?.pendingConsumptions ?? []),
+    [cart?.cartId, pageModel?.pendingConsumptions, pageModel?.reservations, snapshot],
   );
   const articleResults = useMemo(
     () => articleQuery.trim().length >= 1 ? searchOfflineArticles(articleSearchIndex, articleQuery, 8) : [],
@@ -286,11 +286,10 @@ export function OfflinePosPage() {
     logPosClientAllocationProbe('UI_ARTICLE_STATUS', {
       status: target.status,
       offlineAvailableQuantity: target.offlineAvailableQuantity,
-      stockRefreshArticleId,
-      isRefreshingThisArticle: stockRefreshArticleId === PROBE_ARTICLE_ID,
+      isRefreshingThisArticle: false,
       articleResultsCount: articleResults.length,
     });
-  }, [articleResults, exactArticleMatch, stockRefreshArticleId]);
+  }, [articleResults, exactArticleMatch]);
   const customerResults = useMemo(
     () => searchOfflineCustomers(snapshot, customerQuery, 20),
     [customerQuery, snapshot],
@@ -585,8 +584,7 @@ export function OfflinePosPage() {
     if (result.status === 'READY') return `${result.offlineAvailableQuantity} dispo`;
     if (result.status === 'INACTIVE') return 'Inactif';
     if (result.status === 'NO_PRICE') return 'Prix indisponible';
-    if (stockRefreshArticleId === result.article.articleId) return 'Actualisation stock';
-    return viewModel.networkStatus === 'ONLINE' ? 'Actualiser stock' : 'Stock local epuise';
+    return 'Stock local epuise';
   }
 
   useEffect(() => {
@@ -663,64 +661,6 @@ export function OfflinePosPage() {
     if (!cart) return;
     if (result.status === 'READY') {
       await addReadyArticleToCart(result, quantityDelta);
-      return;
-    }
-    if (result.status === 'NO_QUOTA' && navigator.onLine) {
-      setStockRefreshArticleId(result.article.articleId);
-      setMessage('Actualisation du stock...');
-      logPosClientAllocationProbe('RUN_SYNC_START', {
-        clickedArticleId: result.article.articleId,
-        clickedStatus: result.status,
-        clickedOfflineAvailableQuantity: result.offlineAvailableQuantity,
-      });
-      try {
-        await runSync('manual');
-        logPosClientAllocationProbe('RUN_SYNC_RESOLVED', {
-          clickedArticleId: result.article.articleId,
-        });
-        const refreshed = await refresh(selectedCartId, { silent: true });
-        logPosClientAllocationProbe('REFRESH_RESOLVED', {
-          clickedArticleId: result.article.articleId,
-          snapshotAllocationCount: refreshed?.pageModel?.snapshot.allocations.length ?? null,
-        });
-        const freshPageModel = refreshed?.pageModel;
-        const freshCart = freshPageModel?.cart;
-        if (!freshPageModel || !freshCart) {
-          setMessage('Synchronisation terminee, mais le panier local n a pas pu etre relu.');
-          return;
-        }
-        const freshIndex = buildOfflineArticleSearchIndex(freshPageModel.snapshot, freshPageModel.reservations, freshCart.cartId);
-        const freshResult = freshIndex.articlesById.has(result.article.articleId)
-          ? freshIndex.rows.find((row) => row.article.articleId === result.article.articleId) ?? null
-          : null;
-        if (freshResult?.status === 'READY' && freshResult.offlineAvailableQuantity > 0) {
-          logPosClientAllocationProbe('SEARCH_INDEX_AFTER_REFRESH_READY', {
-            status: freshResult.status,
-            offlineAvailableQuantity: freshResult.offlineAvailableQuantity,
-          });
-          await addReadyArticleToCart(freshResult, quantityDelta, {
-            snapshot: freshPageModel.snapshot,
-            carts: freshPageModel.drafts,
-            reservations: freshPageModel.reservations,
-          });
-          return;
-        }
-        logPosClientAllocationProbe('SEARCH_INDEX_AFTER_REFRESH_NOT_READY', {
-          status: freshResult?.status ?? null,
-          offlineAvailableQuantity: freshResult?.offlineAvailableQuantity ?? null,
-        });
-        setMessage('Stock non disponible sur ce poste.');
-      } catch (error) {
-        logPosClientAllocationProbe('RUN_SYNC_ERROR', {
-          message: error instanceof Error ? error.message : String(error),
-        });
-        setMessage(`Synchronisation impossible : ${mapOfflineError(error)}. Le POS conserve les allocations locales disponibles.`);
-      } finally {
-        setStockRefreshArticleId(null);
-        logPosClientAllocationProbe('STOCK_REFRESH_ID_CLEARED', {
-          clickedArticleId: result.article.articleId,
-        });
-      }
       return;
     }
     setMessage(
@@ -1307,15 +1247,14 @@ export function OfflinePosPage() {
                       <div className="offline-local-search-empty">Aucun article local disponible</div>
                     )}
                     {articleResults.map((result, index) => {
-                      const canRefreshQuota = result.status === 'NO_QUOTA' && viewModel.networkStatus === 'ONLINE';
                       return (
                         <button
-                          className={`offline-local-search-option ${index === articleHighlightedIndex ? 'selected' : ''} ${result.status !== 'READY' && !canRefreshQuota ? 'is-disabled' : ''}`}
+                          className={`offline-local-search-option ${index === articleHighlightedIndex ? 'selected' : ''} ${result.status !== 'READY' ? 'is-disabled' : ''}`}
                           type="button"
                           key={result.article.articleId}
                           role="option"
                           aria-selected={index === articleHighlightedIndex}
-                          disabled={result.status !== 'READY' && !canRefreshQuota}
+                          disabled={result.status !== 'READY'}
                           onMouseEnter={() => setArticleHighlightedIndex(index)}
                           onClick={() => void handleSelectArticle(result, 1)}
                         >

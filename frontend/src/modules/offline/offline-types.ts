@@ -106,6 +106,7 @@ export interface OfflinePosArticle {
 export interface OfflinePosLot {
   localKey: string;
   tenantId: string;
+  siteId: string | null;
   articleId: string;
   lotId: string;
   lotNumber: string;
@@ -113,6 +114,7 @@ export interface OfflinePosLot {
   isBlocked: boolean;
   blockReason: string | null;
   sellingPrice: number | null;
+  quantityAvailable: number;
   updatedAt: string | null;
   lastSyncedAt: string | null;
 }
@@ -471,12 +473,12 @@ export interface OfflineAllocationConflict {
 }
 
 export interface OfflineCartLotAllocation {
-  allocationId: string;
+  allocationId?: string | null;
   lotId: string;
   lotNumber: string;
   expiryDate: string;
   quantity: number;
-  allocationServerVersion: number;
+  allocationServerVersion?: number;
 }
 
 export interface OfflineCartItem {
@@ -537,7 +539,8 @@ export interface OfflineCart {
 export interface OfflineDraftReservation {
   reservationId: string;
   cartId: string;
-  allocationId: string;
+  allocationId?: string | null;
+  articleId?: string | null;
   lotId: string;
   quantity: number;
   createdAt: string;
@@ -595,10 +598,10 @@ export interface OfflineSaleDraftOperation {
     quantity: number;
     unitPriceSnapshot: number;
     allocations: Array<{
-      allocationId: string;
+      allocationId?: string | null;
       lotId: string;
       quantity: number;
-      allocationServerVersion: number;
+      allocationServerVersion?: number;
     }>;
   }>;
 }
@@ -607,13 +610,13 @@ export interface OfflinePendingConsumption {
   pendingConsumptionId: string;
   localSaleId: string;
   operationId: string;
-  allocationId: string;
+  allocationId?: string | null;
   articleId: string;
   lotId: string;
   lotNumber: string;
   expiryDate: string;
   quantity: number;
-  allocationServerVersion: number;
+  allocationServerVersion?: number;
   tenantId: string;
   siteId: string;
   workstationId: string;
@@ -745,12 +748,12 @@ export interface OfflineSaleValidateOperation {
     quantity: number;
     unitPriceSnapshot: number;
     lotAllocations: Array<{
-      allocationId: string;
+      allocationId?: string | null;
       lotId: string;
       lotNumber: string;
       expiryDate: string;
       quantity: number;
-      allocationServerVersion: number;
+      allocationServerVersion?: number;
     }>;
   }>;
 }
@@ -891,11 +894,13 @@ export interface PosSyncBootstrapPayload {
   lots: Array<{
     lotId: string;
     articleId: string;
+    siteId: string | null;
     lotNumber: string;
     expiryDate: string;
     isBlocked: boolean;
     blockReason: string | null;
     sellingPrice: number | null;
+    quantityAvailable: number;
     updatedAt: string | null;
   }>;
   offlineAllocations: Array<{

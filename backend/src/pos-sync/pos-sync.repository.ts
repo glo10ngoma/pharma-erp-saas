@@ -77,11 +77,13 @@ type ArticleBootstrapRow = {
 type LotBootstrapRow = {
   lot_id: string;
   article_id: string;
+  site_id: string | null;
   lot_number: string;
   expiry_date: Date | string;
   is_blocked: boolean;
   block_reason: string | null;
   selling_price: string | null;
+  quantity_available: string | null;
   changed_at: Date | null;
 };
 
@@ -1108,7 +1110,11 @@ export class PosSyncRepository {
 
   async getOperationAllocationStates(user: AuthUser, operation: { operationType: string; items?: SubmitPosSaleValidateOperation['items'] }) {
     if (operation.operationType !== 'SALE_VALIDATE' || !operation.items) return [];
-    const allocationIds = operation.items.flatMap((item) => item.lotAllocations.map((allocation) => allocation.allocationId));
+    const allocationIds = operation.items.flatMap((item) =>
+      item.lotAllocations
+        .map((allocation) => allocation.allocationId)
+        .filter((allocationId): allocationId is string => Boolean(allocationId)),
+    );
     if (!allocationIds.length) return [];
 
     const placeholders = allocationIds.map((_, index) => `$${index + 2}`).join(',');
@@ -1765,34 +1771,40 @@ export class PosSyncRepository {
     }));
   }
 
-  private async getBootstrapLots(user: AuthUser, workstation: { workstationId: string }) {
+  private async getBootstrapLots(user: AuthUser, workstation: { workstationId: string; siteId: string }) {
     const result = await this.db.query<LotBootstrapRow>(
       `
-      SELECT DISTINCT
+      SELECT
         l.lot_id,
         l.article_id,
+        st.site_id,
         l.lot_number,
         l.expiry_date,
         l.is_blocked,
         l.block_reason,
         l.selling_price,
-        l.created_at AS changed_at
-      FROM offline_stock_allocations osa
-      JOIN lots l ON l.lot_id = osa.lot_id
-      WHERE osa.tenant_id = $1
-        AND osa.workstation_id = $2
+        st.quantity_available,
+        GREATEST(l.created_at, COALESCE(st.updated_at, l.created_at)) AS changed_at
+      FROM stocks st
+      JOIN lots l
+        ON l.lot_id = st.lot_id
+       AND l.tenant_id = st.tenant_id
+      WHERE st.tenant_id = $1
+        AND st.site_id = $2
       ORDER BY l.expiry_date ASC, l.lot_number ASC
       `,
-      [user.tenantId, workstation.workstationId],
+      [user.tenantId, workstation.siteId],
     );
     return result.rows.map((row) => ({
       lotId: row.lot_id,
       articleId: row.article_id,
+      siteId: row.site_id,
       lotNumber: row.lot_number,
       expiryDate: toIsoDate(row.expiry_date),
       isBlocked: row.is_blocked,
       blockReason: row.block_reason,
       sellingPrice: row.selling_price === null ? null : Number(row.selling_price),
+      quantityAvailable: row.quantity_available === null ? 0 : Number(row.quantity_available),
       updatedAt: row.changed_at ? row.changed_at.toISOString() : null,
     }));
   }
@@ -2023,37 +2035,46 @@ export class PosSyncRepository {
     }));
   }
 
-  private async getLotChanges(user: AuthUser, workstation: { workstationId: string }, since: Date | null) {
+  private async getLotChanges(user: AuthUser, workstation: { workstationId: string; siteId: string }, since: Date | null) {
     const result = await this.db.query<TimestampedLotChange>(
       `
-      SELECT DISTINCT
+      SELECT
         l.lot_id,
         l.article_id,
+        st.site_id,
         l.lot_number,
         l.expiry_date,
         l.is_blocked,
         l.block_reason,
         l.selling_price,
-        l.created_at AS changed_at,
+        st.quantity_available,
+        GREATEST(l.created_at, COALESCE(st.updated_at, l.created_at)) AS changed_at,
         CASE WHEN l.is_blocked THEN 'REVOKE' ELSE 'UPSERT' END AS operation
-      FROM offline_stock_allocations osa
-      JOIN lots l ON l.lot_id = osa.lot_id
-      WHERE osa.tenant_id = $1
-        AND osa.workstation_id = $2
-        AND ($3::timestamptz IS NULL OR l.created_at > $3::timestamptz)
+      FROM stocks st
+      JOIN lots l
+        ON l.lot_id = st.lot_id
+       AND l.tenant_id = st.tenant_id
+      WHERE st.tenant_id = $1
+        AND st.site_id = $2
+        AND (
+          $3::timestamptz IS NULL
+          OR GREATEST(l.created_at, COALESCE(st.updated_at, l.created_at)) > $3::timestamptz
+        )
       ORDER BY changed_at ASC, l.lot_number ASC
       `,
-      [user.tenantId, workstation.workstationId, since ? since.toISOString() : null],
+      [user.tenantId, workstation.siteId, since ? since.toISOString() : null],
     );
     return result.rows.map((row) => ({
       operation: row.operation,
       lotId: row.lot_id,
       articleId: row.article_id,
+      siteId: row.site_id,
       lotNumber: row.lot_number,
       expiryDate: toIsoDate(row.expiry_date),
       isBlocked: row.is_blocked,
       blockReason: row.block_reason,
       sellingPrice: row.selling_price === null ? null : Number(row.selling_price),
+      quantityAvailable: row.quantity_available === null ? 0 : Number(row.quantity_available),
       updatedAt: row.changed_at ? row.changed_at.toISOString() : null,
     }));
   }

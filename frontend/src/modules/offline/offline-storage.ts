@@ -73,7 +73,12 @@ export async function readOfflineArticles() {
 
 export async function readOfflineLots() {
   const db = await openOfflineDatabase();
-  return readAll<OfflinePosLot>(db, LOTS_STORE);
+  const rows = await readAll<OfflinePosLot>(db, LOTS_STORE);
+  return rows.map((row) => ({
+    ...row,
+    siteId: row.siteId ?? null,
+    quantityAvailable: Math.max(0, Number(row.quantityAvailable ?? 0)),
+  }));
 }
 
 export async function readOfflineAllocations(): Promise<OfflineStockAllocation[]> {
@@ -516,6 +521,7 @@ export async function persistValidatedOfflineSale(params: {
   const nextReservations = reservations.filter((entry) => entry.cartId !== params.cartId);
   const pendingByAllocation = new Map<string, number>();
   for (const row of params.pendingConsumptions) {
+    if (!row.allocationId) continue;
     pendingByAllocation.set(row.allocationId, (pendingByAllocation.get(row.allocationId) ?? 0) + row.quantity);
   }
   const nextAllocations = allocations.map((row) => {
@@ -1027,6 +1033,7 @@ export async function persistBootstrapSnapshot(
   await replaceAll(tx.objectStore(LOTS_STORE), payload.lots.map((row) => ({
     localKey: `${payload.tenant.tenantId}:${row.lotId}`,
     tenantId: payload.tenant.tenantId,
+    siteId: row.siteId ?? payload.site.siteId,
     articleId: row.articleId,
     lotId: row.lotId,
     lotNumber: row.lotNumber,
@@ -1034,6 +1041,7 @@ export async function persistBootstrapSnapshot(
     isBlocked: row.isBlocked,
     blockReason: row.blockReason,
     sellingPrice: row.sellingPrice,
+    quantityAvailable: Math.max(0, Number(row.quantityAvailable ?? 0)),
     updatedAt: row.updatedAt,
     lastSyncedAt: payload.serverTime,
   } satisfies OfflinePosLot)));
@@ -1195,6 +1203,7 @@ export async function applyPosChanges(
   const outstandingPendingByAllocation = new Map<string, number>();
   for (const row of pendingRows) {
     if (row.status !== 'PENDING' && row.status !== 'CONFLICT') continue;
+    if (!row.allocationId) continue;
     outstandingPendingByAllocation.set(
       row.allocationId,
       (outstandingPendingByAllocation.get(row.allocationId) ?? 0) + Number(row.quantity ?? 0),
@@ -1223,6 +1232,7 @@ export async function applyPosChanges(
     currentLots.set(row.lotId, {
       localKey: `${context.tenantId}:${row.lotId}`,
       tenantId: context.tenantId,
+      siteId: row.siteId ?? context.siteId,
       articleId: row.articleId,
       lotId: row.lotId,
       lotNumber: row.lotNumber,
@@ -1230,6 +1240,7 @@ export async function applyPosChanges(
       isBlocked: row.operation === 'REVOKE' ? true : row.isBlocked,
       blockReason: row.blockReason,
       sellingPrice: row.sellingPrice,
+      quantityAvailable: row.operation === 'REVOKE' ? 0 : Math.max(0, Number(row.quantityAvailable ?? 0)),
       updatedAt: row.updatedAt,
       lastSyncedAt: changesPayload.serverTime,
     });

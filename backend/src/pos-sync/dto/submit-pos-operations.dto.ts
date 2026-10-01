@@ -13,8 +13,9 @@ import {
 } from 'class-validator';
 
 class SubmitPosSaleLotAllocationDto {
+  @IsOptional()
   @IsUUID()
-  allocationId: string;
+  allocationId?: string | null;
 
   @IsUUID()
   lotId: string;
@@ -29,9 +30,10 @@ class SubmitPosSaleLotAllocationDto {
   @Min(0.001)
   quantity: number;
 
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  allocationServerVersion: number;
+  allocationServerVersion?: number;
 }
 
 class SubmitPosSaleItemDto {

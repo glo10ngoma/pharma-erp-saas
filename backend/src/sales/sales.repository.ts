@@ -742,35 +742,38 @@ export class SalesRepository {
         await this.assertArticle(user, item.articleId);
         let advanceArticleQuantity = 0;
         for (const allocation of item.lotAllocations) {
-          const lockedAllocation = await client.query<OfflineAllocationLockRow>(
-            `SELECT allocation_id, workstation_id, site_id, article_id, lot_id,
-                    allocated_quantity, consumed_quantity, status, server_version
-             FROM offline_stock_allocations
-             WHERE tenant_id=$1 AND allocation_id=$2
-             FOR UPDATE`,
-            [user.tenantId, allocation.allocationId],
-          );
-          const allocationRow = lockedAllocation.rows[0];
-          if (!allocationRow) throw new Error('ALLOCATION_MISMATCH');
-          if (
-            allocationRow.site_id !== operation.siteId
-            || allocationRow.workstation_id !== operation.workstationId
-            || allocationRow.article_id !== item.articleId
-            || allocationRow.lot_id !== allocation.lotId
-          ) {
-            throw new Error('ALLOCATION_MISMATCH');
-          }
+          let allocationRow: OfflineAllocationLockRow | null = null;
+          if (allocation.allocationId) {
+            const lockedAllocation = await client.query<OfflineAllocationLockRow>(
+              `SELECT allocation_id, workstation_id, site_id, article_id, lot_id,
+                      allocated_quantity, consumed_quantity, status, server_version
+               FROM offline_stock_allocations
+               WHERE tenant_id=$1 AND allocation_id=$2
+               FOR UPDATE`,
+              [user.tenantId, allocation.allocationId],
+            );
+            allocationRow = lockedAllocation.rows[0] ?? null;
+            if (!allocationRow) throw new Error('ALLOCATION_MISMATCH');
+            if (
+              allocationRow.site_id !== operation.siteId
+              || allocationRow.workstation_id !== operation.workstationId
+              || allocationRow.article_id !== item.articleId
+              || allocationRow.lot_id !== allocation.lotId
+            ) {
+              throw new Error('ALLOCATION_MISMATCH');
+            }
 
-          const remainingQuantity =
-            Number(allocationRow.allocated_quantity ?? 0) - Number(allocationRow.consumed_quantity ?? 0);
-          if (allocationRow.status !== 'ACTIVE' && remainingQuantity <= 0) {
-            throw new Error('ALLOCATION_EXHAUSTED');
-          }
-          if (allocationRow.status !== 'ACTIVE') {
-            throw new Error('ALLOCATION_REVOKED');
-          }
-          if (remainingQuantity < allocation.quantity) {
-            throw new Error('ALLOCATION_EXHAUSTED');
+            const remainingQuantity =
+              Number(allocationRow.allocated_quantity ?? 0) - Number(allocationRow.consumed_quantity ?? 0);
+            if (allocationRow.status !== 'ACTIVE' && remainingQuantity <= 0) {
+              throw new Error('ALLOCATION_EXHAUSTED');
+            }
+            if (allocationRow.status !== 'ACTIVE') {
+              throw new Error('ALLOCATION_REVOKED');
+            }
+            if (remainingQuantity < allocation.quantity) {
+              throw new Error('ALLOCATION_EXHAUSTED');
+            }
           }
 
           const lotResult = await client.query<{
@@ -823,40 +826,42 @@ export class SalesRepository {
             );
           }
 
-          const nextConsumedQuantity = this.roundMoney(
-            Number(allocationRow.consumed_quantity ?? 0) + allocation.quantity,
-          );
-          const nextAvailableQuantity = this.roundMoney(
-            Math.max(0, Number(allocationRow.allocated_quantity ?? 0) - nextConsumedQuantity),
-          );
-          const nextStatus = nextAvailableQuantity <= 0 ? 'EXHAUSTED' : 'ACTIVE';
-          const nextServerVersion = Number(allocationRow.server_version ?? 0) + 1;
+          if (allocationRow && allocation.allocationId) {
+            const nextConsumedQuantity = this.roundMoney(
+              Number(allocationRow.consumed_quantity ?? 0) + allocation.quantity,
+            );
+            const nextAvailableQuantity = this.roundMoney(
+              Math.max(0, Number(allocationRow.allocated_quantity ?? 0) - nextConsumedQuantity),
+            );
+            const nextStatus = nextAvailableQuantity <= 0 ? 'EXHAUSTED' : 'ACTIVE';
+            const nextServerVersion = Number(allocationRow.server_version ?? 0) + 1;
 
-          await client.query(
-            `UPDATE offline_stock_allocations
-             SET consumed_quantity=$3,
-                 status=$4,
-                 server_version=$5,
-                 updated_at=CURRENT_TIMESTAMP
-             WHERE tenant_id=$1 AND allocation_id=$2`,
-            [
-              user.tenantId,
-              allocation.allocationId,
-              nextConsumedQuantity,
-              nextStatus,
-              nextServerVersion,
-            ],
-          );
+            await client.query(
+              `UPDATE offline_stock_allocations
+               SET consumed_quantity=$3,
+                   status=$4,
+                   server_version=$5,
+                   updated_at=CURRENT_TIMESTAMP
+               WHERE tenant_id=$1 AND allocation_id=$2`,
+              [
+                user.tenantId,
+                allocation.allocationId,
+                nextConsumedQuantity,
+                nextStatus,
+                nextServerVersion,
+              ],
+            );
 
-          allocations.push({
-            allocationId: allocation.allocationId,
-            lotId: allocation.lotId,
-            acknowledgedQuantity: allocation.quantity,
-            serverConsumedQuantity: nextConsumedQuantity,
-            availableQuantity: nextAvailableQuantity,
-            serverVersion: nextServerVersion,
-            status: nextStatus,
-          });
+            allocations.push({
+              allocationId: allocation.allocationId,
+              lotId: allocation.lotId,
+              acknowledgedQuantity: allocation.quantity,
+              serverConsumedQuantity: nextConsumedQuantity,
+              availableQuantity: nextAvailableQuantity,
+              serverVersion: nextServerVersion,
+              status: nextStatus,
+            });
+          }
         }
 
         if (operation.saleMode === 'ADVANCE' && advanceArticleQuantity > 0) {

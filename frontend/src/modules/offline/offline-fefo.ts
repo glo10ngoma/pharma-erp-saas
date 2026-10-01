@@ -3,6 +3,9 @@ import {
   type OfflineAllocationConsumption,
   type OfflineAllocationSnapshot,
   type OfflineAllocationStatus,
+  type OfflineDraftReservation,
+  type OfflinePendingConsumption,
+  type OfflinePosLot,
   type OfflineStockAllocation,
 } from './offline-types';
 
@@ -33,6 +36,88 @@ export function sortOfflineAllocationsByFefo<T extends Pick<OfflineStockAllocati
     if (expiry !== 0) return expiry;
     return String(a.lotNumber ?? '').localeCompare(String(b.lotNumber ?? ''));
   });
+}
+
+export function getLocalLotAvailability(
+  lot: Pick<OfflinePosLot, 'quantityAvailable' | 'isBlocked' | 'expiryDate'>,
+  pendingQuantity = 0,
+  reservedQuantity = 0,
+  today = new Date(),
+) {
+  if (lot.isBlocked) return 0;
+  if (compareDateOnly(lot.expiryDate, today) <= 0) return 0;
+  return Math.max(
+    0,
+    Number(lot.quantityAvailable ?? 0)
+      - Math.max(0, Number(pendingQuantity ?? 0))
+      - Math.max(0, Number(reservedQuantity ?? 0)),
+  );
+}
+
+export function sumPendingConsumptionsByLot(rows: OfflinePendingConsumption[]) {
+  const pendingByLot = new Map<string, number>();
+  for (const row of rows) {
+    if (row.status !== 'PENDING' && row.status !== 'CONFLICT') continue;
+    pendingByLot.set(row.lotId, (pendingByLot.get(row.lotId) ?? 0) + Number(row.quantity ?? 0));
+  }
+  return pendingByLot;
+}
+
+export function sumDraftReservationsByLot(rows: OfflineDraftReservation[], currentCartId: string | null) {
+  const reservedByLot = new Map<string, number>();
+  for (const row of rows) {
+    if (row.cartId === currentCartId) continue;
+    reservedByLot.set(row.lotId, (reservedByLot.get(row.lotId) ?? 0) + Number(row.quantity ?? 0));
+  }
+  return reservedByLot;
+}
+
+export function sortLotsByFefo<T extends Pick<OfflinePosLot, 'expiryDate' | 'lotNumber'>>(rows: T[]) {
+  return [...rows].sort((a, b) => {
+    const expiry = compareDateOnly(a.expiryDate, b.expiryDate);
+    if (expiry !== 0) return expiry;
+    return String(a.lotNumber ?? '').localeCompare(String(b.lotNumber ?? ''));
+  });
+}
+
+export function allocateLocalStockQuantity(
+  lots: OfflinePosLot[],
+  articleId: string,
+  requestedQuantity: number,
+  pendingByLot = new Map<string, number>(),
+  reservedByLot = new Map<string, number>(),
+  today = new Date(),
+) {
+  const consumptions: OfflineAllocationConsumption[] = [];
+  let remaining = Math.max(0, Number(requestedQuantity ?? 0));
+  const relevant = sortLotsByFefo(lots.filter((lot) => lot.articleId === articleId));
+
+  for (const lot of relevant) {
+    if (remaining <= 0) break;
+    const available = getLocalLotAvailability(lot, pendingByLot.get(lot.lotId) ?? 0, reservedByLot.get(lot.lotId) ?? 0, today);
+    if (available <= 0) continue;
+    const consumed = Math.min(available, remaining);
+    consumptions.push({
+      operationId: crypto.randomUUID(),
+      localSaleId: '',
+      workstationId: '',
+      siteId: lot.siteId ?? '',
+      tenantId: lot.tenantId,
+      articleId: lot.articleId,
+      lotId: lot.lotId,
+      lotNumber: lot.lotNumber,
+      expiryDate: lot.expiryDate,
+      quantity: consumed,
+      allocationVersion: 0,
+      consumedAt: new Date().toISOString(),
+    });
+    remaining -= consumed;
+  }
+
+  const allocatedQuantity = consumptions.reduce((sum, line) => sum + Number(line.quantity ?? 0), 0);
+  const shortageQuantity = Math.max(0, requestedQuantity - allocatedQuantity);
+  const conflict = shortageQuantity > 0 ? buildAllocationConflict(articleId, requestedQuantity, allocatedQuantity, []) : null;
+  return { consumptions, conflict, allocatedQuantity, shortageQuantity };
 }
 
 export function createOfflineAllocationSnapshot(
