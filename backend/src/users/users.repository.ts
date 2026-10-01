@@ -149,7 +149,7 @@ export class UsersRepository {
         password_hash = COALESCE($9, password_hash),
         is_active = $10
       WHERE tenant_id = $1 AND user_id = $2
-        AND ($3::uuid IS NULL OR site_id = $3::uuid)
+        AND ($11::uuid IS NULL OR site_id = $11::uuid)
       `,
       [
         user.tenantId,
@@ -162,6 +162,7 @@ export class UsersRepository {
         dto.phone ?? current.phone,
         passwordHash,
         dto.isActive ?? current.isActive,
+        user.siteId ?? null,
       ],
     );
 
@@ -174,6 +175,7 @@ export class UsersRepository {
       UPDATE users
       SET is_active = false
       WHERE tenant_id = $1 AND user_id = $2
+        AND ($3::uuid IS NULL OR site_id = $3::uuid)
       RETURNING
         user_id,
         tenant_id,
@@ -193,6 +195,24 @@ export class UsersRepository {
     );
 
     return result.rows[0] ? this.findOne(user, result.rows[0].user_id) : null;
+  }
+
+  async countActiveAdmins(user: AuthUser, excludedUserId?: string) {
+    const result = await this.db.query<{ total: number }>(
+      `
+      SELECT COUNT(*)::int AS total
+      FROM users u
+      INNER JOIN roles r ON r.role_id = u.role_id AND r.tenant_id = u.tenant_id
+      WHERE u.tenant_id = $1
+        AND u.is_active = true
+        AND r.is_active = true
+        AND UPPER(r.role_name) = 'ADMIN'
+        AND ($2::uuid IS NULL OR u.user_id <> $2::uuid)
+      `,
+      [user.tenantId, excludedUserId ?? null],
+    );
+
+    return Number(result.rows[0]?.total ?? 0);
   }
 
   private async assertTenantRelations(user: AuthUser, roleId: string, siteId: string) {

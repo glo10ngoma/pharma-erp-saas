@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuthUser } from '../common/types/auth-user';
 import { CreateSiteDto } from './dto/create-site.dto';
 import { UpdateSiteDto } from './dto/update-site.dto';
@@ -18,8 +18,16 @@ export class SitesService {
     return site;
   }
 
-  create(user: AuthUser, dto: CreateSiteDto) {
-    return this.repository.create(user, dto);
+  async create(user: AuthUser, dto: CreateSiteDto) {
+    try {
+      return await this.repository.create(user, dto);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'SITE_NOT_ALLOWED') {
+        throw new ForbiddenException('SITE_NOT_ALLOWED');
+      }
+
+      throw error;
+    }
   }
 
   async update(user: AuthUser, siteId: string, dto: UpdateSiteDto) {

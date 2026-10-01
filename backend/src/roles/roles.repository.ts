@@ -142,6 +142,21 @@ export class RolesRepository {
     return result.rows[0] ? this.toRole(result.rows[0]) : null;
   }
 
+  async countActiveUsersForRole(user: AuthUser, roleId: string) {
+    const result = await this.db.query<{ total: number }>(
+      `
+      SELECT COUNT(*)::int AS total
+      FROM users
+      WHERE tenant_id = $1
+        AND role_id = $2
+        AND is_active = true
+      `,
+      [user.tenantId, roleId],
+    );
+
+    return Number(result.rows[0]?.total ?? 0);
+  }
+
   private async replacePermissions(
     client: { query: (text: string, params?: unknown[]) => Promise<{ rows: unknown[] }> },
     roleId: string,

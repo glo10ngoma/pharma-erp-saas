@@ -58,6 +58,14 @@ const LABELS: Record<string, string> = {
   CUSTOMER_CREDIT_SOURCE_REQUIRED: 'La source doit etre CUSTOMER_CREDIT pour creer un avoir client.',
   SITE_REQUIRED_FOR_UNLINKED_RETURN: 'Un site suppose est obligatoire pour un retour sans facture.',
   SITE_NOT_FOUND: 'Site introuvable ou inactif.',
+  USER_NOT_FOUND: 'Utilisateur introuvable.',
+  ROLE_NOT_FOUND: 'Role introuvable.',
+  ROLE_NOT_IN_TENANT: 'Le role selectionne n appartient pas a ce tenant.',
+  SITE_NOT_IN_TENANT: 'Le site selectionne n appartient pas a ce tenant.',
+  PERMISSION_NOT_FOUND: 'Une permission selectionnee est introuvable.',
+  ROLE_IN_USE: 'Ce role est encore attribue a des utilisateurs actifs.',
+  SELF_DEACTIVATION_FORBIDDEN: 'Vous ne pouvez pas desactiver votre propre compte.',
+  LAST_ADMIN_REQUIRED: 'Au moins un administrateur actif doit rester disponible.',
   ARTICLE_NOT_FOUND: 'Article introuvable.',
   RETURN_QUANTITY_EXCEEDS_AVAILABLE: 'La quantite retournee depasse la quantite encore disponible.',
   ORGANIZATION_NOT_IN_TENANT: 'Organisation invalide pour ce tenant.',
@@ -92,6 +100,8 @@ const LABELS: Record<string, string> = {
   INVALID_TRANSFER_QUANTITY: 'Quantite de transfert invalide.',
   LOT_NOT_EXPIRED: 'Ce lot n est pas encore expire.',
   LOT_EXPIRY_DATE_INVALID: 'La date d expiration du lot est invalide. L operation ne peut pas etre effectuee.',
+  AUTH_TOKEN_INVALID: 'Votre session a expiré. Veuillez vous reconnecter.',
+  AUTH_TOKEN_REQUIRED: 'Votre session a expiré. Veuillez vous reconnecter.',
 };
 
 export function apiErrorMessage(error: unknown) {
