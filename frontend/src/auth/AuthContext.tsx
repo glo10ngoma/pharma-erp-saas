@@ -3,6 +3,11 @@ import { createContext, ReactNode, useContext, useEffect, useMemo, useState } fr
 import { authService, AuthUser } from '../services/auth.service';
 import { calculateAuthorizationState, getStableDeviceId } from '../modules/offline/offline-bootstrap';
 import { readOfflineSnapshot } from '../modules/offline/offline-storage';
+import {
+  AUTH_SESSION_INVALIDATED_EVENT,
+  clearAuthSessionStorage,
+  resetAuthInvalidation,
+} from './authSession';
 
 const EXPLICIT_LOGOUT_KEY = 'auth.explicitLogout';
 
@@ -48,6 +53,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    function handleSessionInvalidated() {
+      setAccessToken(null);
+      setCurrentUser(null);
+      setOfflineAuthenticated(false);
+      setOfflineSessionExpiresAt(null);
+      setLoading(false);
+    }
+
+    window.addEventListener(AUTH_SESSION_INVALIDATED_EVENT, handleSessionInvalidated);
+    return () => window.removeEventListener(AUTH_SESSION_INVALIDATED_EVENT, handleSessionInvalidated);
+  }, []);
+
+  useEffect(() => {
     if (!accessToken) {
       setLoading(false);
       return;
@@ -85,6 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await authService.login(email, password);
       const token = response.data.accessToken;
       localStorage.setItem('accessToken', token);
+      resetAuthInvalidation();
       setAccessToken(token);
       clearExplicitLogoutFlag();
       setOfflineAuthenticated(false);
@@ -95,7 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setCurrentUser(me.data);
       return me.data;
     } catch (error) {
-      clearAuthStorage();
+      clearAuthSessionStorage();
       setAccessToken(null);
       setCurrentUser(null);
       throw error;
@@ -117,7 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return restoredUser;
         }
       }
-      clearAuthStorage();
+      clearAuthSessionStorage();
       setAccessToken(null);
       setCurrentUser(null);
       setOfflineAuthenticated(false);
@@ -210,7 +229,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   function logout() {
     localStorage.setItem(EXPLICIT_LOGOUT_KEY, '1');
-    clearAuthStorage();
+    clearAuthSessionStorage();
     setAccessToken(null);
     setCurrentUser(null);
     setOfflineAuthenticated(false);
@@ -253,12 +272,6 @@ function readStoredUser() {
 function storeUser(user: AuthUser) {
   localStorage.setItem('currentUser', JSON.stringify(user));
   localStorage.setItem('permissions', JSON.stringify(user.permissions ?? []));
-}
-
-function clearAuthStorage() {
-  localStorage.removeItem('accessToken');
-  localStorage.removeItem('currentUser');
-  localStorage.removeItem('permissions');
 }
 
 function buildOfflineUser(

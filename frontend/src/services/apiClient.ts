@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { invalidateAuthSession, isAuthTokenError } from '../auth/authSession';
 
 export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1',
@@ -13,3 +14,13 @@ apiClient.interceptors.request.use((config) => {
 
   return config;
 });
+
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (isAuthTokenError(error)) {
+      invalidateAuthSession();
+    }
+    return Promise.reject(error);
+  },
+);

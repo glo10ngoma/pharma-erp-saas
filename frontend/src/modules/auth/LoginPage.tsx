@@ -2,6 +2,7 @@ import axios from 'axios';
 import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
+import { consumeSessionExpiredMessage } from '../../auth/authSession';
 import { landingPathForUser } from '../../auth/landing';
 
 export function LoginPage() {
@@ -15,6 +16,11 @@ export function LoginPage() {
   const [restoring, setRestoring] = useState(false);
 
   useEffect(() => {
+    const expiredMessage = consumeSessionExpiredMessage();
+    if (expiredMessage) {
+      setInfo(expiredMessage);
+    }
+
     if (auth.offlineAuthenticated && !auth.accessToken) {
       navigate('/pos', { replace: true });
       return;
