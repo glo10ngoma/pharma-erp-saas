@@ -29,6 +29,11 @@ import {
   type PosSyncBootstrapPayload,
   type PosSyncChangesPayload,
 } from './offline-types';
+import {
+  logPosClientAllocationProbe,
+  summarizeProbeChangeAllocation,
+  summarizeProbeOfflineAllocation,
+} from './pos-client-allocation-probe';
 
 export const OFFLINE_DB_FRESH_MINUTES = 15;
 const DEVICE_ID_STORAGE_KEY = 'deviceUuid';
@@ -290,6 +295,14 @@ export async function applyChanges(options?: { workstationId?: string | null }) 
       cursor: syncState.syncCursor ?? undefined,
     });
     validateChangesPayload(response.data);
+    const inputAllocation = summarizeProbeChangeAllocation(response.data);
+    logPosClientAllocationProbe('APPLY_INPUT_ALLOCATION_PRESENT', {
+      allocationFound: Boolean(inputAllocation),
+      allocation: inputAllocation,
+      changesAllocationsCount: response.data.changes.allocations.length,
+      previousCursor: response.data.previousCursor,
+      nextCursor: response.data.nextCursor,
+    });
 
     await applyPosChanges(response.data, {
       tenantId,
@@ -301,8 +314,18 @@ export async function applyChanges(options?: { workstationId?: string | null }) 
         networkStatus: pingState.networkStatus,
       },
     });
+    logPosClientAllocationProbe('APPLY_CHANGES_RESOLVED', {
+      allocationFound: Boolean(inputAllocation),
+    });
 
     const updatedSnapshot = await readOfflineSnapshot();
+    const snapshotAllocation = summarizeProbeOfflineAllocation(updatedSnapshot.allocations);
+    logPosClientAllocationProbe('SNAPSHOT_ALLOCATION_FOUND', {
+      allocationFound: Boolean(snapshotAllocation),
+      snapshotAvailable: snapshotAllocation?.availableQuantity ?? null,
+      allocation: snapshotAllocation,
+      allocationsCount: updatedSnapshot.allocations.length,
+    });
     const nextSnapshotStatus = calculateSnapshotFreshness(
       updatedSnapshot.syncState,
       updatedSnapshot.auth,

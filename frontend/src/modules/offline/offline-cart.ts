@@ -35,6 +35,10 @@ import {
   type OfflineStockAllocation,
 } from './offline-types';
 import { getStableDeviceId } from './offline-bootstrap';
+import {
+  logPosClientAllocationProbe,
+  PROBE_ARTICLE_ID,
+} from './pos-client-allocation-probe';
 
 const COUNTER_CUSTOMER_CODE = 'CASH-COUNTER';
 
@@ -107,6 +111,15 @@ export function buildOfflineArticleSearchIndex(
 
   const rows = snapshot.articles.map((article) => {
     const result = buildCatalogSearchResult(article, snapshot, quotaByArticleId.get(article.articleId) ?? [], allocationsByArticleId.get(article.articleId) ?? []);
+    if (article.articleId === PROBE_ARTICLE_ID) {
+      logPosClientAllocationProbe('SEARCH_INDEX_ARTICLE_FOUND', {
+        articleFound: true,
+        offlineAvailableQuantity: result.offlineAvailableQuantity,
+        status: result.status,
+        allocationRowsForArticle: allocationsByArticleId.get(article.articleId)?.length ?? 0,
+        quotaRowsForArticle: quotaByArticleId.get(article.articleId)?.length ?? 0,
+      });
+    }
     return {
       ...result,
       normalizedName: normalizeOfflineSearch(article.commercialName),
@@ -807,6 +820,19 @@ export function buildQuotaBreakdown(
   return snapshot.allocations.map((allocation) => {
     const reservedInOtherDrafts = reservedByAllocation.get(allocation.allocationId) ?? 0;
     const baseAvailable = getOfflineAvailableQuantity(allocation);
+    if (allocation.articleId === PROBE_ARTICLE_ID) {
+      logPosClientAllocationProbe('QUOTA_ALLOCATIONS_MATCHED', {
+        allocationId: allocation.allocationId,
+        lotId: allocation.lotId,
+        allocatedQuantity: allocation.serverAllocatedQuantity,
+        consumedQuantity: allocation.serverConsumedQuantity,
+        localPendingConsumption: allocation.localPendingConsumption,
+        reservedInOtherDrafts,
+        quotaAvailable: Math.max(0, baseAvailable - reservedInOtherDrafts),
+        status: allocation.allocationStatus,
+        isBlocked: allocation.isBlocked,
+      });
+    }
     return {
       allocationId: allocation.allocationId,
       articleId: allocation.articleId,

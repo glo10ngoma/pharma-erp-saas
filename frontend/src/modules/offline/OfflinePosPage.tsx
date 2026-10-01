@@ -32,6 +32,7 @@ import {
 } from './offline-sale';
 import { canAttachOfflineCashSale } from './offline-cash';
 import { notifyOfflineSaleQueued, runSync } from './sync-engine';
+import { logPosClientAllocationProbe, PROBE_ARTICLE_ID } from './pos-client-allocation-probe';
 import { OfflineNetworkBanner, OfflineReceiptTicket, OfflineWorkspaceLayout, mapOfflineSellerMessage } from './offline-ui';
 import { posPrinterService } from './pos-printer.service';
 import {
@@ -278,6 +279,18 @@ export function OfflinePosPage() {
     () => articleQuery.trim().length >= 1 ? findExactOfflineArticleMatch(articleSearchIndex, articleQuery) : null,
     [articleQuery, articleSearchIndex],
   );
+  useEffect(() => {
+    const target = articleResults.find((result) => result.article.articleId === PROBE_ARTICLE_ID)
+      ?? (exactArticleMatch?.article.articleId === PROBE_ARTICLE_ID ? exactArticleMatch : null);
+    if (!target) return;
+    logPosClientAllocationProbe('UI_ARTICLE_STATUS', {
+      status: target.status,
+      offlineAvailableQuantity: target.offlineAvailableQuantity,
+      stockRefreshArticleId,
+      isRefreshingThisArticle: stockRefreshArticleId === PROBE_ARTICLE_ID,
+      articleResultsCount: articleResults.length,
+    });
+  }, [articleResults, exactArticleMatch, stockRefreshArticleId]);
   const customerResults = useMemo(
     () => searchOfflineCustomers(snapshot, customerQuery, 20),
     [customerQuery, snapshot],
@@ -655,9 +668,21 @@ export function OfflinePosPage() {
     if (result.status === 'NO_QUOTA' && navigator.onLine) {
       setStockRefreshArticleId(result.article.articleId);
       setMessage('Actualisation du stock...');
+      logPosClientAllocationProbe('RUN_SYNC_START', {
+        clickedArticleId: result.article.articleId,
+        clickedStatus: result.status,
+        clickedOfflineAvailableQuantity: result.offlineAvailableQuantity,
+      });
       try {
         await runSync('manual');
+        logPosClientAllocationProbe('RUN_SYNC_RESOLVED', {
+          clickedArticleId: result.article.articleId,
+        });
         const refreshed = await refresh(selectedCartId, { silent: true });
+        logPosClientAllocationProbe('REFRESH_RESOLVED', {
+          clickedArticleId: result.article.articleId,
+          snapshotAllocationCount: refreshed?.pageModel?.snapshot.allocations.length ?? null,
+        });
         const freshPageModel = refreshed?.pageModel;
         const freshCart = freshPageModel?.cart;
         if (!freshPageModel || !freshCart) {
@@ -669,6 +694,10 @@ export function OfflinePosPage() {
           ? freshIndex.rows.find((row) => row.article.articleId === result.article.articleId) ?? null
           : null;
         if (freshResult?.status === 'READY' && freshResult.offlineAvailableQuantity > 0) {
+          logPosClientAllocationProbe('SEARCH_INDEX_AFTER_REFRESH_READY', {
+            status: freshResult.status,
+            offlineAvailableQuantity: freshResult.offlineAvailableQuantity,
+          });
           await addReadyArticleToCart(freshResult, quantityDelta, {
             snapshot: freshPageModel.snapshot,
             carts: freshPageModel.drafts,
@@ -676,11 +705,21 @@ export function OfflinePosPage() {
           });
           return;
         }
+        logPosClientAllocationProbe('SEARCH_INDEX_AFTER_REFRESH_NOT_READY', {
+          status: freshResult?.status ?? null,
+          offlineAvailableQuantity: freshResult?.offlineAvailableQuantity ?? null,
+        });
         setMessage('Stock non disponible sur ce poste.');
       } catch (error) {
+        logPosClientAllocationProbe('RUN_SYNC_ERROR', {
+          message: error instanceof Error ? error.message : String(error),
+        });
         setMessage(`Synchronisation impossible : ${mapOfflineError(error)}. Le POS conserve les allocations locales disponibles.`);
       } finally {
         setStockRefreshArticleId(null);
+        logPosClientAllocationProbe('STOCK_REFRESH_ID_CLEARED', {
+          clickedArticleId: result.article.articleId,
+        });
       }
       return;
     }

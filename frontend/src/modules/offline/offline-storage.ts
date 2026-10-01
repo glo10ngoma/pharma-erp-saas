@@ -34,6 +34,11 @@ import {
 import { normalizeAllocationStatus } from './offline-fefo';
 import { type PosSyncOperationAllocationAck, type PosSyncOperationResult } from '../../services/posSync.service';
 import { OFFLINE_APP_VERSION, OFFLINE_DB_NAME, OFFLINE_DB_VERSION, OFFLINE_SNAPSHOT_SCHEMA_VERSION } from './offline-config';
+import {
+  logPosClientAllocationProbe,
+  summarizeProbeChangeAllocation,
+  summarizeProbeOfflineAllocation,
+} from './pos-client-allocation-probe';
 
 const ARTICLES_STORE = 'offline_articles';
 const LOTS_STORE = 'offline_lots';
@@ -1244,6 +1249,12 @@ export async function applyPosChanges(
       lastSyncedAt: changesPayload.serverTime,
     }));
   }
+  const storageInputAllocation = summarizeProbeChangeAllocation(changesPayload);
+  logPosClientAllocationProbe('APPLY_INPUT_ALLOCATION_PRESENT_STORAGE', {
+    allocationFound: Boolean(storageInputAllocation),
+    allocation: storageInputAllocation,
+    changesAllocationsCount: changesPayload.changes.allocations.length,
+  });
 
   for (const row of changesPayload.changes.customers) {
     currentCustomers.set(row.customerId, {
@@ -1394,6 +1405,14 @@ export async function applyPosChanges(
   } satisfies OfflineSyncState]);
 
   await txDone(tx);
+
+  const persistedAllocations = await readOfflineAllocations();
+  const persistedAllocation = summarizeProbeOfflineAllocation(persistedAllocations);
+  logPosClientAllocationProbe('IDB_ALLOCATION_FOUND', {
+    allocationFound: Boolean(persistedAllocation),
+    allocation: persistedAllocation,
+    allocationsCount: persistedAllocations.length,
+  });
 }
 
 export async function seedOfflineAllocationFixtures(rows: OfflineStockAllocation[]) {

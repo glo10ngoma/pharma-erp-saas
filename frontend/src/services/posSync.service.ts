@@ -4,6 +4,7 @@ import {
   type PosSyncBootstrapPayload,
   type PosSyncChangesPayload,
 } from '../modules/offline/offline-types';
+import { logPosClientAllocationProbe, summarizeProbeChangeAllocation } from '../modules/offline/pos-client-allocation-probe';
 
 export type PosSyncPingResponse = {
   status: 'OK';
@@ -227,8 +228,24 @@ export const posSyncService = {
     apiClient.post<PosSyncRegisteredWorkstation>('/pos-sync/workstations/register', payload),
   bootstrap: (params: PosSyncBootstrapParams) =>
     apiClient.get<PosSyncBootstrapPayload>('/pos-sync/bootstrap', { params }),
-  getChanges: (params: PosSyncChangesParams) =>
-    apiClient.get<PosSyncChangesPayload>('/pos-sync/changes', { params }),
+  getChanges: async (params: PosSyncChangesParams) => {
+    const response = await apiClient.get<PosSyncChangesPayload>('/pos-sync/changes', { params });
+    const allocation = summarizeProbeChangeAllocation(response.data);
+    logPosClientAllocationProbe('HTTP_ALLOCATION_RECEIVED', {
+      allocationFound: Boolean(allocation),
+      cursor: params.cursor ?? null,
+      workstationId: params.workstationId ?? null,
+      deviceIdPresent: Boolean(params.deviceId),
+      allocation,
+    });
+    logPosClientAllocationProbe('GET_CHANGES_RESOLVED', {
+      allocationFound: Boolean(allocation),
+      changesAllocationsCount: response.data.changes.allocations.length,
+      previousCursor: response.data.previousCursor,
+      nextCursor: response.data.nextCursor,
+    });
+    return response;
+  },
   heartbeat: (payload: PosSyncHeartbeatPayload) =>
     apiClient.post<PosSyncHeartbeatResponse>('/pos-sync/heartbeat', payload),
   pushOperations: (payload: PosSyncOperationsPayload) =>
