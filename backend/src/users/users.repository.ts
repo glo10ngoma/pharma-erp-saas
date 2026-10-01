@@ -11,6 +11,14 @@ type UserRow = {
   site_id: string | null;
   role_id: string | null;
   full_name: string;
+  first_name: string | null;
+  last_name: string | null;
+  post_name: string | null;
+  gender: string | null;
+  birth_date: string | null;
+  job_title: string | null;
+  employee_number: string | null;
+  department: string | null;
   username: string;
   email: string | null;
   phone: string | null;
@@ -34,6 +42,14 @@ export class UsersRepository {
         u.site_id,
         u.role_id,
         u.full_name,
+        u.first_name,
+        u.last_name,
+        u.post_name,
+        u.gender,
+        u.birth_date,
+        u.job_title,
+        u.employee_number,
+        u.department,
         u.username,
         u.email,
         u.phone,
@@ -64,6 +80,14 @@ export class UsersRepository {
         u.site_id,
         u.role_id,
         u.full_name,
+        u.first_name,
+        u.last_name,
+        u.post_name,
+        u.gender,
+        u.birth_date,
+        u.job_title,
+        u.employee_number,
+        u.department,
         u.username,
         u.email,
         u.phone,
@@ -87,20 +111,31 @@ export class UsersRepository {
 
   async create(user: AuthUser, dto: CreateUserDto) {
     await this.assertTenantRelations(user, dto.roleId, dto.siteId);
+    this.assertBirthDateNotFuture(dto.birthDate);
     const passwordHash = await bcrypt.hash(dto.password, 10);
+    const profile = this.normalizeCreateProfile(dto);
 
     const result = await this.db.query<UserRow>(
       `
       INSERT INTO users (
-        tenant_id, site_id, role_id, full_name, username, email, phone, password_hash, is_active
+        tenant_id, site_id, role_id, full_name, first_name, last_name, post_name, gender, birth_date,
+        job_title, employee_number, department, username, email, phone, password_hash, is_active
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
       RETURNING
         user_id,
         tenant_id,
         site_id,
         role_id,
         full_name,
+        first_name,
+        last_name,
+        post_name,
+        gender,
+        birth_date,
+        job_title,
+        employee_number,
+        department,
         username,
         email,
         phone,
@@ -114,10 +149,18 @@ export class UsersRepository {
         user.tenantId,
         dto.siteId,
         dto.roleId,
-        dto.fullName,
-        dto.username,
-        dto.email ?? null,
-        dto.phone ?? null,
+        profile.fullName,
+        profile.firstName,
+        profile.lastName,
+        profile.postName,
+        profile.gender,
+        profile.birthDate,
+        profile.jobTitle,
+        profile.employeeNumber,
+        profile.department,
+        profile.username,
+        profile.email,
+        profile.phone,
         passwordHash,
         dto.isActive ?? true,
       ],
@@ -133,6 +176,8 @@ export class UsersRepository {
     const roleId = dto.roleId ?? current.roleId;
     const siteId = dto.siteId ?? current.siteId;
     if (roleId && siteId) await this.assertTenantRelations(user, roleId, siteId);
+    this.assertBirthDateNotFuture(dto.birthDate);
+    const profile = this.normalizeUpdateProfile(dto, current);
 
     const passwordHash = dto.password ? await bcrypt.hash(dto.password, 10) : null;
 
@@ -143,23 +188,39 @@ export class UsersRepository {
         site_id = $3,
         role_id = $4,
         full_name = $5,
-        username = $6,
-        email = $7,
-        phone = $8,
-        password_hash = COALESCE($9, password_hash),
-        is_active = $10
+        first_name = $6,
+        last_name = $7,
+        post_name = $8,
+        gender = $9,
+        birth_date = $10,
+        job_title = $11,
+        employee_number = $12,
+        department = $13,
+        username = $14,
+        email = $15,
+        phone = $16,
+        password_hash = COALESCE($17, password_hash),
+        is_active = $18
       WHERE tenant_id = $1 AND user_id = $2
-        AND ($11::uuid IS NULL OR site_id = $11::uuid)
+        AND ($19::uuid IS NULL OR site_id = $19::uuid)
       `,
       [
         user.tenantId,
         userId,
         siteId,
         roleId,
-        dto.fullName ?? current.fullName,
-        dto.username ?? current.username,
-        dto.email ?? current.email,
-        dto.phone ?? current.phone,
+        profile.fullName,
+        profile.firstName,
+        profile.lastName,
+        profile.postName,
+        profile.gender,
+        profile.birthDate,
+        profile.jobTitle,
+        profile.employeeNumber,
+        profile.department,
+        profile.username,
+        profile.email,
+        profile.phone,
         passwordHash,
         dto.isActive ?? current.isActive,
         user.siteId ?? null,
@@ -182,6 +243,14 @@ export class UsersRepository {
         site_id,
         role_id,
         full_name,
+        first_name,
+        last_name,
+        post_name,
+        gender,
+        birth_date,
+        job_title,
+        employee_number,
+        department,
         username,
         email,
         phone,
@@ -238,6 +307,76 @@ export class UsersRepository {
     }
   }
 
+  private normalizeCreateProfile(dto: CreateUserDto) {
+    const firstName = this.requiredText(dto.firstName);
+    const lastName = this.requiredText(dto.lastName);
+    const postName = this.optionalText(dto.postName);
+    const fullName = this.buildFullName(firstName, lastName, postName) || this.requiredText(dto.fullName);
+    const email = this.requiredText(dto.email).toLowerCase();
+
+    return {
+      fullName,
+      firstName,
+      lastName,
+      postName,
+      gender: this.optionalText(dto.gender),
+      birthDate: this.optionalText(dto.birthDate),
+      jobTitle: this.requiredText(dto.jobTitle),
+      employeeNumber: this.optionalText(dto.employeeNumber),
+      department: this.optionalText(dto.department),
+      username: this.optionalText(dto.username)?.toLowerCase() ?? email,
+      email,
+      phone: this.optionalText(dto.phone),
+    };
+  }
+
+  private normalizeUpdateProfile(dto: UpdateUserDto, current: ReturnType<UsersRepository['toUser']>) {
+    const firstName = dto.firstName === undefined ? current.firstName : this.optionalText(dto.firstName);
+    const lastName = dto.lastName === undefined ? current.lastName : this.optionalText(dto.lastName);
+    const postName = dto.postName === undefined ? current.postName : this.optionalText(dto.postName);
+    const fullNameFromParts = firstName && lastName ? this.buildFullName(firstName, lastName, postName) : null;
+    const email = dto.email === undefined ? current.email : this.optionalText(dto.email)?.toLowerCase() ?? null;
+
+    return {
+      fullName: fullNameFromParts ?? this.optionalText(dto.fullName) ?? current.fullName,
+      firstName,
+      lastName,
+      postName,
+      gender: dto.gender === undefined ? current.gender : this.optionalText(dto.gender),
+      birthDate: dto.birthDate === undefined ? current.birthDate : this.optionalText(dto.birthDate),
+      jobTitle: dto.jobTitle === undefined ? current.jobTitle : this.optionalText(dto.jobTitle),
+      employeeNumber: dto.employeeNumber === undefined ? current.employeeNumber : this.optionalText(dto.employeeNumber),
+      department: dto.department === undefined ? current.department : this.optionalText(dto.department),
+      username: dto.username === undefined ? current.username : this.optionalText(dto.username)?.toLowerCase() ?? current.username,
+      email,
+      phone: dto.phone === undefined ? current.phone : this.optionalText(dto.phone),
+    };
+  }
+
+  private assertBirthDateNotFuture(value?: string) {
+    const birthDate = this.optionalText(value);
+    if (!birthDate) return;
+    const parsed = new Date(`${birthDate}T00:00:00.000Z`);
+    const today = new Date();
+    const todayUtc = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+    if (parsed > todayUtc) {
+      throw new Error('BIRTH_DATE_IN_FUTURE');
+    }
+  }
+
+  private buildFullName(firstName: string, lastName: string, postName: string | null) {
+    return [firstName, lastName, postName].map((part) => part?.trim()).filter(Boolean).join(' ');
+  }
+
+  private requiredText(value: string) {
+    return value.trim().replace(/\s+/g, ' ');
+  }
+
+  private optionalText(value?: string | null) {
+    const normalized = value?.trim().replace(/\s+/g, ' ');
+    return normalized || null;
+  }
+
   private toUser(row: UserRow) {
     return {
       userId: row.user_id,
@@ -245,6 +384,14 @@ export class UsersRepository {
       siteId: row.site_id,
       roleId: row.role_id,
       fullName: row.full_name,
+      firstName: row.first_name,
+      lastName: row.last_name,
+      postName: row.post_name,
+      gender: row.gender,
+      birthDate: row.birth_date,
+      jobTitle: row.job_title,
+      employeeNumber: row.employee_number,
+      department: row.department,
       username: row.username,
       email: row.email,
       phone: row.phone,

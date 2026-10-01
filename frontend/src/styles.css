@@ -2002,6 +2002,52 @@ details.nav-group .nav-link {
   margin: 0;
 }
 
+.admin-user-form {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-user-section {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.admin-user-section h3 {
+  font-size: .92rem;
+  margin: 0;
+}
+
+.admin-user-grid {
+  display: grid;
+  gap: 10px 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.admin-password-field {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.admin-user-secondary {
+  color: var(--muted);
+  display: block;
+  font-size: .78rem;
+  margin-top: 2px;
+}
+
+.admin-user-modal-actions {
+  margin-top: 0;
+}
+
+.admin-users-table td {
+  vertical-align: middle;
+}
+
 .section-heading {
   align-items: center;
   display: flex;
@@ -4611,6 +4657,10 @@ details.nav-group .nav-link {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .admin-user-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .pos-layout {
     grid-template-columns: 1fr;
   }
@@ -4688,6 +4738,7 @@ details.nav-group .nav-link {
   .stats-grid,
   .grid.two,
   .form-grid,
+  .admin-user-grid,
   .purchase-totals,
   .purchase-sticky-header,
   .checkbox-grid,

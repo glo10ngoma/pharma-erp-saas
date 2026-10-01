@@ -71,6 +71,19 @@ export class UsersService {
   }
 
   private handleRelationError(error: unknown): never {
+    const dbError = error as { code?: string; constraint?: string };
+    if (dbError.code === '23505' && dbError.constraint?.includes('users_email')) {
+      throw new BadRequestException('USER_EMAIL_ALREADY_EXISTS');
+    }
+
+    if (dbError.code === '23505' && dbError.constraint?.includes('users_username')) {
+      throw new BadRequestException('USER_IDENTIFIER_ALREADY_EXISTS');
+    }
+
+    if (error instanceof Error && error.message === 'BIRTH_DATE_IN_FUTURE') {
+      throw new BadRequestException('BIRTH_DATE_IN_FUTURE');
+    }
+
     if (error instanceof Error && error.message === 'ROLE_NOT_IN_TENANT') {
       throw new BadRequestException('ROLE_NOT_IN_TENANT');
     }
