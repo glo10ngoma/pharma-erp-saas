@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AuthUser } from '../common/types/auth-user';
 import { DatabaseService } from '../database/database.service';
 import { BootstrapPosDto } from './dto/bootstrap-pos.dto';
@@ -96,6 +96,10 @@ type AllocationBootstrapRow = {
   status: string;
   server_version: string;
   updated_at: Date | null;
+};
+
+type AllocationSyncProbeRow = AllocationBootstrapRow & {
+  article_code: string;
 };
 
 type CustomerBootstrapRow = {
@@ -267,6 +271,8 @@ const DEFAULT_SNAPSHOT_FRESHNESS_POLICY = 'WARN_ONLY';
 
 @Injectable()
 export class PosSyncRepository {
+  private readonly logger = new Logger(PosSyncRepository.name);
+
   constructor(private readonly db: DatabaseService) {}
 
   async registerWorkstation(user: AuthUser, dto: RegisterPosWorkstationDto) {
@@ -414,6 +420,7 @@ export class PosSyncRepository {
       this.getSettingsChanges(user, since),
       this.listConflictChanges(user, { workstationId: workstation.workstationId, since }),
     ]);
+    await this.logAllocationSyncProbe(user, workstation, query.cursor ?? null, since, allocations);
     const serverTime = new Date().toISOString();
     return {
       serverTime,
@@ -2098,6 +2105,106 @@ export class PosSyncRepository {
         updatedAt: row.updated_at ? row.updated_at.toISOString() : null,
       };
     });
+  }
+
+  private async logAllocationSyncProbe(
+    user: AuthUser,
+    workstation: { workstationId: string; siteId: string },
+    rawCursor: string | null,
+    since: Date | null,
+    responseAllocations: Array<{
+      allocationId: string;
+      articleId: string;
+      lotId: string;
+      serverAllocatedQuantity: number;
+      serverConsumedQuantity: number;
+      availableQuantityServer: number;
+      status: string;
+    }>,
+  ) {
+    try {
+      const [activeCountResult, probeResult] = await Promise.all([
+        this.db.query<{ count: string }>(
+          `
+          SELECT COUNT(*)::text AS count
+          FROM offline_stock_allocations
+          WHERE tenant_id = $1
+            AND site_id = $2
+            AND workstation_id = $3
+            AND status = 'ACTIVE'
+          `,
+          [user.tenantId, workstation.siteId, workstation.workstationId],
+        ),
+        this.db.query<AllocationSyncProbeRow>(
+          `
+          SELECT
+            osa.allocation_id,
+            osa.workstation_id,
+            osa.site_id,
+            osa.article_id,
+            osa.lot_id,
+            osa.allocated_quantity,
+            osa.consumed_quantity,
+            osa.status,
+            osa.server_version,
+            osa.updated_at,
+            a.article_code
+          FROM offline_stock_allocations osa
+          JOIN articles a
+            ON a.tenant_id = osa.tenant_id
+           AND a.article_id = osa.article_id
+          WHERE osa.tenant_id = $1
+            AND osa.site_id = $2
+            AND osa.workstation_id = $3
+            AND a.article_code = 'DMC-SER-00002'
+          ORDER BY osa.updated_at DESC, osa.allocation_id ASC
+          `,
+          [user.tenantId, workstation.siteId, workstation.workstationId],
+        ),
+      ]);
+
+      const probeRows = probeResult.rows.map((row) => {
+        const allocatedQuantity = Number(row.allocated_quantity);
+        const consumedQuantity = Number(row.consumed_quantity);
+        const responseAllocation = responseAllocations.find((allocation) => allocation.allocationId === row.allocation_id) ?? null;
+        return {
+          allocationId: row.allocation_id,
+          articleId: row.article_id,
+          articleCode: row.article_code,
+          lotId: row.lot_id,
+          allocatedQuantity,
+          consumedQuantity,
+          availableQuantity: Math.max(0, allocatedQuantity - consumedQuantity),
+          status: row.status,
+          serverVersion: Number(row.server_version),
+          updatedAt: row.updated_at ? row.updated_at.toISOString() : null,
+          includedInChangesResponse: Boolean(responseAllocation),
+          responseAvailableQuantity: responseAllocation?.availableQuantityServer ?? null,
+        };
+      });
+
+      this.logger.log(JSON.stringify({
+        event: 'POS_SYNC_ALLOCATION_PROBE',
+        tenantId: user.tenantId,
+        siteId: workstation.siteId,
+        workstationId: workstation.workstationId,
+        rawCursor,
+        decodedCursor: since ? since.toISOString() : null,
+        activeAllocationsFound: Number(activeCountResult.rows[0]?.count ?? 0),
+        changesAllocationsReturned: responseAllocations.length,
+        seringueAllocationFoundServerSide: probeRows.length > 0,
+        seringueAllocationIncludedInResponse: probeRows.some((row) => row.includedInChangesResponse),
+        seringueAllocations: probeRows,
+      }));
+    } catch (error) {
+      this.logger.warn(JSON.stringify({
+        event: 'POS_SYNC_ALLOCATION_PROBE_FAILED',
+        tenantId: user.tenantId,
+        siteId: workstation.siteId,
+        workstationId: workstation.workstationId,
+        message: error instanceof Error ? error.message : 'UNKNOWN_ERROR',
+      }));
+    }
   }
 
   private async getCustomerChanges(user: AuthUser, since: Date | null) {
