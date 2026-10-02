@@ -80,6 +80,10 @@ export class UsersService {
       throw new BadRequestException('USER_IDENTIFIER_ALREADY_EXISTS');
     }
 
+    if (dbError.code === '23505' && dbError.constraint?.includes('users_tenant_employee_number_unique')) {
+      throw new BadRequestException('USER_EMPLOYEE_NUMBER_ALREADY_EXISTS');
+    }
+
     if (error instanceof Error && error.message === 'BIRTH_DATE_IN_FUTURE') {
       throw new BadRequestException('BIRTH_DATE_IN_FUTURE');
     }

@@ -136,7 +136,6 @@ export function UsersPage() {
       birthDate: form.birthDate,
       phone: form.phone.trim(),
       jobTitle: form.jobTitle.trim(),
-      employeeNumber: form.employeeNumber.trim(),
       department: form.department.trim(),
       username: email,
       email,
@@ -259,7 +258,15 @@ function UserFormSections({
         <h3>Informations professionnelles</h3>
         <div className="admin-user-grid">
           <Field label="Fonction / Poste *"><input className="input" value={form.jobTitle} onChange={(event) => onChange('jobTitle', event.target.value)} placeholder="Pharmacien, Caissier..." required /></Field>
-          <Field label="Matricule employe"><input className="input" value={form.employeeNumber} onChange={(event) => onChange('employeeNumber', event.target.value)} placeholder="EMP-0001" /></Field>
+          <Field label="Matricule">
+            <input
+              className="input"
+              value={editing ? form.employeeNumber || 'Non attribue' : 'Genere automatiquement a la creation'}
+              disabled
+              readOnly
+            />
+            <small>{editing ? 'Le matricule est stable et ne se modifie pas depuis cette fiche.' : 'Format attribue par tenant : EMP-000001, EMP-000002...'}</small>
+          </Field>
           <Field label="Service / Departement"><input className="input" value={form.department} onChange={(event) => onChange('department', event.target.value)} placeholder="Officine, Caisse..." /></Field>
         </div>
       </section>

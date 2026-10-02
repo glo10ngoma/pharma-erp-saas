@@ -61,6 +61,7 @@ const LABELS: Record<string, string> = {
   USER_NOT_FOUND: 'Utilisateur introuvable.',
   USER_EMAIL_ALREADY_EXISTS: 'Cet email est deja utilise par un autre utilisateur.',
   USER_IDENTIFIER_ALREADY_EXISTS: 'Cet identifiant est deja utilise par un autre utilisateur.',
+  USER_EMPLOYEE_NUMBER_ALREADY_EXISTS: 'Ce matricule est deja utilise pour ce tenant. Rechargez puis reessayez.',
   BIRTH_DATE_IN_FUTURE: 'La date de naissance ne peut pas etre dans le futur.',
   ROLE_NOT_FOUND: 'Role introuvable.',
   ROLE_NOT_IN_TENANT: 'Le role selectionne n appartient pas a ce tenant.',

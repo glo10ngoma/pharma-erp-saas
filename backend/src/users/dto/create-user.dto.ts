@@ -33,11 +33,6 @@ export class CreateUserDto {
   @IsString()
   jobTitle: string;
 
-  @ApiPropertyOptional({ example: 'EMP-0001' })
-  @IsOptional()
-  @IsString()
-  employeeNumber?: string;
-
   @ApiPropertyOptional({ example: 'Officine' })
   @IsOptional()
   @IsString()

@@ -1044,6 +1044,14 @@ CREATE TABLE IF NOT EXISTS tenant_settings (
     UNIQUE(tenant_id, setting_key)
 );
 
+CREATE TABLE IF NOT EXISTS user_employee_counters (
+    tenant_id UUID PRIMARY KEY REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+    last_number INTEGER NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Tenant setting EMPLOYEE_NUMBERS_ENABLED controls automatic employee number generation.
+
 -- 2. AJOUT tenant_id AUX TABLES METIER
 
 ALTER TABLE sites ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(tenant_id);
@@ -1102,6 +1110,7 @@ CREATE INDEX IF NOT EXISTS idx_tenants_status ON tenants(subscription_status);
 CREATE INDEX IF NOT EXISTS idx_tenant_settings_tenant_key ON tenant_settings(tenant_id, setting_key);
 CREATE INDEX IF NOT EXISTS idx_sites_tenant ON sites(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS users_tenant_employee_number_unique ON users(tenant_id, employee_number) WHERE employee_number IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_articles_tenant ON articles(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_suppliers_tenant ON suppliers(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_customers_tenant ON customers(tenant_id);

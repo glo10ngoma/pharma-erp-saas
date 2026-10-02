@@ -30,7 +30,6 @@ export type CreateUserPayload = {
   gender?: string;
   birthDate?: string;
   jobTitle: string;
-  employeeNumber?: string;
   department?: string;
   username: string;
   email: string;
