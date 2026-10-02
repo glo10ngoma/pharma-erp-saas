@@ -566,17 +566,24 @@ export function NewPurchasePage() {
               <Field label="Note"><input className="input compact-input" placeholder="Note" value={form.paymentNote} onChange={(event) => update('paymentNote', event.target.value)} /></Field>
             </>
           ) : (
-            <div className="purchase-permission-note muted">Paiement fournisseur indisponible pour vos permissions. Vous pouvez creer et valider l'achat sans reglement.</div>
+            <div className="purchase-permission-note" role="note">
+              <span aria-hidden="true">i</span>
+              <p><strong>Paiement fournisseur indisponible pour vos permissions.</strong> L'achat peut etre cree et valide sans reglement.</p>
+            </div>
           )}
         </div>
       </section>
       <section className="card compact-card purchase-page-grid">
         <div className="erp-toolbar compact-toolbar purchase-toolbar">
-          <button className="ghost-button compact-button" type="button" onClick={() => addLine()}>+ Ajouter ligne</button>
-          <button className="ghost-button compact-button" type="button" onClick={duplicateSelectedLine} disabled={!selectedLineId}>Dupliquer</button>
-          <button className="ghost-button compact-button" type="button" onClick={removeSelectedLine} disabled={!selectedLineId}>Supprimer</button>
-          <button className="ghost-button compact-button" type="button" disabled>Importer CSV</button>
-          <button className="ghost-button compact-button" type="button" disabled>Exporter CSV</button>
+          <div className="purchase-toolbar-group purchase-toolbar-main-actions" aria-label="Actions ligne">
+            <button className="button compact-button" type="button" onClick={() => addLine()}>+ Ajouter ligne</button>
+            <button className="ghost-button compact-button" type="button" onClick={duplicateSelectedLine} disabled={!selectedLineId}>Dupliquer</button>
+            <button className="ghost-button compact-button" type="button" onClick={removeSelectedLine} disabled={!selectedLineId}>Supprimer</button>
+          </div>
+          <div className="purchase-toolbar-group purchase-toolbar-io-actions" aria-label="Import export">
+            <button className="ghost-button compact-button" type="button" disabled>Importer CSV</button>
+            <button className="ghost-button compact-button" type="button" disabled>Exporter CSV</button>
+          </div>
         </div>
         <div className="table-wrap erp-grid-wrap page-grid-wrap">
           <table className="data-table purchase-lines-table erp-grid compact-grid">

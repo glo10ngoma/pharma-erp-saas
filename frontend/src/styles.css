@@ -2056,7 +2056,7 @@ details.nav-group .nav-link {
 }
 
 .purchase-lines-table {
-  min-width: 1180px;
+  min-width: 1280px;
   table-layout: fixed;
   width: 100%;
 }
@@ -2067,8 +2067,37 @@ details.nav-group .nav-link {
   vertical-align: middle;
 }
 
+.purchase-lines-table th {
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 850;
+  height: 34px;
+  line-height: 1.2;
+  padding: 7px 8px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.purchase-lines-table td {
+  padding: 5px 7px;
+}
+
+.purchase-lines-table .input,
+.purchase-lines-table .compact-input,
+.purchase-lines-table .floating-search-trigger,
+.purchase-lines-table input {
+  min-height: 32px;
+  width: 100%;
+}
+
+.purchase-lines-table .compact-input {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
 .purchase-col-status {
-  width: 3%;
+  width: 2%;
 }
 
 .purchase-col-article {
@@ -2076,43 +2105,43 @@ details.nav-group .nav-link {
 }
 
 .purchase-col-unit {
-  width: 12%;
-}
-
-.purchase-col-lot {
   width: 11%;
 }
 
+.purchase-col-lot {
+  width: 10%;
+}
+
 .purchase-col-expiry {
-  width: 9%;
+  width: 8.5%;
 }
 
 .purchase-col-qty {
-  width: 7%;
+  width: 6%;
 }
 
 .purchase-col-factor {
-  width: 7%;
+  width: 6%;
 }
 
 .purchase-col-stock-qty {
-  width: 8%;
+  width: 9%;
 }
 
 .purchase-col-pa,
 .purchase-col-pv {
-  width: 7%;
+  width: 6.5%;
 }
 
 .purchase-col-total {
-  width: 9%;
+  width: 8%;
 }
 
 .purchase-col-actions {
-  width: 5%;
+  width: 3.5%;
 }
 
-@media (min-width: 1400px) {
+@media (min-width: 1680px) {
   .purchase-lines-table {
     min-width: 0;
   }
@@ -2379,7 +2408,7 @@ details.nav-group .nav-link {
 
 .purchase-page {
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 
 .breadcrumb {
@@ -2442,14 +2471,16 @@ details.nav-group .nav-link {
 
 .purchase-page-grid {
   display: grid;
-  gap: 6px;
+  gap: 0;
   min-height: 0;
   padding: 0;
 }
 
 .page-grid-wrap {
-  max-height: calc(100vh - 360px);
+  max-height: calc(100vh - 356px);
   min-height: 0;
+  overflow-x: auto;
+  overflow-y: auto;
 }
 
 .purchase-page-grid .erp-grid-wrap {
@@ -2465,17 +2496,28 @@ details.nav-group .nav-link {
   display: flex;
   flex-direction: row;
   flex-wrap: nowrap;
-  gap: 8px;
+  gap: 18px;
   max-height: 48px;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 6px 8px;
+  padding: 8px 10px;
   white-space: nowrap;
 }
 
+.purchase-toolbar-group {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.purchase-toolbar-io-actions {
+  padding-left: 4px;
+}
+
+.purchase-toolbar .button,
 .purchase-toolbar .ghost-button {
   border-color: var(--line);
-  color: var(--text);
   flex: 0 0 auto;
   margin: 0;
   min-height: 32px;
@@ -2491,7 +2533,7 @@ details.nav-group .nav-link {
 
 .compact-grid th,
 .compact-grid td {
-  padding: 3px 5px;
+  padding: 5px 7px;
 }
 
 .compact-toolbar {
@@ -2499,8 +2541,28 @@ details.nav-group .nav-link {
 }
 
 .compact-summary {
-  gap: 8px;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+}
+
+.purchase-page .compact-summary .form-summary {
+  align-content: center;
+  display: grid;
+  gap: 5px;
+  min-height: 64px;
+  padding: 10px 12px;
+}
+
+.purchase-page .compact-summary .form-summary span {
+  display: block;
+  line-height: 1.15;
+}
+
+.purchase-page .compact-summary .form-summary strong {
+  display: block;
+  font-size: .98rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .purchase-payment-help {
@@ -2515,6 +2577,89 @@ details.nav-group .nav-link {
 
 .purchase-payment-help p + p {
   margin-top: 6px;
+}
+
+.purchase-permission-note {
+  align-items: flex-start;
+  align-self: end;
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--line));
+  border-radius: 8px;
+  color: var(--muted);
+  display: flex;
+  gap: 8px;
+  grid-column: span 2;
+  line-height: 1.35;
+  min-height: 34px;
+  padding: 8px 10px;
+}
+
+.purchase-permission-note > span {
+  align-items: center;
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  border-radius: 999px;
+  color: var(--primary-dark);
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: .75rem;
+  font-weight: 900;
+  height: 18px;
+  justify-content: center;
+  margin-top: 1px;
+  width: 18px;
+}
+
+.purchase-permission-note p {
+  margin: 0;
+}
+
+.purchase-permission-note strong {
+  color: var(--text);
+  font-weight: 800;
+}
+
+.purchase-attachments-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.purchase-attachments-toolbar {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(220px, 1fr) minmax(0, auto);
+  padding: 0;
+}
+
+.purchase-attachments-heading h2 {
+  font-size: .98rem;
+  margin: 0;
+}
+
+.purchase-attachments-heading p {
+  margin: 3px 0 0;
+}
+
+.purchase-attachments-controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.purchase-attachments-controls .input {
+  min-width: 150px;
+}
+
+.purchase-attachments-controls input.input {
+  min-width: 220px;
+}
+
+.purchase-attachments-empty {
+  font-size: .86rem;
+  margin: 2px 0 0;
 }
 
 .page-actions {

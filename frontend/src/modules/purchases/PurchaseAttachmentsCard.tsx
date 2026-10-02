@@ -78,14 +78,14 @@ export function PurchaseAttachmentsCard({
   }
 
   return (
-    <div className="card">
-      <div className="toolbar compact-toolbar">
-        <div>
+    <div className="card purchase-attachments-card">
+      <div className="toolbar compact-toolbar purchase-attachments-toolbar">
+        <div className="purchase-attachments-heading">
           <h2>{title}</h2>
-          <p className="muted">PDF, JPG, PNG, DOCX, XLSX. Maximum 10 Mo.</p>
+          <p className="muted">PDF, JPG, PNG, DOCX, XLSX · Maximum 10 Mo</p>
         </div>
         {canCreate ? (
-          <div className="inline-form-group">
+          <div className="inline-form-group purchase-attachments-controls">
             <select className="input compact-input" value={attachmentType} onChange={(event) => setAttachmentType(event.target.value)}>
               {ATTACHMENT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
             </select>
@@ -99,7 +99,7 @@ export function PurchaseAttachmentsCard({
       </div>
       {(localError || upload.isError || remove.isError) ? <p className="form-error">{localError || apiErrorMessage(upload.error) || apiErrorMessage(remove.error)}</p> : null}
       {!query.data?.length ? (
-        <p className="muted">{query.isLoading ? 'Chargement...' : 'Aucune piece jointe.'}</p>
+        <p className="muted purchase-attachments-empty">{query.isLoading ? 'Chargement...' : 'Aucune piece jointe.'}</p>
       ) : (
         <table className="data-table purchase-detail-table">
           <thead>
