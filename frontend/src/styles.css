@@ -2139,7 +2139,7 @@ details.nav-group .nav-link {
 }
 
 .purchase-col-actions {
-  width: 3%;
+  width: 4%;
 }
 
 @media (min-width: 1500px) {
@@ -2384,13 +2384,11 @@ details.nav-group .nav-link {
 }
 
 .purchase-lines-table .expiry-cell {
-  display: grid;
-  gap: 4px;
   min-width: 0;
 }
 
 .purchase-lines-table .expiry-cell .input {
-  min-width: 132px;
+  min-width: 0;
 }
 
 .purchase-lines-table .field-error {
@@ -2413,11 +2411,17 @@ details.nav-group .nav-link {
 }
 
 .purchase-lines-table .row-action-cell {
-  padding-left: 10px;
+  padding-left: 6px;
+  padding-right: 6px;
+  text-align: center;
+  vertical-align: top;
+  white-space: nowrap;
 }
 
 .purchase-lines-table .row-action-button {
+  display: inline-flex;
   height: 32px;
+  justify-content: center;
   margin-inline: auto;
   min-height: 32px;
   width: 32px;
