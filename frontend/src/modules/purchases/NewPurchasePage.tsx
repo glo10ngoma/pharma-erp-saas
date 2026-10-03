@@ -565,12 +565,7 @@ export function NewPurchasePage() {
               <Field label="Reference paiement"><input className="input compact-input" placeholder="Ref paiement" value={form.paymentReference} onChange={(event) => update('paymentReference', event.target.value)} /></Field>
               <Field label="Note"><input className="input compact-input" placeholder="Note" value={form.paymentNote} onChange={(event) => update('paymentNote', event.target.value)} /></Field>
             </>
-          ) : (
-            <div className="purchase-permission-note" role="note">
-              <span aria-hidden="true">i</span>
-              <p><strong>Paiement fournisseur indisponible pour vos permissions.</strong> L'achat peut etre cree et valide sans reglement.</p>
-            </div>
-          )}
+          ) : null}
         </div>
       </section>
       <section className="card compact-card purchase-page-grid">
@@ -673,6 +668,7 @@ function TrashIcon() {
 
 function PurchaseGridRow(props: { action?: ReactNode; activeAutocomplete: string; activeStockUnitPopover: string; activeUnitPopover: string; article?: Article; currencyCode: string; handleGridKey: (event: KeyboardEvent<HTMLElement>, row: number, col: number, lineId: string) => void; issue: LineIssue; line: PurchaseDraftLine; removeLine: (id: string) => void; rowIndex: number; selectArticle: (lineId: string, article: Article) => void; selectPurchaseUnit: (lineId: string, unit: SearchOption<ProductUnitItem>) => void | Promise<void>; selectStockUnit: (lineId: string, unit: SearchOption<ProductUnitItem>) => void | Promise<void>; selected: boolean; setActiveAutocomplete: (id: string) => void; setActiveStockUnitPopover: (id: string) => void; setActiveUnitPopover: (id: string) => void; setSelectedLineId: (id: string) => void; stockByArticle: Map<string, number>; stockUnitSuggestions: SearchOption<ProductUnitItem>[]; suggestions: Article[]; unitSuggestions: SearchOption<ProductUnitItem>[]; updateLine: (patch: Partial<PurchaseDraftLine>) => void }) {
   const { action, activeAutocomplete, activeStockUnitPopover, activeUnitPopover, article, currencyCode, handleGridKey, issue, line, removeLine, rowIndex, selectArticle, selectPurchaseUnit, selectStockUnit, selected, setActiveAutocomplete, setActiveStockUnitPopover, setActiveUnitPopover, setSelectedLineId, stockByArticle, stockUnitSuggestions, suggestions, unitSuggestions, updateLine } = props;
+  const isExpirationIssue = issue.level !== 'valid' && issue.message.toLowerCase().includes('expiration');
   return <Fragment><tr className={`erp-grid-row line-${issue.level} ${selected ? 'selected' : ''}`} onClick={() => setSelectedLineId(line.id)}>
     <td><span className={`line-indicator ${issue.level}`}></span></td>
     <SharedArticleCell activeAutocomplete={activeAutocomplete} currencyCode={currencyCode} line={line} rowIndex={rowIndex} selectArticle={selectArticle} setActiveAutocomplete={setActiveAutocomplete} setSelectedLineId={setSelectedLineId} stockByArticle={stockByArticle} suggestions={suggestions} updateLine={updateLine} handleGridKey={handleGridKey} />
@@ -700,34 +696,39 @@ function PurchaseGridRow(props: { action?: ReactNode; activeAutocomplete: string
     <td data-line-id={line.id} data-line-col="2"><input className="input compact-input numeric-cell" data-grid-cell={`${rowIndex}-2`} type="number" min="0.001" step="0.001" placeholder="Qte achat" value={line.quantity} onKeyDown={(event) => handleGridKey(event, rowIndex, 2, line.id)} onChange={(event) => updateLine({ quantity: event.target.value })} /></td>
     <td data-line-id={line.id} data-line-col="3"><input className="input compact-input numeric-cell" data-grid-cell={`${rowIndex}-3`} type="number" min="0.0001" step="0.0001" placeholder="Facteur" value={line.conversionFactor} onKeyDown={(event) => handleGridKey(event, rowIndex, 3, line.id)} onChange={(event) => updateLine({ conversionFactor: event.target.value })} /></td>
     <td className="unit-cell stock-unit-cell" data-line-id={line.id} data-line-col="8">
-      <strong className="stock-qty-value">{lineStockQuantity(line)}</strong>
-      <FloatingSearchPopover
-        columns={[
-          { header: 'Code', render: (option) => option.kind === 'create' ? 'Nouveau' : option.item.unitCode },
-          { header: 'Unite stock', render: (option) => option.kind === 'create' ? `Creer "${option.label}"` : option.item.unitLabel },
-        ]}
-        dataGridCell={`${rowIndex}-8`}
-        getKey={(option) => option.kind === 'create' ? `create-stock-${option.label}` : option.item.productUnitId}
-        onChange={(value) => { setActiveStockUnitPopover(line.id); updateLine({ stockUnitQuery: value, stockUnitId: '', stockUnitLabel: '' }); }}
-        onClose={() => setActiveStockUnitPopover('')}
-        onFallbackKeyDown={(event) => handleGridKey(event, rowIndex, 8, line.id)}
-        onFocusNext={() => document.querySelector<HTMLElement>(`[data-grid-cell="${rowIndex}-4"]`)?.focus()}
-        onOpen={() => { setSelectedLineId(line.id); setActiveStockUnitPopover(line.id); }}
-        onSelect={(unit) => selectStockUnit(line.id, unit)}
-        open={activeStockUnitPopover === line.id}
-        placeholder="Unite stock"
-        searchPlaceholder="Rechercher unite stock..."
-        suggestions={stockUnitSuggestions}
-        value={line.stockUnitQuery}
-      />
+      <div className="purchase-stock-quantity-display">
+        <strong className="stock-qty-value">{lineStockQuantity(line)}</strong>
+        <FloatingSearchPopover
+          columns={[
+            { header: 'Code', render: (option) => option.kind === 'create' ? 'Nouveau' : option.item.unitCode },
+            { header: 'Unite stock', render: (option) => option.kind === 'create' ? `Creer "${option.label}"` : option.item.unitLabel },
+          ]}
+          dataGridCell={`${rowIndex}-8`}
+          getKey={(option) => option.kind === 'create' ? `create-stock-${option.label}` : option.item.productUnitId}
+          onChange={(value) => { setActiveStockUnitPopover(line.id); updateLine({ stockUnitQuery: value, stockUnitId: '', stockUnitLabel: '' }); }}
+          onClose={() => setActiveStockUnitPopover('')}
+          onFallbackKeyDown={(event) => handleGridKey(event, rowIndex, 8, line.id)}
+          onFocusNext={() => document.querySelector<HTMLElement>(`[data-grid-cell="${rowIndex}-4"]`)?.focus()}
+          onOpen={() => { setSelectedLineId(line.id); setActiveStockUnitPopover(line.id); }}
+          onSelect={(unit) => selectStockUnit(line.id, unit)}
+          open={activeStockUnitPopover === line.id}
+          placeholder="Unite stock"
+          searchPlaceholder="Rechercher unite stock..."
+          suggestions={stockUnitSuggestions}
+          value={line.stockUnitQuery}
+        />
+      </div>
     </td>
     <td data-line-id={line.id} data-line-col="4"><input className="input compact-input numeric-cell" data-grid-cell={`${rowIndex}-4`} type="number" min="0.01" step="0.01" placeholder="PA" value={line.purchaseUnitPrice} onKeyDown={(event) => handleGridKey(event, rowIndex, 4, line.id)} onChange={(event) => updateLine({ purchaseUnitPrice: event.target.value })} /></td>
     <td data-line-id={line.id} data-line-col="5"><input className="input compact-input numeric-cell" data-grid-cell={`${rowIndex}-5`} type="number" min="0" step="0.01" placeholder="PV" value={line.sellingUnitPrice} onKeyDown={(event) => handleGridKey(event, rowIndex, 5, line.id)} onChange={(event) => updateLine({ sellingUnitPrice: event.target.value })} /></td>
     <td className="numeric-text"><strong>{formatMoney(lineTotal(line), currencyCode)}</strong></td>
     <td data-line-id={line.id} data-line-col="6"><input className="input compact-input" data-grid-cell={`${rowIndex}-6`} placeholder="Lot" value={line.lotNumber} onKeyDown={(event) => handleGridKey(event, rowIndex, 6, line.id)} onChange={(event) => updateLine({ lotNumber: event.target.value })} /></td>
-    <td data-line-id={line.id} data-line-col="7"><input className="input compact-input" data-grid-cell={`${rowIndex}-7`} type="date" value={line.expiryDate} onKeyDown={(event) => handleGridKey(event, rowIndex, 7, line.id)} onChange={(event) => updateLine({ expiryDate: event.target.value })} /></td>
-    <td>{action ?? <button aria-label="Supprimer la ligne" className="ghost-button compact-button row-action-button icon-only danger" title="Supprimer la ligne" type="button" onClick={() => removeLine(line.id)}><TrashIcon /></button>}</td>
-  </tr>{issue.level !== 'valid' && <tr className="line-message-row"><td className={`line-message ${issue.level}`} colSpan={12}>{issue.message}</td></tr>}</Fragment>;
+    <td className="expiry-cell" data-line-id={line.id} data-line-col="7">
+      <input className={`input compact-input${isExpirationIssue ? ' field-error' : ''}`} data-grid-cell={`${rowIndex}-7`} type="date" value={line.expiryDate} onKeyDown={(event) => handleGridKey(event, rowIndex, 7, line.id)} onChange={(event) => updateLine({ expiryDate: event.target.value })} />
+      {isExpirationIssue ? <small className={`field-inline-error ${issue.level}`}>{issue.message}</small> : null}
+    </td>
+    <td className="row-action-cell">{action ?? <button aria-label="Supprimer la ligne" className="ghost-button compact-button row-action-button icon-only danger" title="Supprimer la ligne" type="button" onClick={() => removeLine(line.id)}><TrashIcon /></button>}</td>
+  </tr>{issue.level !== 'valid' && !isExpirationIssue && <tr className="line-message-row"><td className={`line-message ${issue.level}`} colSpan={12}>{issue.message}</td></tr>}</Fragment>;
 }
 
 function SharedArticleCell({ activeAutocomplete, currencyCode, handleGridKey, line, rowIndex, selectArticle, setActiveAutocomplete, setSelectedLineId, stockByArticle, suggestions, updateLine }: { activeAutocomplete: string; currencyCode: string; handleGridKey: (event: KeyboardEvent<HTMLElement>, row: number, col: number, lineId: string) => void; line: PurchaseDraftLine; rowIndex: number; selectArticle: (lineId: string, article: Article) => void; setActiveAutocomplete: (id: string) => void; setSelectedLineId: (id: string) => void; stockByArticle: Map<string, number>; suggestions: Article[]; updateLine: (patch: Partial<PurchaseDraftLine>) => void }) {

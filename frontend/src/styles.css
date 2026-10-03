@@ -2058,7 +2058,7 @@ details.nav-group .nav-link {
 .purchase-lines-table {
   min-width: 1280px;
   table-layout: fixed;
-  width: 100%;
+  width: 1280px;
 }
 
 .purchase-lines-table th,
@@ -2070,17 +2070,18 @@ details.nav-group .nav-link {
 .purchase-lines-table th {
   background: var(--surface-soft);
   color: var(--muted);
-  font-size: .72rem;
+  font-size: .68rem;
   font-weight: 850;
   height: 34px;
   line-height: 1.2;
-  padding: 7px 8px;
+  padding: 7px 6px;
+  resize: none;
   text-transform: uppercase;
   white-space: nowrap;
 }
 
 .purchase-lines-table td {
-  padding: 5px 7px;
+  padding: 5px;
 }
 
 .purchase-lines-table .input,
@@ -2092,36 +2093,36 @@ details.nav-group .nav-link {
 }
 
 .purchase-lines-table .compact-input {
-  padding-left: 8px;
-  padding-right: 8px;
+  padding-left: 6px;
+  padding-right: 6px;
 }
 
 .purchase-col-status {
-  width: 2%;
+  width: .9%;
 }
 
 .purchase-col-article {
-  width: 24%;
+  width: 16.5%;
 }
 
 .purchase-col-unit {
-  width: 11%;
+  width: 9.1%;
 }
 
 .purchase-col-lot {
-  width: 10%;
+  width: 16%;
 }
 
 .purchase-col-expiry {
-  width: 8.5%;
+  width: 11.5%;
 }
 
 .purchase-col-qty {
-  width: 6%;
+  width: 7.8%;
 }
 
 .purchase-col-factor {
-  width: 6%;
+  width: 6.9%;
 }
 
 .purchase-col-stock-qty {
@@ -2130,20 +2131,21 @@ details.nav-group .nav-link {
 
 .purchase-col-pa,
 .purchase-col-pv {
-  width: 6.5%;
+  width: 6%;
 }
 
 .purchase-col-total {
-  width: 8%;
+  width: 7.3%;
 }
 
 .purchase-col-actions {
-  width: 3.5%;
+  width: 3%;
 }
 
-@media (min-width: 1680px) {
+@media (min-width: 1500px) {
   .purchase-lines-table {
     min-width: 0;
+    width: 100%;
   }
 }
 
@@ -2314,6 +2316,111 @@ details.nav-group .nav-link {
 .purchase-lines-table th:last-child,
 .purchase-lines-table td:last-child {
   text-align: center;
+}
+
+.purchase-page-grid .purchase-lines-table.erp-grid th {
+  resize: none !important;
+}
+
+.purchase-page-grid .purchase-lines-table.erp-grid th::-webkit-resizer {
+  display: none;
+}
+
+.purchase-lines-table.erp-grid th:nth-child(2),
+.purchase-lines-table.erp-grid .sticky-article-cell {
+  left: 1.5%;
+}
+
+.purchase-lines-table td:nth-child(10) .input {
+  font-size: .78rem;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+.purchase-lines-table .stock-unit-cell {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.purchase-lines-table .purchase-stock-quantity-display {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  justify-content: center;
+  max-width: 100%;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.purchase-lines-table .stock-unit-cell .floating-search-trigger {
+  flex: 0 1 86px;
+  font-size: .72rem;
+  min-width: 82px;
+  padding-left: 4px;
+  padding-right: 4px;
+  text-align: center;
+}
+
+.purchase-lines-table .stock-qty-value {
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: .82rem;
+  line-height: 1;
+}
+
+.purchase-lines-table .numeric-text strong {
+  display: inline-block;
+  font-size: .82rem;
+  min-width: max-content;
+  white-space: nowrap;
+}
+
+.purchase-lines-table td:nth-child(5) .input,
+.purchase-lines-table td:nth-child(7) .input,
+.purchase-lines-table td:nth-child(8) .input {
+  font-size: .8rem;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+.purchase-lines-table .expiry-cell {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.purchase-lines-table .expiry-cell .input {
+  min-width: 132px;
+}
+
+.purchase-lines-table .field-error {
+  border-color: color-mix(in srgb, var(--danger) 72%, var(--line));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+.purchase-lines-table .field-inline-error {
+  color: var(--danger);
+  display: block;
+  font-size: .68rem;
+  font-weight: 800;
+  line-height: 1.15;
+  margin-top: -1px;
+  white-space: normal;
+}
+
+.purchase-lines-table .field-inline-error.warning {
+  color: var(--warning);
+}
+
+.purchase-lines-table .row-action-cell {
+  padding-left: 10px;
+}
+
+.purchase-lines-table .row-action-button {
+  height: 32px;
+  margin-inline: auto;
+  min-height: 32px;
+  width: 32px;
 }
 
 .line-indicator {
