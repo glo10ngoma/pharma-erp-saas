@@ -1,7 +1,10 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { initializeDesktopFreshLaunchSession } from './auth/desktopSession';
 import { App } from './App';
 import './styles.css';
+
+initializeDesktopFreshLaunchSession();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

@@ -6,6 +6,7 @@ const ts = require('typescript');
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const AUTH_SESSION_PATH = path.join(REPO_ROOT, 'frontend', 'src', 'auth', 'authSession.ts');
+const DESKTOP_SESSION_PATH = path.join(REPO_ROOT, 'frontend', 'src', 'auth', 'desktopSession.ts');
 const API_ERROR_PATH = path.join(REPO_ROOT, 'frontend', 'src', 'services', 'apiError.ts');
 
 function loadTsModule(filePath, moduleStubs = {}, globals = {}) {
@@ -92,6 +93,12 @@ const authSession = loadTsModule(AUTH_SESSION_PATH, { axios: axiosStub }, {
   window,
   CustomEvent,
 });
+const desktopSession = loadTsModule(DESKTOP_SESSION_PATH, { './authSession': authSession }, {
+  localStorage,
+  sessionStorage,
+  window,
+  URLSearchParams,
+});
 const apiError = loadTsModule(API_ERROR_PATH);
 
 localStorage.setItem('accessToken', 'valid-token');
@@ -150,6 +157,23 @@ assert.strictEqual(localStorage.getItem('accessToken'), 'new-token');
 assert.strictEqual(authSession.getSessionExpiredMessage(), null);
 assert.strictEqual(authSession.isAuthTokenError(createAxiosError(200, null)), false);
 
+window.location.search = '?desktopFreshLaunch=1';
+localStorage.setItem('accessToken', 'persisted-desktop-token');
+localStorage.setItem('currentUser', '{"id":"desktop-user"}');
+localStorage.setItem('permissions', '["sales.create"]');
+localStorage.setItem('offline.pos.snapshot', '{"articles":1}');
+localStorage.setItem('offline.pos.drafts', '[{"id":"draft-1"}]');
+desktopSession.initializeDesktopFreshLaunchSession();
+assert.strictEqual(localStorage.getItem('accessToken'), null);
+assert.strictEqual(localStorage.getItem('currentUser'), null);
+assert.strictEqual(localStorage.getItem('permissions'), null);
+assert.strictEqual(localStorage.getItem('offline.pos.snapshot'), '{"articles":1}');
+assert.strictEqual(localStorage.getItem('offline.pos.drafts'), '[{"id":"draft-1"}]');
+assert.strictEqual(desktopSession.isDesktopShellSession(), true);
+assert.strictEqual(desktopSession.isDesktopFreshLaunchSession(), true);
+desktopSession.completeDesktopFreshLaunchLogin();
+assert.strictEqual(desktopSession.isDesktopFreshLaunchSession(), false);
+
 console.log('AUTH_INVALIDATION_REGRESSION=PASS');
 console.log('VALID_TOKEN_TEST=PASS');
 console.log('INVALID_TOKEN_TEST=PASS');
@@ -160,3 +184,4 @@ console.log('403_TEST=PASS');
 console.log('500_TEST=PASS');
 console.log('OFFLINE_NETWORK_TEST=PASS');
 console.log('OFFLINE_DATA_PRESERVED=PASS');
+console.log('DESKTOP_FRESH_LAUNCH_AUTH_CLEAR=PASS');

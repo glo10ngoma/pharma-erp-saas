@@ -3,7 +3,7 @@ const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const POS_URL = process.env.PHARMAERP_POS_URL || 'https://pharma-erp-saas-five.vercel.app/pos';
+const APP_URL = process.env.PHARMAERP_APP_URL || 'https://pharma-erp-saas-five.vercel.app/login?desktopFreshLaunch=1';
 const PRINT_AGENT_PORT = '17373';
 
 let mainWindow = null;
@@ -72,7 +72,7 @@ function createWindow() {
   mainWindow.setMenuBarVisibility(false);
   mainWindow.webContents.setZoomFactor(1);
   mainWindow.webContents.setVisualZoomLevelLimits(1, 1);
-  mainWindow.loadURL(POS_URL);
+  mainWindow.loadURL(APP_URL);
 }
 
 function startPrintAgent() {

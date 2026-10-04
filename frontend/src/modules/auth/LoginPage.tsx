@@ -3,6 +3,11 @@ import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
 import { consumeSessionExpiredMessage } from '../../auth/authSession';
+import {
+  completeDesktopFreshLaunchLogin,
+  isDesktopFreshLaunchSession,
+  isDesktopShellSession,
+} from '../../auth/desktopSession';
 import { landingPathForUser } from '../../auth/landing';
 
 export function LoginPage() {
@@ -55,7 +60,7 @@ export function LoginPage() {
       }
     }
 
-    if (!navigator.onLine) {
+    if (!navigator.onLine && !isDesktopFreshLaunchSession()) {
       void tryOfflineRestore();
     }
 
@@ -72,7 +77,9 @@ export function LoginPage() {
 
     try {
       const user = await auth.login(email, password);
-      navigate(landingPathForUser(user), { replace: true });
+      const target = isDesktopShellSession() ? '/dashboard' : landingPathForUser(user);
+      completeDesktopFreshLaunchLogin();
+      navigate(target, { replace: true });
     } catch (error) {
       if (!navigator.onLine || (axios.isAxiosError(error) && !error.response)) {
         const candidate = await auth.inspectOfflineRestore();
