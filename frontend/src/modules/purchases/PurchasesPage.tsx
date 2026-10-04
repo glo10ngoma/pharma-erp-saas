@@ -1,9 +1,8 @@
-import { Fragment, FormEvent, KeyboardEvent, ReactNode, useEffect, useMemo, useState } from 'react';
+import { Fragment, FormEvent, KeyboardEvent, ReactNode, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { Article, articlesService } from '../../services/articles.service';
 import { apiErrorMessage } from '../../services/apiError';
-import { codeGeneratorService } from '../../services/codeGenerator.service';
 import { purchasesService, Purchase, PurchaseItem } from '../../services/purchases.service';
 import { referenceService } from '../../services/reference.service';
 import { sitesService } from '../../services/sites.service';
@@ -207,7 +206,6 @@ export function PurchasesPage() {
   const categories = useQuery({ queryKey: ['categories'], queryFn: async () => (await referenceService.categories.getAll()).data });
   const forms = useQuery({ queryKey: ['galenic-forms'], queryFn: async () => (await referenceService.galenicForms.getAll()).data });
   const stocks = useQuery({ queryKey: ['stocks'], queryFn: async () => (await stocksService.getAll()).data });
-  const nextCode = useQuery({ queryKey: ['next-code', 'purchases', createOpen], enabled: createOpen, queryFn: async () => (await codeGeneratorService.next('purchases')).data.code });
 
   const articleById = useMemo(() => new Map((articles.data ?? []).map((article) => [article.articleId, article])), [articles.data]);
   const categoryById = useMemo(() => new Map((categories.data ?? []).map((category) => [category.categoryId, category.categoryName])), [categories.data]);
@@ -219,12 +217,6 @@ export function PurchasesPage() {
     }
     return map;
   }, [stocks.data]);
-
-  useEffect(() => {
-    if (createOpen && !form.purchaseNumber && nextCode.data) {
-      setForm((current) => ({ ...current, purchaseNumber: nextCode.data ?? '' }));
-    }
-  }, [createOpen, form.purchaseNumber, nextCode.data]);
 
   const rows = useMemo(() => filterRows(purchases.data ?? [], search, (purchase) => [
     purchase.purchaseNumber,
@@ -260,7 +252,6 @@ export function PurchasesPage() {
   const create = useMutation({
     mutationFn: async () => {
       const purchase = (await purchasesService.create({
-        purchaseNumber: form.purchaseNumber.trim() || undefined,
         supplierId: form.supplierId,
         siteId: form.siteId,
         purchaseDate: form.purchaseDate,
@@ -585,7 +576,7 @@ export function PurchasesPage() {
           <div className="form-section">
             <h3>Informations generales</h3>
             <div className="form-grid">
-              <Field label="Code achat"><input className="input" placeholder="ACH-000001" value={form.purchaseNumber} onChange={(event) => update('purchaseNumber', event.target.value)} required /></Field>
+              <Field label="Code achat"><input className="input" placeholder="Genere automatiquement" value={form.purchaseNumber || 'ACH-...'} readOnly aria-readonly="true" /></Field>
               <Field label="Fournisseur"><select className="input" value={form.supplierId} onChange={(event) => update('supplierId', event.target.value)} required><option value="">Choisir un fournisseur</option>{(suppliers.data ?? []).map((supplier) => <option key={supplier.supplierId} value={supplier.supplierId}>{supplier.supplierName}</option>)}</select></Field>
               <Field label="Date achat"><input className="input" type="date" value={form.purchaseDate} onChange={(event) => update('purchaseDate', event.target.value)} required /></Field>
               <Field label="Devise"><select className="input" value={form.currencyCode} disabled><option value="USD">USD - Dollar americain</option></select></Field>

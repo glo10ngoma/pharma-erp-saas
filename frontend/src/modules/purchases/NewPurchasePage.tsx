@@ -6,7 +6,6 @@ import { FloatingSearchPopover } from '../../components/FloatingSearchPopover';
 import { Article, articlesService } from '../../services/articles.service';
 import { apiErrorMessage } from '../../services/apiError';
 import { cashService } from '../../services/cash.service';
-import { codeGeneratorService } from '../../services/codeGenerator.service';
 import { purchasesService } from '../../services/purchases.service';
 import { ProductUnitItem, referenceService } from '../../services/reference.service';
 import { settingsService } from '../../services/settings.service';
@@ -153,7 +152,6 @@ export function NewPurchasePage() {
   const sites = useQuery({ queryKey: ['sites'], queryFn: async () => (await sitesService.getAll()).data });
   const productUnits = useQuery({ queryKey: ['product-units'], queryFn: async () => (await referenceService.productUnits.getAll()).data });
   const stocks = useQuery({ queryKey: ['stocks'], queryFn: async () => (await stocksService.getAll()).data });
-  const nextCode = useQuery({ queryKey: ['next-code', 'purchases', 'page'], queryFn: async () => (await codeGeneratorService.next('purchases')).data.code });
   const exchangeRate = useQuery({ queryKey: ['exchange-rate'], queryFn: async () => (await settingsService.getExchangeRate()).data });
   const currentCashSession = useQuery({
     queryKey: ['cash-session-current', form.siteId],
@@ -200,7 +198,6 @@ export function NewPurchasePage() {
     setArticleOptions((current) => mergeArticleOptions(current, articleSearch.data ?? []));
   }, [articleSearch.data]);
 
-  useEffect(() => { if (!form.purchaseNumber && nextCode.data) setForm((current) => ({ ...current, purchaseNumber: nextCode.data ?? '' })); }, [form.purchaseNumber, nextCode.data]);
   useEffect(() => {
     if (form.currencyCode === 'CDF' && exchangeRate.data?.rate && Number(form.exchangeRate || 0) <= 1) {
       setForm((current) => ({ ...current, exchangeRate: String(exchangeRate.data?.rate ?? 1) }));
@@ -273,7 +270,6 @@ export function NewPurchasePage() {
 
   function purchasePayload() {
     return {
-      purchaseNumber: form.purchaseNumber.trim() || undefined,
       supplierId: form.supplierId,
       siteId: form.siteId,
       purchaseDate: form.purchaseDate,
@@ -301,6 +297,7 @@ export function NewPurchasePage() {
     },
     onSuccess: async (purchase) => {
       setPurchaseDraftId(purchase.purchaseId);
+      setForm((current) => ({ ...current, purchaseNumber: purchase.purchaseNumber ?? current.purchaseNumber }));
       await queryClient.invalidateQueries({ queryKey: ['purchase', purchase.purchaseId] });
       await queryClient.invalidateQueries({ queryKey: ['purchases'] });
     },
@@ -313,6 +310,7 @@ export function NewPurchasePage() {
         ? (await purchasesService.update(purchaseDraftId, purchasePayload())).data
         : (await purchasesService.create(purchasePayload())).data;
       if (!purchaseDraftId) setPurchaseDraftId(purchase.purchaseId);
+      setForm((current) => ({ ...current, purchaseNumber: purchase.purchaseNumber ?? current.purchaseNumber }));
       for (const [index, line] of lines.entries()) {
         const purchaseUnit = await ensurePurchaseUnit(line);
         const stockUnit = await ensureStockUnit(line);
@@ -548,7 +546,7 @@ export function NewPurchasePage() {
       </div>
       <section className="card compact-card">
         <div className="form-grid purchase-page-fields">
-          <Field label="Code"><input className="input compact-input" placeholder="ACH-000001" value={form.purchaseNumber} onChange={(event) => update('purchaseNumber', event.target.value)} required /></Field>
+          <Field label="Code"><input className="input compact-input" placeholder="Genere automatiquement" value={form.purchaseNumber || 'ACH-...'} readOnly aria-readonly="true" /></Field>
           <Field label="Fournisseur"><select className="input compact-input" value={form.supplierId} onChange={(event) => update('supplierId', event.target.value)} required><option value="">Fournisseur</option>{(suppliers.data ?? []).map((supplier) => <option key={supplier.supplierId} value={supplier.supplierId}>{supplier.supplierName}</option>)}</select></Field>
           <Field label="Date"><input className="input compact-input" type="date" value={form.purchaseDate} onChange={(event) => update('purchaseDate', event.target.value)} required /></Field>
           <Field label="Site"><select className="input compact-input" value={form.siteId} onChange={(event) => update('siteId', event.target.value)} required><option value="">Site</option>{(sites.data ?? []).map((site) => <option key={site.siteId} value={site.siteId}>{site.siteName}</option>)}</select></Field>

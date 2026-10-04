@@ -1,9 +1,12 @@
 import { Injectable } from '@nestjs/common';
+import { PoolClient } from 'pg';
 import { AuthUser } from '../common/types/auth-user';
 import { DatabaseService } from '../database/database.service';
 import { AddPurchaseItemDto } from './dto/add-purchase-item.dto';
 import { CreatePurchaseDto } from './dto/create-purchase.dto';
 import { UpdatePurchaseDto } from './dto/update-purchase.dto';
+
+type QueryClient = Pick<PoolClient, 'query'>;
 
 type PurchaseRow = {
   purchase_id: string;
@@ -146,51 +149,55 @@ export class PurchasesRepository {
   }
 
   async create(user: AuthUser, dto: CreatePurchaseDto) {
+    if (this.hasClientPurchaseNumber(dto)) throw new Error('PURCHASE_NUMBER_CLIENT_OVERRIDE_NOT_ALLOWED');
     const currencyId = dto.currencyId ?? await this.resolveCurrencyId(dto.currencyCode) ?? await this.defaultCurrencyId();
     this.assertPaymentPermission(user, dto);
     const payment = this.computePaymentSnapshot(dto, currencyId === null ? 'USD' : await this.currencyCodeById(currencyId), dto.exchangeRate ?? 1, 0);
     await this.assertTenantRelations(user, dto.supplierId, dto.siteId, currencyId, dto.exchangeRate, dto.cashSessionId, payment);
-    const number = dto.purchaseNumber?.trim() || `PUR-${Date.now()}`;
-    const result = await this.db.query<PurchaseRow>(
-      `
-      INSERT INTO purchases (
-        tenant_id, purchase_number, purchase_date, supplier_id, site_id, currency_id,
-        exchange_rate, created_by, payment_status, payment_source, payment_method,
-        total_equivalent_usd, amount_paid_usd, amount_paid_cdf, paid_equivalent_usd,
-        outstanding_balance_usd, cash_session_id, payment_reference, payment_note
-      )
-      VALUES ($1,$2,COALESCE($3::date, CURRENT_DATE),$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
-      RETURNING purchase_id, tenant_id, purchase_number, purchase_date, supplier_id,
-                NULL::text AS supplier_name, site_id, NULL::text AS site_name, currency_id,
-                NULL::text AS currency_code, NULL::text AS currency_symbol,
-                exchange_rate, total_amount, payment_status, payment_source, payment_method,
-                total_equivalent_usd, amount_paid_usd, amount_paid_cdf, paid_equivalent_usd,
-                outstanding_balance_usd, cash_session_id, payment_reference, payment_note,
-                status, created_by, created_at, validated_at
-      `,
-      [
-        user.tenantId,
-        number,
-        dto.purchaseDate ?? null,
-        dto.supplierId,
-        dto.siteId,
-        currencyId,
-        dto.exchangeRate ?? 1,
-        user.userId,
-        payment.paymentStatus,
-        dto.paymentSource ?? null,
-        dto.paymentMethod ?? null,
-        payment.totalEquivalentUsd,
-        payment.amountPaidUsd,
-        payment.amountPaidCdf,
-        payment.paidEquivalentUsd,
-        payment.outstandingBalanceUsd,
-        dto.cashSessionId ?? null,
-        dto.paymentReference?.trim() || null,
-        dto.paymentNote?.trim() || null,
-      ],
-    );
-    return this.findOne(user, result.rows[0].purchase_id);
+    const purchaseId = await this.db.transaction(async (client) => {
+      const number = await this.nextPurchaseNumber(user.tenantId, client);
+      const result = await client.query<PurchaseRow>(
+        `
+        INSERT INTO purchases (
+          tenant_id, purchase_number, purchase_date, supplier_id, site_id, currency_id,
+          exchange_rate, created_by, payment_status, payment_source, payment_method,
+          total_equivalent_usd, amount_paid_usd, amount_paid_cdf, paid_equivalent_usd,
+          outstanding_balance_usd, cash_session_id, payment_reference, payment_note
+        )
+        VALUES ($1,$2,COALESCE($3::date, CURRENT_DATE),$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+        RETURNING purchase_id, tenant_id, purchase_number, purchase_date, supplier_id,
+                  NULL::text AS supplier_name, site_id, NULL::text AS site_name, currency_id,
+                  NULL::text AS currency_code, NULL::text AS currency_symbol,
+                  exchange_rate, total_amount, payment_status, payment_source, payment_method,
+                  total_equivalent_usd, amount_paid_usd, amount_paid_cdf, paid_equivalent_usd,
+                  outstanding_balance_usd, cash_session_id, payment_reference, payment_note,
+                  status, created_by, created_at, validated_at
+        `,
+        [
+          user.tenantId,
+          number,
+          dto.purchaseDate ?? null,
+          dto.supplierId,
+          dto.siteId,
+          currencyId,
+          dto.exchangeRate ?? 1,
+          user.userId,
+          payment.paymentStatus,
+          dto.paymentSource ?? null,
+          dto.paymentMethod ?? null,
+          payment.totalEquivalentUsd,
+          payment.amountPaidUsd,
+          payment.amountPaidCdf,
+          payment.paidEquivalentUsd,
+          payment.outstandingBalanceUsd,
+          dto.cashSessionId ?? null,
+          dto.paymentReference?.trim() || null,
+          dto.paymentNote?.trim() || null,
+        ],
+      );
+      return result.rows[0].purchase_id;
+    });
+    return this.findOne(user, purchaseId);
   }
 
   async update(user: AuthUser, id: string, dto: UpdatePurchaseDto) {
@@ -767,6 +774,27 @@ export class PurchasesRepository {
   private async currencyIdByCode(client: any, code: string) {
     const result = await client.query(`SELECT currency_id FROM currencies WHERE currency_code=$1 LIMIT 1`, [code]);
     return result.rows[0]?.currency_id ?? null;
+  }
+
+  private hasClientPurchaseNumber(dto: CreatePurchaseDto) {
+    const value = (dto as CreatePurchaseDto & { purchaseNumber?: unknown }).purchaseNumber;
+    return typeof value === 'string' ? value.trim().length > 0 : value !== undefined && value !== null;
+  }
+
+  private async nextPurchaseNumber(tenantId: string, client: QueryClient) {
+    const result = await client.query<{ next_number: number }>(
+      `
+      INSERT INTO purchase_number_counters (tenant_id, last_number)
+      VALUES ($1, 1)
+      ON CONFLICT (tenant_id)
+      DO UPDATE SET
+        last_number = purchase_number_counters.last_number + 1,
+        updated_at = CURRENT_TIMESTAMP
+      RETURNING last_number AS next_number
+      `,
+      [tenantId],
+    );
+    return `ACH-${String(Number(result.rows[0]?.next_number ?? 1)).padStart(6, '0')}`;
   }
 
   private toPurchase(row: PurchaseRow) {

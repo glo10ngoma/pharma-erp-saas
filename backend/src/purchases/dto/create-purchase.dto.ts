@@ -2,12 +2,6 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsDateString, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
 
 export class CreatePurchaseDto {
-  @ApiPropertyOptional({ example: 'ACH-000001' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(80)
-  purchaseNumber?: string;
-
   @ApiProperty()
   @IsUUID()
   supplierId: string;
