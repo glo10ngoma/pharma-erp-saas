@@ -1,6 +1,7 @@
 import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '../../auth/AuthContext';
 import { FloatingSearchPopover } from '../../components/FloatingSearchPopover';
 import { formatDate, formatDateTime } from '../../utils/date';
 import { formatMoney } from '../../utils/money';
@@ -73,6 +74,8 @@ const emptyViewModel: OfflineSnapshotViewModel = {
 };
 
 export function OfflinePosPage() {
+  const authContext = useAuth();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedCartId = searchParams.get('draft');
   const [viewModel, setViewModel] = useState<OfflineSnapshotViewModel>(emptyViewModel);
@@ -115,9 +118,26 @@ export function OfflinePosPage() {
       setInitError('');
     }
     try {
-      const environment = await applyCurrentTenantExchangeRate(await ensureOfflineEnvironmentReady({
-        cartId: cartId ?? selectedCartId,
-      }));
+      if (authContext.loading) return null;
+      const activeTenantId = authContext.currentUser?.tenantId?.trim() || '';
+      const activeSiteId = authContext.currentUser?.siteId?.trim() || '';
+      if (!activeTenantId) {
+        navigate('/organization-select', { replace: true });
+        return null;
+      }
+      if (!activeSiteId) {
+        navigate(authContext.availableSites.length > 0 ? '/site-select' : '/organization-select', { replace: true });
+        return null;
+      }
+      const environment = await withTimeout(
+        applyCurrentTenantExchangeRate(await ensureOfflineEnvironmentReady({
+          cartId: cartId ?? selectedCartId,
+          activeTenantId,
+          activeSiteId,
+        })),
+        20000,
+        'POS_INITIALIZATION_TIMEOUT',
+      );
       setViewModel(environment.viewModel);
       setPageModel(environment.pageModel);
       setNoteDraft(environment.pageModel?.cart.note ?? '');
@@ -190,7 +210,7 @@ export function OfflinePosPage() {
 
   useEffect(() => {
     void refresh(selectedCartId);
-  }, [selectedCartId]);
+  }, [selectedCartId, authContext.loading, authContext.currentUser?.tenantId, authContext.currentUser?.siteId, authContext.availableSites.length]);
 
   useEffect(() => {
     const syncedAt = syncEngine.lastSuccessfulSyncAt;
@@ -1395,6 +1415,20 @@ export function OfflinePosPage() {
       />
     </OfflineWorkspaceLayout>
   );
+}
+
+async function withTimeout<T>(promise: Promise<T>, milliseconds: number, errorCode: string) {
+  let timer: number | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = window.setTimeout(() => reject(new Error(errorCode)), milliseconds);
+      }),
+    ]);
+  } finally {
+    if (timer !== null) window.clearTimeout(timer);
+  }
 }
 
 function authorizationLabel(status: ReturnType<typeof calculateAuthorizationState>) {

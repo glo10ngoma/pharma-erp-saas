@@ -8,6 +8,7 @@ import {
 } from './offline-bootstrap';
 import { canAttachOfflineCashSale, openOfflineCashSession } from './offline-cash';
 import { runSync } from './sync-engine';
+import { isOfflineSnapshotContextCompatible } from './offline-context';
 
 type OfflinePageModel = Awaited<ReturnType<typeof getOfflineCartPageModel>>;
 
@@ -27,16 +28,31 @@ export type OfflineEnvironmentResult = {
 
 export async function ensureOfflineWorkstationReady(options?: {
   preferredSiteId?: string | null;
+  activeTenantId?: string | null;
+  activeSiteId?: string | null;
 }) {
   const localView = await loadLocalSnapshot();
-  const preferredSiteId = options?.preferredSiteId ?? localView.snapshot.workstation?.siteId ?? localView.snapshot.auth?.siteId ?? null;
+  const activeTenantId = options?.activeTenantId?.trim() || '';
+  const activeSiteId = options?.activeSiteId?.trim() || '';
+  const localContextCompatible = activeTenantId
+    ? isOfflineSnapshotContextCompatible({
+        userTenantId: activeTenantId,
+        userSiteId: activeSiteId || null,
+        snapshotTenantId: localView.snapshot.workstation?.tenantId ?? localView.snapshot.auth?.tenantId,
+        snapshotSiteId: localView.snapshot.workstation?.siteId,
+      })
+    : true;
+  const preferredSiteId = options?.preferredSiteId
+    ?? (localContextCompatible ? localView.snapshot.workstation?.siteId ?? localView.snapshot.auth?.siteId : null)
+    ?? activeSiteId
+    ?? null;
 
   if (localView.networkStatus !== 'ONLINE') {
     return localView;
   }
 
   const localAuthorization = calculateAuthorizationState(localView.snapshot.auth, localView.snapshot.workstation);
-  const hasContext = Boolean(
+  const hasContext = localContextCompatible && Boolean(
     localView.snapshot.workstation?.workstationId
     && localView.snapshot.auth?.tenantId
     && localView.snapshot.settings,
@@ -58,8 +74,14 @@ export async function ensureOfflineWorkstationReady(options?: {
 export async function ensureOfflineEnvironmentReady(options?: {
   cartId?: string | null;
   preferredSiteId?: string | null;
+  activeTenantId?: string | null;
+  activeSiteId?: string | null;
 }) {
-  let viewModel = await ensureOfflineWorkstationReady({ preferredSiteId: options?.preferredSiteId ?? null });
+  let viewModel = await ensureOfflineWorkstationReady({
+    preferredSiteId: options?.preferredSiteId ?? null,
+    activeTenantId: options?.activeTenantId ?? null,
+    activeSiteId: options?.activeSiteId ?? null,
+  });
   let snapshot = viewModel.snapshot;
   let authorizationState = calculateAuthorizationState(snapshot.auth, snapshot.workstation);
 
@@ -74,7 +96,7 @@ export async function ensureOfflineEnvironmentReady(options?: {
     )
   ) {
     await bootstrapFromServer({
-      siteId: options?.preferredSiteId ?? snapshot.workstation?.siteId ?? snapshot.auth?.siteId ?? null,
+      siteId: options?.preferredSiteId ?? options?.activeSiteId ?? snapshot.workstation?.siteId ?? snapshot.auth?.siteId ?? null,
     });
     void runSync('online');
     viewModel = await loadLocalSnapshot();
