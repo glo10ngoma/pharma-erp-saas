@@ -126,7 +126,7 @@ export function OfflinePosPage() {
         return null;
       }
       if (!activeSiteId) {
-        navigate(authContext.availableSites.length > 0 ? '/site-select' : '/organization-select', { replace: true });
+        navigate('/site-select', { replace: true });
         return null;
       }
       const environment = await withTimeout(
@@ -210,7 +210,7 @@ export function OfflinePosPage() {
 
   useEffect(() => {
     void refresh(selectedCartId);
-  }, [selectedCartId, authContext.loading, authContext.currentUser?.tenantId, authContext.currentUser?.siteId, authContext.availableSites.length]);
+  }, [selectedCartId, authContext.loading, authContext.currentUser?.tenantId, authContext.currentUser?.siteId]);
 
   useEffect(() => {
     const syncedAt = syncEngine.lastSuccessfulSyncAt;
