@@ -122,11 +122,13 @@ export function OfflinePosPage() {
       const activeTenantId = authContext.currentUser?.tenantId?.trim() || '';
       const activeSiteId = authContext.currentUser?.siteId?.trim() || '';
       if (!activeTenantId) {
-        navigate('/organization-select', { replace: true });
+        setInitState('ERROR');
+        setInitError('Sélectionnez une organisation avant d ouvrir le POS.');
         return null;
       }
       if (!activeSiteId) {
-        navigate('/site-select', { replace: true });
+        setInitState('ERROR');
+        setInitError('Sélectionnez un site avant d ouvrir le POS.');
         return null;
       }
       const environment = await withTimeout(
