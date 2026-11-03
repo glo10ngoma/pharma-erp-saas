@@ -77,7 +77,11 @@ export function LoginPage() {
 
     try {
       const user = await auth.login(email, password);
-      const target = isDesktopShellSession() ? '/dashboard' : landingPathForUser(user);
+      const target = isDesktopShellSession()
+        ? '/dashboard'
+        : user.siteId
+          ? landingPathForUser(user)
+          : '/organization-select';
       completeDesktopFreshLaunchLogin();
       navigate(target, { replace: true });
     } catch (error) {

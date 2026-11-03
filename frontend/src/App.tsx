@@ -6,6 +6,8 @@ import { useAuth } from './auth/AuthContext';
 import { landingPathForUser } from './auth/landing';
 import { DashboardLayout } from './layouts/DashboardLayout';
 import { LoginPage } from './modules/auth/LoginPage';
+import { OrganizationSelectPage } from './modules/auth/OrganizationSelectPage';
+import { SiteSelectPage } from './modules/auth/SiteSelectPage';
 import { DashboardPage } from './modules/dashboard/DashboardPage';
 import { ArticlesPage } from './modules/articles/ArticlesPage';
 import { AdministrationRoutesPage } from './modules/reference/AdministrationRoutesPage';
@@ -117,6 +119,8 @@ export function App() {
           <Suspense fallback={<RouteFallback />}>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
+              <Route path="/organization-select" element={<OrganizationSelectPage />} />
+              <Route path="/site-select" element={<SiteSelectPage />} />
               <Route path="/pos/customer-display" element={<CustomerDisplayPage />} />
               <Route element={<DashboardLayout />}>
                 <Route path="/" element={<HomeRedirect />} />

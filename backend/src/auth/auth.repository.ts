@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { AuthUser } from '../common/types/auth-user';
 import { DatabaseService } from '../database/database.service';
 
 export type UserWithSecurity = {
@@ -81,6 +82,10 @@ export class AuthRepository {
     };
   }
 
+  async findActiveUserHomeById(userId: string, homeTenantId: string): Promise<Omit<UserWithSecurity, 'passwordHash'> | null> {
+    return this.findActiveUserById(userId, homeTenantId);
+  }
+
   async findActiveUserById(userId: string, tenantId: string): Promise<Omit<UserWithSecurity, 'passwordHash'> | null> {
     const result = await this.db.query<{
       user_id: string;
@@ -131,6 +136,83 @@ export class AuthRepository {
       username: user.username,
       permissions: user.permissions ?? [],
     };
+  }
+
+  async findAccessibleTenants(user: AuthUser) {
+    if (user.role === 'SUPER_ADMIN') {
+      const result = await this.db.query<{ tenant_id: string; tenant_code: string | null; tenant_name: string }>(
+        `
+        SELECT tenant_id, tenant_code, tenant_name
+        FROM tenants
+        WHERE COALESCE(is_active, true) = true
+          AND COALESCE(subscription_status, 'ACTIVE') <> 'SUSPENDED'
+        ORDER BY tenant_name ASC
+        `,
+      );
+      return result.rows.map((row) => ({
+        id: row.tenant_id,
+        code: row.tenant_code,
+        name: row.tenant_name,
+      }));
+    }
+
+    const result = await this.db.query<{ tenant_id: string; tenant_code: string | null; tenant_name: string }>(
+      `
+      SELECT DISTINCT t.tenant_id, t.tenant_code, t.tenant_name
+      FROM user_tenant_memberships utm
+      JOIN tenants t ON t.tenant_id = utm.tenant_id
+      WHERE utm.user_id = $1
+        AND utm.is_active = true
+        AND COALESCE(t.is_active, true) = true
+        AND COALESCE(t.subscription_status, 'ACTIVE') <> 'SUSPENDED'
+      ORDER BY t.tenant_name ASC
+      `,
+      [user.userId],
+    );
+    return result.rows.map((row) => ({
+      id: row.tenant_id,
+      code: row.tenant_code,
+      name: row.tenant_name,
+    }));
+  }
+
+  async findAccessibleSites(user: AuthUser, tenantId: string) {
+    if (user.role === 'SUPER_ADMIN') {
+      const result = await this.db.query<{ site_id: string; site_code: string | null; site_name: string }>(
+        `
+        SELECT site_id, site_code, site_name
+        FROM sites
+        WHERE tenant_id = $1
+          AND is_active = true
+        ORDER BY site_name ASC
+        `,
+        [tenantId],
+      );
+      return result.rows.map((row) => ({
+        id: row.site_id,
+        code: row.site_code,
+        name: row.site_name,
+      }));
+    }
+
+    const result = await this.db.query<{ site_id: string; site_code: string | null; site_name: string }>(
+      `
+      SELECT DISTINCT s.site_id, s.site_code, s.site_name
+      FROM user_site_assignments usa
+      JOIN sites s ON s.site_id = usa.site_id AND s.tenant_id = usa.tenant_id
+      WHERE usa.user_id = $1
+        AND usa.tenant_id = $2
+        AND usa.is_active = true
+        AND s.is_active = true
+      ORDER BY s.site_name ASC
+      `,
+      [user.userId, tenantId],
+    );
+    return result.rows.map((row) => ({
+      id: row.site_id,
+      code: row.site_code,
+      name: row.site_name,
+    }));
   }
 
   async findActiveUserSecurityById(userId: string, tenantId: string): Promise<{ userId: string; passwordHash: string } | null> {

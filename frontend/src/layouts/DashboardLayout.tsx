@@ -9,7 +9,18 @@ type NavGroup = { title: string; icon: string; links: NavLinkItem[] };
 export function DashboardLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { accessToken, currentUser, permissions, loading, offlineAuthenticated, logout: clearAuth } = useAuth();
+  const {
+    accessToken,
+    currentUser,
+    permissions,
+    availableOrganizations,
+    availableSites,
+    loading,
+    offlineAuthenticated,
+    switchOrganization,
+    switchSite,
+    logout: clearAuth,
+  } = useAuth();
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
   const [notificationState, setNotificationState] = useState(() => readNotificationState());
   const canSeeNotifications = canReadNotifications(permissions, currentUser?.role);
@@ -193,6 +204,20 @@ export function DashboardLayout() {
     navigate('/login');
   }
 
+  async function handleOrganizationChange(tenantId: string) {
+    const user = await switchOrganization(tenantId);
+    if (!user.siteId) {
+      navigate('/site-select');
+      return;
+    }
+    navigate('/dashboard');
+  }
+
+  async function handleSiteChange(siteId: string) {
+    await switchSite(siteId);
+    navigate('/dashboard');
+  }
+
   if (isOfflineWorkspace) {
     return (
       <main className="content offline-host-content">
@@ -243,6 +268,33 @@ export function DashboardLayout() {
       </aside>
       <main className="content erp-content">
         <div className="app-topbar">
+          <div className="context-switcher" aria-label="Contexte actif">
+            <select
+              className="input compact-select"
+              disabled={availableOrganizations.length <= 1}
+              value={currentUser.tenantId}
+              onChange={(event) => handleOrganizationChange(event.target.value)}
+            >
+              {availableOrganizations.map((organization) => (
+                <option key={organization.id} value={organization.id}>
+                  {organization.code ?? organization.name}
+                </option>
+              ))}
+            </select>
+            <select
+              className="input compact-select"
+              disabled={availableSites.length <= 1}
+              value={currentUser.siteId ?? ''}
+              onChange={(event) => handleSiteChange(event.target.value)}
+            >
+              <option value="" disabled>Site</option>
+              {availableSites.map((site) => (
+                <option key={site.id} value={site.id}>
+                  {site.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <Link className="notification-bell" to="/notifications" aria-label="Notifications">
             <svg aria-hidden="true" className="notification-bell-icon" viewBox="0 0 24 24">
               <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />

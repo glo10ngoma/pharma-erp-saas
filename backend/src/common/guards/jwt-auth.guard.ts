@@ -42,6 +42,7 @@ export class JwtAuthGuard implements CanActivate {
 
   private async refreshUserClaims(payload: any) {
     if (!payload?.userId || !payload?.tenantId) return payload;
+    const homeTenantId = payload.homeTenantId ?? payload.tenantId;
 
     const result = await this.db.query<{
       user_id: string;
@@ -74,7 +75,7 @@ export class JwtAuthGuard implements CanActivate {
       GROUP BY u.user_id, u.tenant_id, u.site_id, r.role_name, u.full_name, u.email
       LIMIT 1
       `,
-      [payload.userId, payload.tenantId],
+      [payload.userId, homeTenantId],
     );
 
     const user = result.rows[0];
@@ -83,8 +84,10 @@ export class JwtAuthGuard implements CanActivate {
     return {
       ...payload,
       userId: user.user_id,
-      tenantId: user.tenant_id,
-      siteId: user.site_id ?? undefined,
+      homeTenantId: user.tenant_id,
+      homeSiteId: user.site_id ?? undefined,
+      tenantId: payload.tenantId,
+      siteId: payload.siteId ?? undefined,
       role: user.role_name ?? 'USER',
       fullName: user.full_name,
       email: user.email ?? undefined,

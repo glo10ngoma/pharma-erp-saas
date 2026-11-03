@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react';
-import { authService, AuthUser } from '../services/auth.service';
+import { authService, AccessibleOrganization, AccessibleSite, AuthUser } from '../services/auth.service';
 import { calculateAuthorizationState, getStableDeviceId } from '../modules/offline/offline-bootstrap';
 import { readOfflineSnapshot } from '../modules/offline/offline-storage';
 import {
@@ -29,11 +29,18 @@ type AuthContextValue = {
   accessToken: string | null;
   currentUser: AuthUser | null;
   permissions: string[];
+  availableOrganizations: AccessibleOrganization[];
+  availableSites: AccessibleSite[];
+  activeOrganization: AccessibleOrganization | null;
+  activeSite: AccessibleSite | null;
   loading: boolean;
   offlineAuthenticated: boolean;
   offlineSessionExpiresAt: string | null;
   login: (email: string, password: string) => Promise<AuthUser>;
   refreshUser: () => Promise<AuthUser | null>;
+  refreshContext: () => Promise<void>;
+  switchOrganization: (tenantId: string) => Promise<AuthUser>;
+  switchSite: (siteId: string) => Promise<AuthUser>;
   inspectOfflineRestore: () => Promise<OfflineRestoreCandidate>;
   restoreOfflineSession: () => Promise<AuthUser | null>;
   logout: () => void;
@@ -45,6 +52,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(() => localStorage.getItem('accessToken'));
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => readStoredUser());
   const [loading, setLoading] = useState(Boolean(localStorage.getItem('accessToken')));
+  const [availableOrganizations, setAvailableOrganizations] = useState<AccessibleOrganization[]>(() => readStoredArray('availableOrganizations'));
+  const [availableSites, setAvailableSites] = useState<AccessibleSite[]>(() => readStoredArray('availableSites'));
   const [offlineAuthenticated, setOfflineAuthenticated] = useState(false);
   const [offlineSessionExpiresAt, setOfflineSessionExpiresAt] = useState<string | null>(null);
 
@@ -56,6 +65,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     function handleSessionInvalidated() {
       setAccessToken(null);
       setCurrentUser(null);
+      setAvailableOrganizations([]);
+      setAvailableSites([]);
       setOfflineAuthenticated(false);
       setOfflineSessionExpiresAt(null);
       setLoading(false);
@@ -112,11 +123,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const me = await authService.me();
       storeUser(me.data);
       setCurrentUser(me.data);
+      await loadContext(me.data);
       return me.data;
     } catch (error) {
       clearAuthSessionStorage();
       setAccessToken(null);
       setCurrentUser(null);
+      setAvailableOrganizations([]);
+      setAvailableSites([]);
       throw error;
     }
   }
@@ -126,6 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await authService.me();
       storeUser(response.data);
       setCurrentUser(response.data);
+      await loadContext(response.data);
       setOfflineAuthenticated(false);
       setOfflineSessionExpiresAt(null);
       return response.data;
@@ -139,6 +154,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearAuthSessionStorage();
       setAccessToken(null);
       setCurrentUser(null);
+      setAvailableOrganizations([]);
+      setAvailableSites([]);
       setOfflineAuthenticated(false);
       setOfflineSessionExpiresAt(null);
       return null;
@@ -232,23 +249,83 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearAuthSessionStorage();
     setAccessToken(null);
     setCurrentUser(null);
+    setAvailableOrganizations([]);
+    setAvailableSites([]);
     setOfflineAuthenticated(false);
     setOfflineSessionExpiresAt(null);
+  }
+
+  async function refreshContext() {
+    if (!localStorage.getItem('accessToken')) return;
+    await loadContext(currentUser);
+  }
+
+  async function switchOrganization(tenantId: string) {
+    const response = await authService.switchOrganization(tenantId);
+    applyAuthenticatedSession(response.data.accessToken, response.data.user);
+    setAvailableSites(response.data.sites);
+    storeArray('availableSites', response.data.sites);
+    await loadOrganizations();
+    return response.data.user;
+  }
+
+  async function switchSite(siteId: string) {
+    const response = await authService.switchSite(siteId);
+    applyAuthenticatedSession(response.data.accessToken, response.data.user);
+    setAvailableSites(response.data.sites);
+    storeArray('availableSites', response.data.sites);
+    await loadOrganizations();
+    return response.data.user;
+  }
+
+  function applyAuthenticatedSession(token: string, user: AuthUser) {
+    localStorage.setItem('accessToken', token);
+    resetAuthInvalidation();
+    setAccessToken(token);
+    storeUser(user);
+    setCurrentUser(user);
+  }
+
+  async function loadOrganizations() {
+    const organizations = (await authService.organizations()).data;
+    setAvailableOrganizations(organizations);
+    storeArray('availableOrganizations', organizations);
+    return organizations;
+  }
+
+  async function loadContext(user: AuthUser | null) {
+    const organizations = await loadOrganizations();
+    const tenantId = user?.tenantId ?? user?.activeTenantId ?? organizations[0]?.id;
+    if (!tenantId) {
+      setAvailableSites([]);
+      storeArray('availableSites', []);
+      return;
+    }
+    const sites = (await authService.sites(tenantId)).data;
+    setAvailableSites(sites);
+    storeArray('availableSites', sites);
   }
 
   const value = useMemo<AuthContextValue>(() => ({
     accessToken,
     currentUser,
     permissions: currentUser?.permissions ?? [],
+    availableOrganizations,
+    availableSites,
+    activeOrganization: availableOrganizations.find((organization) => organization.id === currentUser?.tenantId) ?? null,
+    activeSite: availableSites.find((site) => site.id === currentUser?.siteId) ?? null,
     loading,
     offlineAuthenticated,
     offlineSessionExpiresAt,
     login,
     refreshUser,
+    refreshContext,
+    switchOrganization,
+    switchSite,
     inspectOfflineRestore,
     restoreOfflineSession,
     logout,
-  }), [accessToken, currentUser, loading, offlineAuthenticated, offlineSessionExpiresAt]);
+  }), [accessToken, currentUser, availableOrganizations, availableSites, loading, offlineAuthenticated, offlineSessionExpiresAt]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
@@ -272,6 +349,21 @@ function readStoredUser() {
 function storeUser(user: AuthUser) {
   localStorage.setItem('currentUser', JSON.stringify(user));
   localStorage.setItem('permissions', JSON.stringify(user.permissions ?? []));
+}
+
+function storeArray(key: string, value: unknown[]) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+function readStoredArray<T>(key: string): T[] {
+  const raw = localStorage.getItem(key);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 function buildOfflineUser(

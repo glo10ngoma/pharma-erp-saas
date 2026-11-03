@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
@@ -53,6 +53,30 @@ export class AuthController {
   })
   me(@CurrentUser() user: AuthUser) {
     return this.service.me(user);
+  }
+
+  @Get('organizations')
+  @ApiOperation({ summary: 'Organisations accessibles pour l utilisateur courant' })
+  organizations(@CurrentUser() user: AuthUser) {
+    return this.service.organizations(user);
+  }
+
+  @Get('sites')
+  @ApiOperation({ summary: 'Sites accessibles pour le tenant actif ou cible' })
+  sites(@CurrentUser() user: AuthUser, @Query('tenantId') tenantId?: string) {
+    return this.service.sites(user, tenantId);
+  }
+
+  @Post('switch-organization')
+  @ApiOperation({ summary: 'Changer le tenant actif sans modifier le tenant home' })
+  switchOrganization(@CurrentUser() user: AuthUser, @Body() dto: { tenantId: string }) {
+    return this.service.switchOrganization(user, dto.tenantId);
+  }
+
+  @Post('switch-site')
+  @ApiOperation({ summary: 'Changer le site actif dans le tenant actif' })
+  switchSite(@CurrentUser() user: AuthUser, @Body() dto: { siteId: string }) {
+    return this.service.switchSite(user, dto.siteId);
   }
 
   @Post('change-password')

@@ -35,6 +35,7 @@ import {
   summarizeProbeChangeAllocation,
   summarizeProbeOfflineAllocation,
 } from './pos-client-allocation-probe';
+import { isOfflineSnapshotContextCompatible, resolveBootstrapSiteId } from './offline-context';
 
 export const OFFLINE_DB_FRESH_MINUTES = 15;
 const DEVICE_ID_STORAGE_KEY = 'deviceUuid';
@@ -125,7 +126,19 @@ export async function bootstrapFromServer(options: {
 
     const me = await authService.me();
     const localSnapshot = await readOfflineSnapshot();
-    const siteId = options.siteId ?? localSnapshot.workstation?.siteId ?? me.data.siteId ?? '';
+    const localSnapshotContextCompatible = isOfflineSnapshotContextCompatible({
+      userTenantId: me.data.tenantId,
+      userSiteId: me.data.siteId,
+      snapshotTenantId: localSnapshot.workstation?.tenantId ?? localSnapshot.auth?.tenantId,
+      snapshotSiteId: localSnapshot.workstation?.siteId,
+    });
+    const siteId = resolveBootstrapSiteId({
+      requestedSiteId: options.siteId,
+      userTenantId: me.data.tenantId,
+      userSiteId: me.data.siteId,
+      snapshotTenantId: localSnapshot.workstation?.tenantId ?? localSnapshot.auth?.tenantId,
+      snapshotSiteId: localSnapshot.workstation?.siteId,
+    });
     if (!siteId) {
       throw new Error('POS_SYNC_SITE_REQUIRED');
     }
@@ -134,7 +147,9 @@ export async function bootstrapFromServer(options: {
     const registered = await posSyncService.registerWorkstation({
       deviceId,
       siteId,
-      workstationName: options.workstationName?.trim() || localSnapshot.workstation?.workstationName || getDefaultWorkstationName(),
+      workstationName: options.workstationName?.trim()
+        || (localSnapshotContextCompatible ? localSnapshot.workstation?.workstationName : null)
+        || getDefaultWorkstationName(),
       appVersion: import.meta.env.VITE_APP_VERSION ?? 'web',
     });
 

@@ -1,4 +1,4 @@
-import { BadRequestException, HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { AuthUser } from '../common/types/auth-user';
@@ -40,6 +40,8 @@ export class AuthService {
       userId: user.userId,
       email: user.email,
       fullName: user.fullName,
+      homeTenantId: user.tenantId,
+      homeSiteId: user.siteId,
       tenantId: user.tenantId,
       siteId: user.siteId,
       role: user.role,
@@ -55,9 +57,40 @@ export class AuthService {
   }
 
   async me(user: AuthUser) {
-    const freshUser = await this.repository.findActiveUserById(user.userId, user.tenantId);
+    const freshUser = await this.repository.findActiveUserHomeById(user.userId, user.homeTenantId ?? user.tenantId);
     if (!freshUser) throw new UnauthorizedException('INVALID_CREDENTIALS');
-    return this.toProfile(freshUser);
+    return this.toProfile({
+      ...freshUser,
+      homeTenantId: freshUser.tenantId,
+      homeSiteId: freshUser.siteId,
+      tenantId: user.tenantId,
+      siteId: user.siteId,
+    });
+  }
+
+  async organizations(user: AuthUser) {
+    return this.repository.findAccessibleTenants(user);
+  }
+
+  async sites(user: AuthUser, tenantId?: string) {
+    const activeTenantId = tenantId ?? user.tenantId;
+    await this.assertTenantAllowed(user, activeTenantId);
+    return this.repository.findAccessibleSites(user, activeTenantId);
+  }
+
+  async switchOrganization(user: AuthUser, tenantId: string) {
+    await this.assertTenantAllowed(user, tenantId);
+    const sites = await this.repository.findAccessibleSites(user, tenantId);
+    const nextSiteId = sites.length === 1 ? sites[0].id : undefined;
+    return this.issueContextToken(user, tenantId, nextSiteId, sites);
+  }
+
+  async switchSite(user: AuthUser, siteId: string) {
+    const sites = await this.repository.findAccessibleSites(user, user.tenantId);
+    if (!sites.some((site) => site.id === siteId)) {
+      throw new ForbiddenException('SITE_NOT_ALLOWED');
+    }
+    return this.issueContextToken(user, user.tenantId, siteId, sites);
   }
 
   async changePassword(user: AuthUser, dto: ChangePasswordDto) {
@@ -83,12 +116,39 @@ export class AuthService {
   private toProfile(user: AuthUser) {
     return {
       id: user.userId,
+      homeTenantId: user.homeTenantId ?? user.tenantId,
+      homeSiteId: user.homeSiteId ?? user.siteId,
       tenantId: user.tenantId,
       siteId: user.siteId,
+      activeTenantId: user.tenantId,
+      activeSiteId: user.siteId,
       fullName: user.fullName,
       email: user.email,
       role: user.role,
       permissions: user.permissions,
+    };
+  }
+
+  private async assertTenantAllowed(user: AuthUser, tenantId: string) {
+    const tenants = await this.repository.findAccessibleTenants(user);
+    if (!tenants.some((tenant) => tenant.id === tenantId)) {
+      throw new ForbiddenException('TENANT_NOT_ALLOWED');
+    }
+  }
+
+  private async issueContextToken(user: AuthUser, tenantId: string, siteId?: string, sites?: Array<{ id: string; code: string | null; name: string }>) {
+    const profile: AuthUser = {
+      ...user,
+      tenantId,
+      siteId,
+      homeTenantId: user.homeTenantId ?? user.tenantId,
+      homeSiteId: user.homeSiteId,
+    };
+    const accessToken = await this.jwtService.signAsync(profile);
+    return {
+      accessToken,
+      user: this.toProfile(profile),
+      sites: sites ?? await this.repository.findAccessibleSites(user, tenantId),
     };
   }
 
