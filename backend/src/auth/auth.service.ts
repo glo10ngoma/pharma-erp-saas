@@ -138,7 +138,13 @@ export class AuthService {
 
   private async issueContextToken(user: AuthUser, tenantId: string, siteId?: string, sites?: Array<{ id: string; code: string | null; name: string }>) {
     const profile: AuthUser = {
-      ...user,
+      // The authenticated request also carries JWT metadata (iat/exp).
+      // Rebuild application claims so JwtService can issue a fresh expiration.
+      userId: user.userId,
+      email: user.email,
+      fullName: user.fullName,
+      role: user.role,
+      permissions: user.permissions,
       tenantId,
       siteId,
       homeTenantId: user.homeTenantId ?? user.tenantId,
