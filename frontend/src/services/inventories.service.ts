@@ -44,6 +44,7 @@ export const inventoriesService = {
   getById: (id: string) => apiClient.get<Inventory>(`/inventories/${id}`),
   create: (payload: Record<string, unknown>) => apiClient.post<Inventory>('/inventories', payload),
   start: (id: string) => apiClient.post<Inventory>(`/inventories/${id}/start`),
+  preload: (id: string) => apiClient.post<Inventory>(`/inventories/${id}/preload`),
   close: (id: string) => apiClient.post<Inventory>(`/inventories/${id}/close`),
   validate: (id: string) => apiClient.post<Inventory>(`/inventories/${id}/validate`),
   getItems: (id: string) => apiClient.get<InventoryItem[]>(`/inventories/${id}/items`),

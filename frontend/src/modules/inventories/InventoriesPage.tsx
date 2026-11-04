@@ -7,7 +7,6 @@ import { filterRows } from '../../lib/search';
 import { apiErrorMessage } from '../../services/apiError';
 import { inventoriesService, Inventory } from '../../services/inventories.service';
 import { sitesService } from '../../services/sites.service';
-import { stocksService } from '../../services/stocks.service';
 import { formatDate, fileDateStamp } from '../../utils/date';
 import { downloadCsv, downloadJson, downloadXlsx } from '../../utils/export';
 import { formatMoney } from '../../utils/money';
@@ -32,7 +31,6 @@ export function InventoriesPage() {
   const [dateFilter, setDateFilter] = useState('');
 
   const sites = useQuery({ queryKey: ['sites'], queryFn: async () => (await sitesService.getAll()).data });
-  const stocks = useQuery({ queryKey: ['stocks', 'inventory-preload'], queryFn: async () => (await stocksService.getAll()).data });
   const query = useQuery({
     queryKey: ['inventories', 'with-summary'],
     queryFn: async () => {
@@ -50,17 +48,13 @@ export function InventoriesPage() {
     mutationFn: async () => {
       const inventory = (await inventoriesService.create({ siteId, inventoryType: 'FULL' })).data;
       await inventoriesService.start(inventory.inventoryId);
-      const siteStocks = (stocks.data ?? []).filter((stock) => stock.siteId === siteId && stock.quantityAvailable >= 0);
-      for (const stock of siteStocks) {
-        await inventoriesService.addItem(inventory.inventoryId, { articleId: stock.articleId, lotId: stock.lotId });
-      }
-      return inventory;
+      return (await inventoriesService.preload(inventory.inventoryId)).data;
     },
     onSuccess: (inventory) => {
       setModalOpen(false);
       setSiteId('');
       qc.invalidateQueries({ queryKey: ['inventories'] });
-      qc.invalidateQueries({ queryKey: ['inventory', inventory.inventoryId] });
+      qc.setQueryData(['inventory', inventory.inventoryId], inventory);
       navigate(`/inventories/${inventory.inventoryId}`);
     },
   });
@@ -107,7 +101,7 @@ export function InventoriesPage() {
             <option value="">Site</option>
             {(sites.data ?? []).map((site) => <option key={site.siteId} value={site.siteId}>{site.siteName}</option>)}
           </select>
-          <button className="button" disabled={create.isPending || stocks.isLoading}>{create.isPending ? 'Creation et prechargement...' : 'Creer inventaire'}</button>
+          <button className="button" disabled={create.isPending}>{create.isPending ? 'Creation et prechargement...' : 'Creer inventaire'}</button>
         </form>
       </Modal>
 
