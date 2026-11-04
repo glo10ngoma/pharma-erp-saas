@@ -1,0 +1,33 @@
+name: Build Windows setup
+on:
+  push:
+    branches: [build/windows-setup-20261104]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  setup:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+        working-directory: tools/print-agent
+      - run: npm test
+        working-directory: tools/print-agent
+      - run: npm run build:exe
+        working-directory: tools/print-agent
+      - run: npm ci
+        working-directory: desktop
+      - run: npm run build
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PharmaERP-Windows-Setup
+          path: desktop/release/PharmaERP-Setup.exe
+          if-no-files-found: error
+          retention-days: 30
