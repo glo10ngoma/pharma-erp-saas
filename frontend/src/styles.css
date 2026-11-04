@@ -10160,7 +10160,9 @@ details.nav-group .nav-link {
 .erp-content .app-topbar {
   align-items: center;
   display: flex;
+  gap: 16px;
   justify-content: flex-end;
+  margin-bottom: 0;
   min-height: 34px;
   position: static;
   z-index: 1;
@@ -10168,6 +10170,42 @@ details.nav-group .nav-link {
 
 .erp-content .notification-bell {
   box-shadow: 0 8px 18px rgba(15, 23, 42, .08);
+  flex-shrink: 0;
+}
+
+.erp-content .context-switcher {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 440px;
+}
+
+.erp-content .context-switcher .compact-select {
+  width: auto;
+  min-width: 0;
+  max-width: 240px;
+  height: 34px;
+  min-height: 34px;
+  padding: 5px 28px 5px 10px;
+  font-size: 0.8125rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 600px) {
+  .erp-content .app-topbar {
+    gap: 12px;
+  }
+
+  .erp-content .context-switcher {
+    flex: 1;
+  }
+
+  .erp-content .context-switcher .compact-select {
+    width: 0;
+    flex: 1;
+  }
 }
 
 .erp-content > h1,
