@@ -63,6 +63,41 @@ export class InventoriesRepository {
     return this.findOne(user, id);
   }
 
+  async preloadItems(user: AuthUser, id: string) {
+    const found = await this.db.transaction(async (client) => {
+      const result = await client.query<InventoryRow>(
+        this.baseSql(`WHERE inv.tenant_id=$1 AND inv.inventory_id=$2 AND ($3::uuid IS NULL OR inv.site_id=$3::uuid) FOR UPDATE OF inv`),
+        [user.tenantId, id, user.siteId ?? null],
+      );
+      const inv = result.rows[0];
+      if (!inv) return false;
+      if (inv.status !== 'IN_PROGRESS') throw new Error('INVENTORY_NOT_IN_PROGRESS');
+
+      // Snapshot every eligible lot once, without downloading stocks to the browser.
+      // A retry must never clear a count or replace an existing snapshot quantity.
+      await client.query(
+        `WITH inserted AS (
+           INSERT INTO inventory_items (tenant_id, inventory_id, article_id, lot_id, system_quantity, counted_by)
+           SELECT st.tenant_id, $2, l.article_id, st.lot_id, st.quantity_available, $4
+           FROM stocks st
+           JOIN lots l ON l.lot_id=st.lot_id AND l.tenant_id=st.tenant_id
+           JOIN articles a ON a.article_id=l.article_id AND a.tenant_id=st.tenant_id
+           WHERE st.tenant_id=$1 AND st.site_id=$3 AND st.quantity_available >= 0
+           ON CONFLICT (inventory_id, lot_id) DO NOTHING
+           RETURNING inventory_item_id
+         )
+         INSERT INTO audit_logs (tenant_id, user_id, table_name, record_id, action_type, new_value)
+         SELECT $1, $4, 'inventory_items', inventory_item_id, 'UPDATE',
+                jsonb_build_object('event', 'COUNT', 'inventoryId', $2::text,
+                                   'physicalQuantity', NULL, 'differenceQuantity', NULL, 'reason', NULL)
+         FROM inserted`,
+        [user.tenantId, id, inv.site_id, user.userId],
+      );
+      return true;
+    });
+    return found ? this.findOne(user, id) : null;
+  }
+
   async addItem(user: AuthUser, id: string, dto: AddInventoryItemDto) {
     const inv = await this.findOne(user, id);
     if (!inv) return null;

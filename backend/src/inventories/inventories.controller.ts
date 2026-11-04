@@ -31,6 +31,11 @@ export class InventoriesController {
   @RequirePermission('inventories.start')
   start(@CurrentUser() user: AuthUser, @Param('id') id: string) { return this.service.start(user, id); }
 
+  @Post(':id/preload')
+  @RequirePermission('inventories.count')
+  @ApiOperation({ summary: 'Precharger les lots du site en une transaction' })
+  preloadItems(@CurrentUser() user: AuthUser, @Param('id') id: string) { return this.service.preloadItems(user, id); }
+
   @Post(':id/close')
   @RequirePermission('inventories.close')
   close(@CurrentUser() user: AuthUser, @Param('id') id: string) { return this.service.close(user, id); }

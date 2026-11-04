@@ -13,6 +13,7 @@ export class InventoriesService {
   create(user: AuthUser, dto: CreateInventoryDto) { return this.repository.create(user, dto); }
   findOne(user: AuthUser, id: string) { return this.repository.findOne(user, id); }
   start(user: AuthUser, id: string) { return this.repository.start(user, id); }
+  preloadItems(user: AuthUser, id: string) { return this.repository.preloadItems(user, id); }
   close(user: AuthUser, id: string) { return this.repository.close(user, id); }
   validate(user: AuthUser, id: string) { return this.repository.validate(user, id); }
   fillEmptyWithZero(user: AuthUser, id: string) { return this.repository.fillEmptyWithZero(user, id); }
