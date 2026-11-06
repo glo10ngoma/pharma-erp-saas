@@ -213,17 +213,17 @@ export function ArticlesPage() {
   );
   const unitValidationError = useMemo(() => {
     if (salesUnitSearch.trim() && !salesUnitId && normalizeSearch(salesUnitSearch) !== normalizeSearch(initialSalesUnitLabel)) {
-      return "Selectionnez une unite de vente existante ou creez-la depuis la liste.";
+      return "Sélectionnez une unité de stock et de vente existante ou créez-la depuis la liste.";
     }
     if (
       packagingUnitSearch.trim() &&
       !packagingUnitId &&
       normalizeSearch(packagingUnitSearch) !== normalizeSearch(initialPackagingUnitLabel)
     ) {
-      return "Selectionnez une unite de conditionnement existante ou creez-la depuis la liste.";
+      return "Sélectionnez une unité d’achat existante ou créez-la depuis la liste.";
     }
     if (unitsPerPackage && Number(unitsPerPackage) <= 0) {
-      return 'La quantite par conditionnement doit etre strictement positive.';
+      return 'Le nombre d’unités de stock par unité d’achat doit être strictement positif.';
     }
     return '';
   }, [initialPackagingUnitLabel, initialSalesUnitLabel, packagingUnitId, packagingUnitSearch, salesUnitId, salesUnitSearch, unitsPerPackage]);
@@ -504,7 +504,7 @@ export function ArticlesPage() {
               value={atcSearch}
             />
           </label>
-          <label><span>Unite vente</span>
+          <label><span>Unité de stock et de vente</span>
             <FloatingSearchPopover
               columns={[
                 { header: 'Code', render: (option: SearchOption<ProductUnitItem>) => option.kind === 'create' ? 'Nouveau' : option.item.unitCode },
@@ -517,13 +517,13 @@ export function ArticlesPage() {
               onOpen={() => setSalesUnitOpen(true)}
               onSelect={selectSalesUnit}
               open={salesUnitOpen}
-              placeholder="Rechercher une unite de vente"
-              searchPlaceholder="Rechercher une unite de vente"
+              placeholder="Rechercher une unité de stock et de vente"
+              searchPlaceholder="Rechercher une unité de stock et de vente"
               suggestions={filteredSalesUnitOptions}
               value={salesUnitSearch}
             />
           </label>
-          <label><span>Unite conditionnement</span>
+          <label><span>Unité d’achat par défaut</span>
             <FloatingSearchPopover
               columns={[
                 { header: 'Code', render: (option: SearchOption<ProductUnitItem>) => option.kind === 'create' ? 'Nouveau' : option.item.unitCode },
@@ -536,13 +536,13 @@ export function ArticlesPage() {
               onOpen={() => setPackagingUnitOpen(true)}
               onSelect={selectPackagingUnit}
               open={packagingUnitOpen}
-              placeholder="Rechercher une unite de conditionnement"
-              searchPlaceholder="Rechercher une unite de conditionnement"
+              placeholder="Rechercher une unité d’achat"
+              searchPlaceholder="Rechercher une unité d’achat"
               suggestions={filteredPackagingUnitOptions}
               value={packagingUnitSearch}
             />
           </label>
-          <label><span>Qte / conditionnement</span><input className="input compact-input" placeholder="10" type="number" min="0.0001" step="0.0001" value={unitsPerPackage} onChange={(e) => setUnitsPerPackage(e.target.value)} /><small className="field-help">Nombre d'unites de vente contenues dans une unite de conditionnement.</small></label>
+          <label><span>Unités de stock par unité d’achat</span><input className="input compact-input" placeholder="10" type="number" min="0.0001" step="0.0001" value={unitsPerPackage} onChange={(e) => setUnitsPerPackage(e.target.value)} /><small className="field-help">Exemple : si un carton contient 24 pièces, saisissez 24.</small></label>
           <label><span>Stock min</span><input className="input compact-input" placeholder="Min" type="number" value={defaultStockMin} onChange={(e) => setDefaultStockMin(e.target.value)} /></label>
           <label><span>Stock max</span><input className="input compact-input" placeholder="Max" type="number" value={defaultStockMax} onChange={(e) => setDefaultStockMax(e.target.value)} /></label>
           <label className="reference-toggle"><span>Actif</span><input checked={isActive} type="checkbox" onChange={(e) => setIsActive(e.target.checked)} /></label>
@@ -560,7 +560,7 @@ export function ArticlesPage() {
           <>
             <div className="table-wrap reference-table-wrap articles-table-wrap">
               <table className="data-table reference-table articles-table">
-                <thead><tr><th>Code</th><th>Nom</th><th>DCI</th><th>Dosage</th><th>Unite vente</th><th>Categorie</th><th>Forme</th><th>Barcode</th><th>Stock min</th><th>Statut</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Code</th><th>Nom</th><th>DCI</th><th>Dosage</th><th>Unité de stock et de vente</th><th>Categorie</th><th>Forme</th><th>Barcode</th><th>Stock min</th><th>Statut</th><th>Actions</th></tr></thead>
                 <tbody>{rows.map((article) => (
                   <tr key={article.articleId}>
                     <td><strong>{article.articleCode}</strong></td>
@@ -671,9 +671,9 @@ function ArticleDetailModal({
           <div><span>Forme</span><strong>{formName}</strong></div>
           <div><span>Voie</span><strong>{routeName}</strong></div>
           <div><span>Type produit</span><strong>{typeName}</strong></div>
-          <div><span>Unite vente</span><strong>{salesUnitName}</strong></div>
-          <div><span>Unite conditionnement</span><strong>{packagingUnitName}</strong></div>
-          <div><span>Qte / conditionnement</span><strong>{article.unitsPerPackage ?? '-'}</strong></div>
+          <div><span>Unité de stock et de vente</span><strong>{salesUnitName}</strong></div>
+          <div><span>Unité d’achat par défaut</span><strong>{packagingUnitName}</strong></div>
+          <div><span>Unités de stock par unité d’achat</span><strong>{article.unitsPerPackage ?? '-'}</strong></div>
           <div><span>Stock min</span><strong>{article.defaultStockMin}</strong></div>
           <div><span>Stock max</span><strong>{article.defaultStockMax ?? '-'}</strong></div>
           <div><span>Stock total</span><strong>{stockTotal}</strong></div>

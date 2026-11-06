@@ -102,6 +102,7 @@ export function DashboardLayout() {
       icon: 'RF',
       links: [
         ['/articles', 'Articles', 'articles.read'],
+        ['/product-units', 'Unités de mesure', 'product_units.read'],
         ['/categories', 'Categories', 'categories.read'],
         ['/sub-categories', 'Sous-categories', 'sub_categories.read'],
         ['/galenic-forms', 'Formes', 'galenic_forms.read'],

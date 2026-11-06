@@ -15,6 +15,7 @@ import { CategoriesPage } from './modules/reference/CategoriesPage';
 import { CustomersPage } from './modules/reference/CustomersPage';
 import { GalenicFormsPage } from './modules/reference/GalenicFormsPage';
 import { ProductTypesPage } from './modules/reference/ProductTypesPage';
+import { ProductUnitsPage } from './modules/reference/ProductUnitsPage';
 import { SubCategoriesPage } from './modules/reference/SubCategoriesPage';
 import { SuppliersPage } from './modules/reference/SuppliersPage';
 import { PermissionsPage } from './modules/permissions/PermissionsPage';
@@ -127,6 +128,7 @@ export function App() {
                 <Route path="/dashboard" element={<DashboardPage />} />
                 <Route path="/profile" element={<ProfilePage />} />
                 <Route path="/articles" element={<ArticlesPage />} />
+                <Route path="/product-units" element={<ProductUnitsPage />} />
                 <Route path="/categories" element={<CategoriesPage />} />
                 <Route path="/sub-categories" element={<SubCategoriesPage />} />
                 <Route path="/galenic-forms" element={<GalenicFormsPage />} />
