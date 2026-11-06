@@ -2896,6 +2896,12 @@ details.nav-group .nav-link {
   min-width: 700px;
 }
 
+.article-popover-single-column .article-popover-head,
+.article-popover-single-column .article-popover-option {
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+
 .article-popover-head {
   color: var(--muted);
   font-size: .72rem;

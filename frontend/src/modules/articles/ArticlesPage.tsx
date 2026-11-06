@@ -509,8 +509,7 @@ export function ArticlesPage() {
           <label><span>Unité de stock et de vente</span>
             <FloatingSearchPopover
               columns={[
-                { header: 'Code', render: (option: SearchOption<ProductUnitItem>) => option.kind === 'create' ? 'Nouveau' : option.item.unitCode },
-                { header: 'Libelle', render: (option: SearchOption<ProductUnitItem>) => option.kind === 'create' ? `Creer "${option.label}"` : option.item.unitLabel },
+                { header: 'Libellé', render: (option: SearchOption<ProductUnitItem>) => option.kind === 'create' ? `Creer "${option.label}"` : option.item.unitLabel },
               ]}
               emptyText="Aucune unite produit."
               getKey={(option) => option.kind === 'create' ? `create-${option.label}` : option.item.productUnitId}
@@ -530,8 +529,7 @@ export function ArticlesPage() {
           <label><span>Unité d’achat par défaut</span>
             <FloatingSearchPopover
               columns={[
-                { header: 'Code', render: (option: SearchOption<ProductUnitItem>) => option.kind === 'create' ? 'Nouveau' : option.item.unitCode },
-                { header: 'Libelle', render: (option: SearchOption<ProductUnitItem>) => option.kind === 'create' ? `Creer "${option.label}"` : option.item.unitLabel },
+                { header: 'Libellé', render: (option: SearchOption<ProductUnitItem>) => option.kind === 'create' ? `Creer "${option.label}"` : option.item.unitLabel },
               ]}
               emptyText="Aucune unite produit."
               getKey={(option) => option.kind === 'create' ? `create-${option.label}` : option.item.productUnitId}

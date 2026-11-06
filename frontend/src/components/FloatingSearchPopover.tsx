@@ -56,6 +56,7 @@ export function FloatingSearchPopover<T>({
   const listboxId = useId();
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [position, setPosition] = useState({ left: 0, top: 0, width: 700 });
+  const singleColumn = columns.length === 1;
   const visibleSuggestions = suggestions.slice(0, maxVisible);
 
   useEffect(() => {
@@ -68,7 +69,9 @@ export function FloatingSearchPopover<T>({
     const updatePosition = () => {
       const rect = inputRef.current?.getBoundingClientRect();
       if (!rect) return;
-      const width = Math.min(720, Math.max(650, window.innerWidth - 32));
+      const width = singleColumn
+        ? Math.min(Math.max(rect.width, 240), window.innerWidth - 32)
+        : Math.min(720, Math.max(650, window.innerWidth - 32));
       const left = Math.min(Math.max(16, rect.left), Math.max(16, window.innerWidth - width - 16));
       setPosition({ left, top: rect.bottom + 6, width });
     };
@@ -79,7 +82,7 @@ export function FloatingSearchPopover<T>({
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
     };
-  }, [open]);
+  }, [open, singleColumn]);
 
   useEffect(() => {
     if (!open) return;
@@ -151,7 +154,7 @@ export function FloatingSearchPopover<T>({
       onInput={(event) => { onOpen(); onChange(event.currentTarget.value); }}
     />
     {open && createPortal(
-      <div ref={popoverRef} className="article-popover floating-article-popover" style={{ left: position.left, top: position.top, width: position.width }}>
+      <div ref={popoverRef} className={`article-popover floating-article-popover${singleColumn ? ' article-popover-single-column' : ''}`} style={{ left: position.left, top: position.top, width: position.width }}>
         <input
           className="input compact-input article-popover-search"
           placeholder={searchPlaceholder}
