@@ -24,6 +24,7 @@ type Props<T> = {
   placeholder: string;
   maxVisible?: number;
   searchPlaceholder: string;
+  searchValue?: string;
   suggestions: T[];
   value: string;
 };
@@ -46,6 +47,7 @@ export function FloatingSearchPopover<T>({
   placeholder,
   maxVisible = 50,
   searchPlaceholder,
+  searchValue,
   suggestions,
   value,
 }: Props<T>) {
@@ -153,7 +155,7 @@ export function FloatingSearchPopover<T>({
         <input
           className="input compact-input article-popover-search"
           placeholder={searchPlaceholder}
-          value={value}
+          value={searchValue ?? value}
           autoFocus
           role="combobox"
           aria-autocomplete="list"

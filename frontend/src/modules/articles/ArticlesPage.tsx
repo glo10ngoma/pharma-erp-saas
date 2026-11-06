@@ -192,13 +192,15 @@ export function ArticlesPage() {
     () => buildAtcOptions(atcCodes.data ?? [], atcSearch, can('atc_codes.create')),
     [atcCodes.data, atcSearch, can],
   );
+  const salesUnitFilter = salesUnitId ? '' : salesUnitSearch;
+  const packagingUnitFilter = packagingUnitId || packagingUnitSearch === editingArticleSnapshot?.packaging ? '' : packagingUnitSearch;
   const filteredSalesUnitOptions = useMemo(
-    () => buildSearchOptions(visibleUnitItems, salesUnitSearch, can('product_units.create'), (item) => item.unitLabel),
-    [can, salesUnitSearch, visibleUnitItems],
+    () => buildSearchOptions(visibleUnitItems, salesUnitFilter, can('product_units.create'), (item) => item.unitLabel),
+    [can, salesUnitFilter, visibleUnitItems],
   );
   const filteredPackagingUnitOptions = useMemo(
-    () => buildSearchOptions(visibleUnitItems, packagingUnitSearch, can('product_units.create'), (item) => item.unitLabel),
-    [can, packagingUnitSearch, visibleUnitItems],
+    () => buildSearchOptions(visibleUnitItems, packagingUnitFilter, can('product_units.create'), (item) => item.unitLabel),
+    [can, packagingUnitFilter, visibleUnitItems],
   );
   const initialSalesUnitLabel = useMemo(
     () => (editingArticleSnapshot ? unitById.get(editingArticleSnapshot.salesUnitId ?? '') ?? '' : ''),
@@ -519,6 +521,8 @@ export function ArticlesPage() {
               open={salesUnitOpen}
               placeholder="Rechercher une unité de stock et de vente"
               searchPlaceholder="Rechercher une unité de stock et de vente"
+              searchValue={salesUnitFilter}
+              maxVisible={filteredSalesUnitOptions.length}
               suggestions={filteredSalesUnitOptions}
               value={salesUnitSearch}
             />
@@ -538,6 +542,8 @@ export function ArticlesPage() {
               open={packagingUnitOpen}
               placeholder="Rechercher une unité d’achat"
               searchPlaceholder="Rechercher une unité d’achat"
+              searchValue={packagingUnitFilter}
+              maxVisible={filteredPackagingUnitOptions.length}
               suggestions={filteredPackagingUnitOptions}
               value={packagingUnitSearch}
             />
