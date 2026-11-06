@@ -1,4 +1,4 @@
-import { Fragment, FormEvent, KeyboardEvent, ReactNode, useEffect, useMemo, useState } from 'react';
+import { Fragment, FormEvent, KeyboardEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
@@ -69,8 +69,7 @@ const initialForm = (): PurchaseForm => ({
   paymentNote: '',
   observation: '',
 });
-const newLine = (): PurchaseDraftLine => ({
-  id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+const emptyLineFields: Omit<PurchaseDraftLine, 'id'> = {
   articleId: '',
   articleQuery: '',
   purchaseUnitId: '',
@@ -84,7 +83,34 @@ const newLine = (): PurchaseDraftLine => ({
   quantity: '1',
   purchaseUnitPrice: '',
   sellingUnitPrice: '',
+};
+const newLine = (): PurchaseDraftLine => ({
+  ...emptyLineFields,
+  id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
 });
+
+type LocalPurchaseDraft = {
+  form: PurchaseForm;
+  purchaseDraftId: string;
+  draftLines: PurchaseDraftLine[];
+  quickLine: PurchaseDraftLine;
+};
+
+function readLocalPurchaseDraft(key: string): LocalPurchaseDraft | null {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(key) ?? 'null');
+    return saved?.form && typeof saved.purchaseDraftId === 'string' && Array.isArray(saved.draftLines) && saved.quickLine?.id
+      ? saved
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function hasQuickLineInput(line: PurchaseDraftLine) {
+  return (Object.keys(emptyLineFields) as (keyof typeof emptyLineFields)[])
+    .some((key) => line[key] !== emptyLineFields[key]);
+}
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return <label className="field-block compact-field"><span>{label}</span>{children}</label>;
@@ -129,13 +155,27 @@ function issueForLine(line: PurchaseDraftLine): LineIssue {
 }
 
 export function NewPurchasePage() {
+  const { currentUser: user } = useAuth();
+  const tenantId = user?.tenantId || user?.activeTenantId;
+  if (!user?.id || !tenantId) return null;
+
+  const draftKey = 'pharmaerp:purchase-draft:v1:' + JSON.stringify([user.id, tenantId, user.siteId || user.activeSiteId || '']);
+  return <NewPurchaseForm key={draftKey} draftKey={draftKey} />;
+}
+
+function NewPurchaseForm({ draftKey }: { draftKey: string }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { permissions } = useAuth();
-  const [form, setForm] = useState<PurchaseForm>(initialForm);
-  const [purchaseDraftId, setPurchaseDraftId] = useState('');
-  const [draftLines, setDraftLines] = useState<PurchaseDraftLine[]>([]);
-  const [quickLine, setQuickLine] = useState<PurchaseDraftLine>(newLine());
+  const [defaults] = useState(initialForm);
+  const [restoredDraft] = useState(() => readLocalPurchaseDraft(draftKey));
+  const [form, setForm] = useState(restoredDraft?.form ?? defaults);
+  const [purchaseDraftId, setPurchaseDraftId] = useState(restoredDraft?.purchaseDraftId ?? '');
+  const [draftLines, setDraftLines] = useState(restoredDraft?.draftLines ?? []);
+  const [quickLine, setQuickLine] = useState(() => restoredDraft?.quickLine ?? newLine());
+  const [draftStatus, setDraftStatus] = useState<'saved' | 'error' | null>(null);
+  const savedToServer = useRef(false);
+  const hasLocalDraft = useRef(Boolean(restoredDraft));
   const [articleOptions, setArticleOptions] = useState<Article[]>([]);
   const [articlesLoading, setArticlesLoading] = useState(true);
   const [debouncedArticleSearch, setDebouncedArticleSearch] = useState('');
@@ -220,18 +260,28 @@ export function NewPurchasePage() {
   }, [stocks.data]);
   const lineIssues = useMemo(() => new Map(draftLines.map((line) => [line.id, issueForLine(line)])), [draftLines]);
   const quickIssue = useMemo(() => issueForLine(quickLine), [quickLine]);
-  const quickLineHasInput = useMemo(
-    () => Boolean(
-      quickLine.articleId
-      || quickLine.articleQuery.trim()
-      || quickLine.lotNumber.trim()
-      || quickLine.expiryDate
-      || Number(quickLine.quantity || 0) > 0
-      || Number(quickLine.purchaseUnitPrice || 0) > 0
-      || Number(quickLine.sellingUnitPrice || 0) > 0,
-    ),
-    [quickLine],
-  );
+  const quickLineHasInput = hasQuickLineInput(quickLine);
+
+  useEffect(() => {
+    if (savedToServer.current) return;
+    const hasFormInput = (Object.keys(defaults) as (keyof PurchaseForm)[])
+      .some((key) => form[key] !== defaults[key]);
+    try {
+      if (hasFormInput || purchaseDraftId || draftLines.length || quickLineHasInput) {
+        const draft: LocalPurchaseDraft = { form, purchaseDraftId, draftLines, quickLine };
+        window.localStorage.setItem(draftKey, JSON.stringify(draft));
+        hasLocalDraft.current = true;
+        setDraftStatus('saved');
+      } else if (hasLocalDraft.current) {
+        window.localStorage.removeItem(draftKey);
+        hasLocalDraft.current = false;
+        setDraftStatus(null);
+      }
+    } catch {
+      setDraftStatus('error');
+    }
+  }, [defaults, draftKey, draftLines, form, purchaseDraftId, quickLine, quickLineHasInput]);
+
   const normalizedLines = useMemo(
     () => (quickLineHasInput && !quickIssue.blocksSave ? [...draftLines, quickLine] : draftLines),
     [draftLines, quickIssue.blocksSave, quickLine, quickLineHasInput],
@@ -333,6 +383,12 @@ export function NewPurchasePage() {
       return (await purchasesService.validate(purchase.purchaseId)).data;
     },
     onSuccess: async (purchase) => {
+      savedToServer.current = true;
+      try {
+        window.localStorage.removeItem(draftKey);
+      } catch {
+        // A storage failure must not block access to the saved purchase.
+      }
       await queryClient.invalidateQueries({ queryKey: ['purchases'] });
       await queryClient.invalidateQueries({ queryKey: ['purchase', purchase.purchaseId] });
       await queryClient.invalidateQueries({ queryKey: ['stocks'] });
@@ -533,6 +589,11 @@ export function NewPurchasePage() {
   return (
     <form className="purchase-page purchase-form purchase-erp-window" onSubmit={(event) => submit(event, false)}>
       <div className="breadcrumb"><Link to="/purchases">Achats</Link><span>&gt;</span><strong>Nouvel Achat</strong></div>
+      {draftStatus && (
+        <p role="status" className={draftStatus === 'error' ? 'form-error' : 'muted'}>
+          {draftStatus === 'saved' ? 'Brouillon sauvegardé sur cet appareil' : 'La sauvegarde automatique est indisponible sur cet appareil.'}
+        </p>
+      )}
       {(savePurchase.isError || clientError) && <p className="form-error">{clientError || apiErrorMessage(savePurchase.error)}</p>}
       <div className="purchase-sticky-header purchase-page-header">
         <div><span>Code</span><strong>{form.purchaseNumber || 'ACH-...'}</strong></div>
@@ -648,7 +709,7 @@ export function NewPurchasePage() {
         ) : null}
       </section>
       <div className="page-actions">
-        <Link className="ghost-button compact-button" to="/purchases">Annuler</Link>
+        <Link className="ghost-button compact-button" to="/purchases">Retour aux achats</Link>
         <button className="button compact-button" type="button" onClick={() => submit(undefined, false)} disabled={savePurchase.isPending || suppliers.isLoading || sites.isLoading || articlesLoading}>{savePurchase.isPending ? 'Enregistrement...' : 'Enregistrer Brouillon'}</button>
         <button className="button compact-button" type="button" onClick={() => submit(undefined, true)} disabled={savePurchase.isPending || suppliers.isLoading || sites.isLoading || articlesLoading}>{savePurchase.isPending ? 'Validation...' : 'Valider Achat'}</button>
       </div>
