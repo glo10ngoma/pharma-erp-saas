@@ -1,0 +1,20 @@
+.article-filters .article-filter-search,
+.article-filters .article-filter-options {
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+}
+
+.article-filter-search > input,
+.article-filter-options > select {
+  flex: 1 1 175px;
+  width: 0;
+  min-width: 0;
+}
+
+.article-filter-search > button {
+  max-width: 100%;
+}

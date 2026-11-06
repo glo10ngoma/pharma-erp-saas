@@ -17,6 +17,7 @@ import {
 import { stocksService } from '../../services/stocks.service';
 import { formatDate } from '../../utils/date';
 import { formatMoney } from '../../utils/money';
+import './article-filters.css';
 import {
   ActiveBadge,
   ReferenceExportActions,
@@ -560,9 +561,12 @@ export function ArticlesPage() {
           </div>
         </form>
       </Modal>
-      <div className="card reference-filters">
-        <input className="input compact-input" placeholder="Scanner un code-barres ou taper un nom/code/DCI." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
-        <div className="form-grid">
+      <div className="card reference-filters article-filters">
+        <div className="article-filter-search">
+          <input aria-label="Rechercher un article" className="input compact-input" placeholder="Nom, code, DCI ou code-barres" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+          <button className="ghost-button compact-button" type="button" onClick={() => { setFilters(emptyFilters); setSearch(''); setPage(1); }}>Réinitialiser les filtres</button>
+        </div>
+        <div className="article-filter-options">
           <select aria-label="Toutes les catégories" className="input compact-input" value={filters.categoryId} onChange={(e) => updateFilter('categoryId', e.target.value)}>
             <option value="">Toutes les catégories</option>
             {(categories.data ?? []).map((item) => <option key={item.categoryId} value={item.categoryId}>{item.categoryName}</option>)}
@@ -588,7 +592,6 @@ export function ArticlesPage() {
             <option value="active">Actifs</option>
             <option value="inactive">Inactifs</option>
           </select>
-          <button className="ghost-button compact-button" type="button" onClick={() => { setFilters(emptyFilters); setSearch(''); setPage(1); }}>Réinitialiser les filtres</button>
         </div>
       </div>
       <div className="card table-card">
