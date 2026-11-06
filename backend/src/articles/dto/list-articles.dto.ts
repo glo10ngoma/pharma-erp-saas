@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 
 export class ListArticlesDto {
   @IsOptional()
@@ -9,6 +9,26 @@ export class ListArticlesDto {
   @IsOptional()
   @IsUUID()
   categoryId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  subCategoryId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  formId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  routeId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  productTypeId?: string;
+
+  @IsOptional()
+  @IsIn(['active', 'inactive'])
+  status?: 'active' | 'inactive';
 
   @IsOptional()
   @Type(() => Number)

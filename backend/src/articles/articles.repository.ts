@@ -44,9 +44,21 @@ export class ArticlesRepository {
     const filters = ['a.tenant_id = $1'];
     const params: unknown[] = [user.tenantId];
 
-    if (query.categoryId) {
-      params.push(query.categoryId);
-      filters.push(`a.category_id = $${params.length}`);
+    const referenceFilters = [
+      ['category_id', query.categoryId],
+      ['sub_category_id', query.subCategoryId],
+      ['form_id', query.formId],
+      ['route_id', query.routeId],
+      ['product_type_id', query.productTypeId],
+    ];
+    for (const [column, value] of referenceFilters) {
+      if (!value) continue;
+      params.push(value);
+      filters.push(`a.${column} = $${params.length}`);
+    }
+    if (query.status) {
+      params.push(query.status === 'active');
+      filters.push(`a.is_active = $${params.length}`);
     }
 
     if (query.search) {
@@ -106,14 +118,19 @@ export class ArticlesRepository {
             AND l.is_blocked = false
             AND l.expiry_date > CURRENT_DATE
         ) AS selling_price
-      FROM articles a
+      FROM (
+        SELECT a.article_id
+        FROM articles a
+        WHERE ${where}
+        ORDER BY a.commercial_name ASC, a.article_id ASC
+        LIMIT $${params.length + 1}
+        OFFSET $${params.length + 2}
+      ) selected
+      JOIN articles a ON a.article_id = selected.article_id
       LEFT JOIN lots l ON l.article_id = a.article_id AND l.tenant_id = a.tenant_id
       LEFT JOIN stocks s ON s.lot_id = l.lot_id AND s.tenant_id = a.tenant_id
-      WHERE ${where}
       GROUP BY a.article_id
-      ORDER BY a.commercial_name ASC
-      LIMIT $${params.length + 1}
-      OFFSET $${params.length + 2}
+      ORDER BY a.commercial_name ASC, a.article_id ASC
       `,
       [...params, limit, offset],
     );

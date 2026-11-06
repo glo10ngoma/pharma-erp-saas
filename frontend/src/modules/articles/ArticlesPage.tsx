@@ -28,6 +28,8 @@ type SearchOption<T> =
   | { kind: 'existing'; item: T }
   | { kind: 'create'; label: string };
 
+const emptyFilters = { categoryId: '', subCategoryId: '', formId: '', routeId: '', productTypeId: '', status: '' };
+
 export function ArticlesPage() {
   const qc = useQueryClient();
   const { can } = usePermission();
@@ -36,6 +38,7 @@ export function ArticlesPage() {
   const [editingArticleId, setEditingArticleId] = useState<string | null>(null);
   const [detailArticle, setDetailArticle] = useState<Article | null>(null);
   const [search, setSearch] = useState('');
+  const [filters, setFilters] = useState(emptyFilters);
   const [page, setPage] = useState(1);
   const [articleCode, setArticleCode] = useState('');
   const [commercialName, setCommercialName] = useState('');
@@ -68,8 +71,8 @@ export function ArticlesPage() {
   const [editingArticleSnapshot, setEditingArticleSnapshot] = useState<Article | null>(null);
 
   const articles = useQuery({
-    queryKey: ['articles', search, page, pageSize],
-    queryFn: async () => (await articlesService.getAll({ search: search || undefined, limit: pageSize, page })).data,
+    queryKey: ['articles', search, filters, page, pageSize],
+    queryFn: async () => (await articlesService.getAll({ search: search.trim() || undefined, ...Object.fromEntries(Object.entries(filters).filter(([, value]) => value)), limit: pageSize, page })).data,
   });
   const categories = useQuery({ queryKey: ['categories'], queryFn: async () => (await referenceService.categories.getAll()).data });
   const subCategories = useQuery({ queryKey: ['sub-categories'], queryFn: async () => (await referenceService.subCategories.getAll()).data });
@@ -419,12 +422,13 @@ export function ArticlesPage() {
   const isSavingReference = createIngredient.isPending || createDosage.isPending || createAtc.isPending || createProductUnit.isPending;
 
   useEffect(() => {
-    setPage(1);
-  }, [search]);
+    if (articles.data && page > pageCount) setPage(pageCount);
+  }, [articles.data, page, pageCount]);
 
-  useEffect(() => {
-    if (page > pageCount) setPage(pageCount);
-  }, [page, pageCount]);
+  function updateFilter(key: keyof typeof emptyFilters, value: string) {
+    setFilters((current) => ({ ...current, ...(key === 'categoryId' ? { subCategoryId: '' } : {}), [key]: value }));
+    setPage(1);
+  }
 
   return (
     <>
@@ -557,10 +561,38 @@ export function ArticlesPage() {
         </form>
       </Modal>
       <div className="card reference-filters">
-        <input className="input compact-input" placeholder="Scanner un code-barres ou taper un nom/code/DCI." value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input className="input compact-input" placeholder="Scanner un code-barres ou taper un nom/code/DCI." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+        <div className="form-grid">
+          <select aria-label="Toutes les catégories" className="input compact-input" value={filters.categoryId} onChange={(e) => updateFilter('categoryId', e.target.value)}>
+            <option value="">Toutes les catégories</option>
+            {(categories.data ?? []).map((item) => <option key={item.categoryId} value={item.categoryId}>{item.categoryName}</option>)}
+          </select>
+          <select aria-label="Toutes les sous-catégories" className="input compact-input" value={filters.subCategoryId} onChange={(e) => updateFilter('subCategoryId', e.target.value)}>
+            <option value="">Toutes les sous-catégories</option>
+            {(subCategories.data ?? []).filter((item) => !filters.categoryId || item.categoryId === filters.categoryId).map((item) => <option key={item.subCategoryId} value={item.subCategoryId}>{item.subCategoryName}</option>)}
+          </select>
+          <select aria-label="Toutes les formes" className="input compact-input" value={filters.formId} onChange={(e) => updateFilter('formId', e.target.value)}>
+            <option value="">Toutes les formes</option>
+            {(forms.data ?? []).map((item) => <option key={item.formId} value={item.formId}>{item.formName}</option>)}
+          </select>
+          <select aria-label="Toutes les voies" className="input compact-input" value={filters.routeId} onChange={(e) => updateFilter('routeId', e.target.value)}>
+            <option value="">Toutes les voies</option>
+            {(routes.data ?? []).map((item) => <option key={item.routeId} value={item.routeId}>{item.routeName}</option>)}
+          </select>
+          <select aria-label="Tous les types de produit" className="input compact-input" value={filters.productTypeId} onChange={(e) => updateFilter('productTypeId', e.target.value)}>
+            <option value="">Tous les types de produit</option>
+            {(productTypes.data ?? []).map((item) => <option key={item.productTypeId} value={item.productTypeId}>{item.typeName}</option>)}
+          </select>
+          <select aria-label="Statut" className="input compact-input" value={filters.status} onChange={(e) => updateFilter('status', e.target.value)}>
+            <option value="">Tous les statuts</option>
+            <option value="active">Actifs</option>
+            <option value="inactive">Inactifs</option>
+          </select>
+          <button className="ghost-button compact-button" type="button" onClick={() => { setFilters(emptyFilters); setSearch(''); setPage(1); }}>Réinitialiser les filtres</button>
+        </div>
       </div>
       <div className="card table-card">
-        {articles.isLoading ? <p className="loading-state">Chargement des articles...</p> : rows.length === 0 ? <p className="empty-state">Aucun article trouve. Creez un article ou importez le catalogue.</p> : (
+        {articles.isLoading ? <p className="loading-state">Chargement des articles...</p> : articles.isError ? <p className="form-error" role="alert">Impossible de charger les articles. <button className="ghost-button compact-button" type="button" onClick={() => void articles.refetch()}>Réessayer</button></p> : rows.length === 0 ? <p className="empty-state">Aucun article trouvé.</p> : (
           <>
             <div className="table-wrap reference-table-wrap articles-table-wrap">
               <table className="data-table reference-table articles-table">
@@ -589,7 +621,10 @@ export function ArticlesPage() {
             </div>
             <div className="table-pagination">
               <button className="ghost-button compact-button" type="button" disabled={page <= 1 || articles.isFetching} onClick={() => setPage((current) => Math.max(1, current - 1))}>Precedent</button>
-              <span className="muted">Page {page} / {pageCount} - {rows.length} affiches sur {totalRows}</span>
+              <select aria-label="Aller à la page" className="input compact-input" value={page} onChange={(e) => setPage(Number(e.target.value))}>
+                {Array.from({ length: pageCount }, (_, index) => <option key={index + 1} value={index + 1}>Page {index + 1} / {pageCount}</option>)}
+              </select>
+              <span className="muted">{rows.length} affichés sur {totalRows}</span>
               <button className="ghost-button compact-button" type="button" disabled={page >= pageCount || articles.isFetching} onClick={() => setPage((current) => Math.min(pageCount, current + 1))}>Suivant</button>
             </div>
           </>
