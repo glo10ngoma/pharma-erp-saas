@@ -39,8 +39,6 @@ type PurchaseDraftLine = {
   purchaseUnitQuery: string;
   conversionFactor: string;
   stockUnitId: string;
-  stockUnitQuery: string;
-  stockUnitLabel: string;
   lotNumber: string;
   expiryDate: string;
   quantity: string;
@@ -69,6 +67,8 @@ const initialForm = (): PurchaseForm => ({
   paymentNote: '',
   observation: '',
 });
+const stockQuantityFormat = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 7 });
+
 const emptyLineFields: Omit<PurchaseDraftLine, 'id'> = {
   articleId: '',
   articleQuery: '',
@@ -76,8 +76,6 @@ const emptyLineFields: Omit<PurchaseDraftLine, 'id'> = {
   purchaseUnitQuery: '',
   conversionFactor: '1',
   stockUnitId: '',
-  stockUnitQuery: '',
-  stockUnitLabel: '',
   lotNumber: '',
   expiryDate: '',
   quantity: '1',
@@ -136,14 +134,16 @@ function lineEquivalentUsd(line: PurchaseDraftLine, currencyCode: string, exchan
   if (currencyCode === 'CDF') return exchangeRate > 0 ? total / exchangeRate : 0;
   return total;
 }
-function issueForLine(line: PurchaseDraftLine): LineIssue {
+function issueForLine(line: PurchaseDraftLine, article?: Article): LineIssue {
   if (!line.articleId) return { level: 'warning', message: 'Article absent.', blocksSave: true };
   if (!line.purchaseUnitId && !line.purchaseUnitQuery.trim()) return { level: 'warning', message: "Unite d'achat manquante.", blocksSave: true };
-  if (!line.stockUnitId && !line.stockUnitQuery.trim()) return { level: 'warning', message: 'Unite stock manquante.', blocksSave: true };
+  if (!article) return { level: 'warning', message: 'Article indisponible. Sélectionnez-le à nouveau.', blocksSave: true };
+  if (!article.salesUnitId) return { level: 'warning', message: 'Définissez l’unité de stock et de vente dans la fiche article.', blocksSave: true };
+  if (line.stockUnitId !== article.salesUnitId) return { level: 'warning', message: 'L’unité de stock a changé. Vérifiez et ressaisissez le facteur.', blocksSave: true };
   if (!line.lotNumber.trim()) return { level: 'warning', message: 'Lot manquant.', blocksSave: true };
   if (!line.expiryDate) return { level: 'warning', message: 'Expiration manquante.', blocksSave: true };
   if (Number(line.quantity) <= 0) return { level: 'danger', message: 'Quantite <= 0.', blocksSave: true };
-  if (Number(line.conversionFactor) <= 0) return { level: 'danger', message: 'Facteur <= 0.', blocksSave: true };
+  if (Number(line.conversionFactor) <= 0) return { level: 'danger', message: 'Renseignez le nombre d’unités de stock par unité d’achat.', blocksSave: true };
   if (lineStockQuantity(line) <= 0) return { level: 'danger', message: 'Quantite stock invalide.', blocksSave: true };
   if (Number(line.purchaseUnitPrice) <= 0) return { level: 'danger', message: 'PA <= 0.', blocksSave: true };
   if (Number(line.sellingUnitPrice || 0) < 0) return { level: 'danger', message: 'PV invalide.', blocksSave: true };
@@ -182,7 +182,6 @@ function NewPurchaseForm({ draftKey }: { draftKey: string }) {
   const [selectedLineId, setSelectedLineId] = useState('');
   const [activeAutocomplete, setActiveAutocomplete] = useState('');
   const [activeUnitPopover, setActiveUnitPopover] = useState('');
-  const [activeStockUnitPopover, setActiveStockUnitPopover] = useState('');
   const [clientError, setClientError] = useState('');
   const [pendingFocusTarget, setPendingFocusTarget] = useState<{ lineId: string; col: number } | null>(null);
   const canPayPurchase = permissions.includes('purchases.pay');
@@ -220,7 +219,7 @@ function NewPurchaseForm({ draftKey }: { draftKey: string }) {
     articlesService.getAll({ limit: 50, page: 1 })
       .then((response) => {
         const items = normalizeArticleResponse(response.data);
-        if (mounted) setArticleOptions(items);
+        if (mounted) setArticleOptions((current) => mergeArticleOptions(items, current));
       })
       .finally(() => {
         if (mounted) setArticlesLoading(false);
@@ -251,15 +250,27 @@ function NewPurchaseForm({ draftKey }: { draftKey: string }) {
     }
   }, [currentCashSession.data?.cashSessionId, form.cashSessionId, form.paymentSource]);
 
-  const articleById = useMemo(() => new Map(articleOptions.map((article) => [article.articleId, article])), [articleOptions]);
+  const restoredArticleIds = useMemo(() => restoredDraft
+    ? [...new Set([...restoredDraft.draftLines, restoredDraft.quickLine].map((line) => line.articleId).filter(Boolean))]
+    : [], [restoredDraft]);
+  const restoredArticles = useQuery({
+    queryKey: ['purchase-restored-articles', draftKey, restoredArticleIds],
+    queryFn: async () => {
+      const results = await Promise.allSettled(restoredArticleIds.map(async (id) => (await articlesService.getById(id)).data));
+      return results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []);
+    },
+    enabled: restoredArticleIds.length > 0,
+  });
+  const articleById = useMemo(() => new Map([...(restoredArticles.data ?? []), ...articleOptions]
+    .map((article) => [article.articleId, article])), [articleOptions, restoredArticles.data]);
   const unitById = useMemo(() => new Map((productUnits.data ?? []).map((unit) => [unit.productUnitId, unit])), [productUnits.data]);
   const stockByArticle = useMemo(() => {
     const map = new Map<string, number>();
     for (const stock of stocks.data ?? []) map.set(stock.articleId, (map.get(stock.articleId) ?? 0) + stock.quantityAvailable);
     return map;
   }, [stocks.data]);
-  const lineIssues = useMemo(() => new Map(draftLines.map((line) => [line.id, issueForLine(line)])), [draftLines]);
-  const quickIssue = useMemo(() => issueForLine(quickLine), [quickLine]);
+  const lineIssues = useMemo(() => new Map(draftLines.map((line) => [line.id, issueForLine(line, articleById.get(line.articleId))])), [articleById, draftLines]);
+  const quickIssue = issueForLine(quickLine, articleById.get(quickLine.articleId));
   const quickLineHasInput = hasQuickLineInput(quickLine);
 
   useEffect(() => {
@@ -363,7 +374,6 @@ function NewPurchaseForm({ draftKey }: { draftKey: string }) {
       setForm((current) => ({ ...current, purchaseNumber: purchase.purchaseNumber ?? current.purchaseNumber }));
       for (const [index, line] of lines.entries()) {
         const purchaseUnit = await ensurePurchaseUnit(line);
-        const stockUnit = await ensureStockUnit(line);
         await purchasesService.addItem(purchase.purchaseId, {
           articleId: line.articleId,
           lotNumber: line.lotNumber.trim(),
@@ -373,7 +383,7 @@ function NewPurchaseForm({ draftKey }: { draftKey: string }) {
           conversionFactor: Number(line.conversionFactor || 1),
           stockQuantity: lineStockQuantity(line),
           purchaseUnitId: purchaseUnit?.productUnitId || line.purchaseUnitId || undefined,
-          stockUnitId: stockUnit?.productUnitId || line.stockUnitId || undefined,
+          stockUnitId: line.stockUnitId || undefined,
           lineOrder: index + 1,
           purchaseUnitPrice: Number(line.purchaseUnitPrice),
           sellingUnitPrice: Number(line.sellingUnitPrice || 0),
@@ -417,7 +427,7 @@ function NewPurchaseForm({ draftKey }: { draftKey: string }) {
   function focusCell(row: number, col: number) { document.querySelector<HTMLElement>(`[data-grid-cell="${row}-${col}"]`)?.focus(); }
   // ERP rule: the quick row is the canonical append point, so every new line is committed at the end.
   function addLine() {
-    const issue = issueForLine(quickLine);
+    const issue = quickIssue;
     if (quickLineHasInput) {
       if (issue.blocksSave) {
         setClientError(`Ligne rapide: ${issue.message}`);
@@ -433,7 +443,7 @@ function NewPurchaseForm({ draftKey }: { draftKey: string }) {
     queueFocus(quickLine.id, 0);
   }
   function commitQuickLine() {
-    const issue = issueForLine(quickLine);
+    const issue = quickIssue;
     if (issue.blocksSave) { setClientError(`Ligne rapide: ${issue.message}`); return; }
     setDraftLines((current) => [...current, quickLine]);
     const next = newLine();
@@ -462,10 +472,8 @@ function NewPurchaseForm({ draftKey }: { draftKey: string }) {
       articleQuery: `${article.articleCode} - ${article.commercialName}`,
       purchaseUnitId,
       purchaseUnitQuery: unitById.get(purchaseUnitId)?.unitLabel ?? article.packaging ?? '',
-      conversionFactor: String(article.unitsPerPackage ?? 1),
+      conversionFactor: purchaseUnitId && purchaseUnitId === stockUnitId ? '1' : String(article.unitsPerPackage ?? 1),
       stockUnitId,
-      stockUnitQuery: unitById.get(stockUnitId)?.unitLabel ?? '',
-      stockUnitLabel: unitById.get(stockUnitId)?.unitLabel ?? '',
       lotNumber: `${lotBase(article, form.purchaseDate)}-${String(sameArticleCount).padStart(3, '0')}`,
       sellingUnitPrice: article.sellingPrice ? String(article.sellingPrice) : '',
     };
@@ -475,9 +483,6 @@ function NewPurchaseForm({ draftKey }: { draftKey: string }) {
   }
   function unitSuggestions(line: PurchaseDraftLine) {
     return unitSuggestionsFor(line.purchaseUnitQuery, line.purchaseUnitId);
-  }
-  function stockUnitSuggestions(line: PurchaseDraftLine) {
-    return unitSuggestionsFor(line.stockUnitQuery, line.stockUnitId);
   }
   function unitSuggestionsFor(queryValue: string, selectedUnitId: string) {
     const query = queryValue.trim().toLowerCase();
@@ -491,30 +496,20 @@ function NewPurchaseForm({ draftKey }: { draftKey: string }) {
     const unit = option.kind === 'create'
       ? await createProductUnit.mutateAsync({ unitCode: buildUnitCode(option.label), unitLabel: option.label.trim() })
       : option.item;
-    const patch = { purchaseUnitId: unit.productUnitId, purchaseUnitQuery: unit.unitLabel };
+    const line = lineId === quickLine.id ? quickLine : draftLines.find((item) => item.id === lineId);
+    if (!line) return;
+    const stockUnitId = articleById.get(line.articleId)?.salesUnitId;
+    const patch = {
+      purchaseUnitId: unit.productUnitId,
+      purchaseUnitQuery: unit.unitLabel,
+      conversionFactor: unit.productUnitId === stockUnitId ? '1' : line.purchaseUnitId === unit.productUnitId ? line.conversionFactor : '',
+    };
     if (lineId === quickLine.id) updateQuickLine(patch); else updateLine(lineId, patch);
     setActiveUnitPopover('');
-  }
-  async function selectStockUnit(lineId: string, option: SearchOption<ProductUnitItem>) {
-    const unit = option.kind === 'create'
-      ? await createProductUnit.mutateAsync({ unitCode: buildUnitCode(option.label), unitLabel: option.label.trim() })
-      : option.item;
-    const patch = { stockUnitId: unit.productUnitId, stockUnitQuery: unit.unitLabel, stockUnitLabel: unit.unitLabel };
-    if (lineId === quickLine.id) updateQuickLine(patch); else updateLine(lineId, patch);
-    setActiveStockUnitPopover('');
   }
   async function ensurePurchaseUnit(line: PurchaseDraftLine) {
     if (line.purchaseUnitId) return productUnits.data?.find((unit) => unit.productUnitId === line.purchaseUnitId) ?? null;
     const label = line.purchaseUnitQuery.trim();
-    if (!label) return null;
-    const existing = (productUnits.data ?? []).find((unit) => normalizeUnit(unit.unitLabel) === normalizeUnit(label) || normalizeUnit(unit.unitCode) === normalizeUnit(label));
-    if (existing) return existing;
-    if (!canCreateProductUnit) return null;
-    return createProductUnit.mutateAsync({ unitCode: buildUnitCode(label), unitLabel: label });
-  }
-  async function ensureStockUnit(line: PurchaseDraftLine) {
-    if (line.stockUnitId) return productUnits.data?.find((unit) => unit.productUnitId === line.stockUnitId) ?? null;
-    const label = line.stockUnitQuery.trim();
     if (!label) return null;
     const existing = (productUnits.data ?? []).find((unit) => normalizeUnit(unit.unitLabel) === normalizeUnit(label) || normalizeUnit(unit.unitCode) === normalizeUnit(label));
     if (existing) return existing;
@@ -536,7 +531,7 @@ function NewPurchaseForm({ draftKey }: { draftKey: string }) {
     if (canPayPurchase && form.paymentSource === 'CASH_REGISTER' && (amountPaidUsd > 0 || amountPaidCdf > 0) && !form.cashSessionId) return 'Session de caisse obligatoire.';
     if (quickLineHasInput && quickIssue.blocksSave) return `Ligne rapide: ${quickIssue.message}`;
     if (normalizedLines.length === 0) return 'Ajoutez au moins une ligne achat.';
-    const blocking = normalizedLines.map((line, index) => ({ issue: issueForLine(line), index })).find(({ issue }) => issue.blocksSave);
+    const blocking = normalizedLines.map((line, index) => ({ issue: issueForLine(line, articleById.get(line.articleId)), index })).find(({ issue }) => issue.blocksSave);
     return blocking ? `Ligne ${blocking.index + 1}: ${blocking.issue.message}` : '';
   }
   function validateAttachmentDraft() {
@@ -574,7 +569,7 @@ function NewPurchaseForm({ draftKey }: { draftKey: string }) {
         return;
       }
       const currentLine = draftLines.find((line) => line.id === lineId);
-      const currentIssue = currentLine ? (lineIssues.get(lineId) ?? issueForLine(currentLine)) : undefined;
+      const currentIssue = currentLine ? (lineIssues.get(lineId)) : undefined;
       if (currentIssue && !currentIssue.blocksSave) {
         addLine();
         return;
@@ -655,10 +650,10 @@ function NewPurchaseForm({ draftKey }: { draftKey: string }) {
               <col className="purchase-col-expiry" />
               <col className="purchase-col-actions" />
             </colgroup>
-            <thead><tr><th></th><th>Article</th><th>Unite achat</th><th>Qte achat</th><th>Facteur</th><th>Qte stock</th><th>PA</th><th>PV</th><th>Total</th><th>Lot</th><th>Expiration</th><th></th></tr></thead>
+            <thead><tr><th></th><th>Article</th><th>Unité achat</th><th>Qté achat</th><th title="Nombre d’unités de stock par unité d’achat">Facteur</th><th>Qté stock</th><th>PA</th><th>PV</th><th>Total</th><th>Lot</th><th>Expiration</th><th></th></tr></thead>
             <tbody>
-              {draftLines.map((line, rowIndex) => <PurchaseGridRow key={line.id} activeAutocomplete={activeAutocomplete} activeStockUnitPopover={activeStockUnitPopover} activeUnitPopover={activeUnitPopover} article={articleById.get(line.articleId)} currencyCode={form.currencyCode} handleGridKey={handleGridKey} issue={lineIssues.get(line.id) ?? issueForLine(line)} line={line} removeLine={removeLine} rowIndex={rowIndex} selectArticle={selectArticle} selectPurchaseUnit={selectPurchaseUnit} selectStockUnit={selectStockUnit} selected={selectedLineId === line.id} setActiveAutocomplete={setActiveAutocomplete} setActiveStockUnitPopover={setActiveStockUnitPopover} setActiveUnitPopover={setActiveUnitPopover} setSelectedLineId={setSelectedLineId} stockByArticle={stockByArticle} stockUnitSuggestions={stockUnitSuggestions(line)} suggestions={articleSuggestions(line)} unitSuggestions={unitSuggestions(line)} updateLine={(patch) => updateLine(line.id, patch)} />)}
-              <QuickEntryRow activeAutocomplete={activeAutocomplete} activeStockUnitPopover={activeStockUnitPopover} activeUnitPopover={activeUnitPopover} article={articleById.get(quickLine.articleId)} commitQuickLine={commitQuickLine} currencyCode={form.currencyCode} handleGridKey={handleGridKey} issue={quickIssue} line={quickLine} rowIndex={draftLines.length} selectArticle={selectArticle} selectPurchaseUnit={selectPurchaseUnit} selectStockUnit={selectStockUnit} setActiveAutocomplete={setActiveAutocomplete} setActiveStockUnitPopover={setActiveStockUnitPopover} setActiveUnitPopover={setActiveUnitPopover} setSelectedLineId={setSelectedLineId} stockByArticle={stockByArticle} stockUnitSuggestions={stockUnitSuggestions(quickLine)} suggestions={articleSuggestions(quickLine)} unitSuggestions={unitSuggestions(quickLine)} updateQuickLine={updateQuickLine} />
+              {draftLines.map((line, rowIndex) => <PurchaseGridRow key={line.id} activeAutocomplete={activeAutocomplete} activeUnitPopover={activeUnitPopover} article={articleById.get(line.articleId)} currencyCode={form.currencyCode} handleGridKey={handleGridKey} issue={lineIssues.get(line.id) ?? issueForLine(line, articleById.get(line.articleId))} line={line} removeLine={removeLine} rowIndex={rowIndex} selectArticle={selectArticle} selectPurchaseUnit={selectPurchaseUnit} selected={selectedLineId === line.id} setActiveAutocomplete={setActiveAutocomplete} setActiveUnitPopover={setActiveUnitPopover} setSelectedLineId={setSelectedLineId} stockByArticle={stockByArticle} stockUnitLabel={unitById.get(articleById.get(line.articleId)?.salesUnitId ?? '')?.unitLabel} suggestions={articleSuggestions(line)} unitSuggestions={unitSuggestions(line)} updateLine={(patch) => updateLine(line.id, patch)} />)}
+              <QuickEntryRow activeAutocomplete={activeAutocomplete} activeUnitPopover={activeUnitPopover} article={articleById.get(quickLine.articleId)} commitQuickLine={commitQuickLine} currencyCode={form.currencyCode} handleGridKey={handleGridKey} issue={quickIssue} line={quickLine} rowIndex={draftLines.length} selectArticle={selectArticle} selectPurchaseUnit={selectPurchaseUnit} setActiveAutocomplete={setActiveAutocomplete} setActiveUnitPopover={setActiveUnitPopover} setSelectedLineId={setSelectedLineId} stockByArticle={stockByArticle} stockUnitLabel={unitById.get(articleById.get(quickLine.articleId)?.salesUnitId ?? '')?.unitLabel} suggestions={articleSuggestions(quickLine)} unitSuggestions={unitSuggestions(quickLine)} updateQuickLine={updateQuickLine} />
             </tbody>
           </table>
         </div>
@@ -725,8 +720,10 @@ function TrashIcon() {
   return <svg aria-hidden="true" className="row-action-icon" focusable="false" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M9 10v8M15 10v8M6 6l1 14h10l1-14" /></svg>;
 }
 
-function PurchaseGridRow(props: { action?: ReactNode; activeAutocomplete: string; activeStockUnitPopover: string; activeUnitPopover: string; article?: Article; currencyCode: string; handleGridKey: (event: KeyboardEvent<HTMLElement>, row: number, col: number, lineId: string) => void; issue: LineIssue; line: PurchaseDraftLine; removeLine: (id: string) => void; rowIndex: number; selectArticle: (lineId: string, article: Article) => void; selectPurchaseUnit: (lineId: string, unit: SearchOption<ProductUnitItem>) => void | Promise<void>; selectStockUnit: (lineId: string, unit: SearchOption<ProductUnitItem>) => void | Promise<void>; selected: boolean; setActiveAutocomplete: (id: string) => void; setActiveStockUnitPopover: (id: string) => void; setActiveUnitPopover: (id: string) => void; setSelectedLineId: (id: string) => void; stockByArticle: Map<string, number>; stockUnitSuggestions: SearchOption<ProductUnitItem>[]; suggestions: Article[]; unitSuggestions: SearchOption<ProductUnitItem>[]; updateLine: (patch: Partial<PurchaseDraftLine>) => void }) {
-  const { action, activeAutocomplete, activeStockUnitPopover, activeUnitPopover, article, currencyCode, handleGridKey, issue, line, removeLine, rowIndex, selectArticle, selectPurchaseUnit, selectStockUnit, selected, setActiveAutocomplete, setActiveStockUnitPopover, setActiveUnitPopover, setSelectedLineId, stockByArticle, stockUnitSuggestions, suggestions, unitSuggestions, updateLine } = props;
+function PurchaseGridRow(props: { action?: ReactNode; activeAutocomplete: string; activeUnitPopover: string; article?: Article; currencyCode: string; handleGridKey: (event: KeyboardEvent<HTMLElement>, row: number, col: number, lineId: string) => void; issue: LineIssue; line: PurchaseDraftLine; removeLine: (id: string) => void; rowIndex: number; selectArticle: (lineId: string, article: Article) => void; selectPurchaseUnit: (lineId: string, unit: SearchOption<ProductUnitItem>) => void | Promise<void>; selected: boolean; setActiveAutocomplete: (id: string) => void; setActiveUnitPopover: (id: string) => void; setSelectedLineId: (id: string) => void; stockByArticle: Map<string, number>; stockUnitLabel?: string; suggestions: Article[]; unitSuggestions: SearchOption<ProductUnitItem>[]; updateLine: (patch: Partial<PurchaseDraftLine>) => void }) {
+  const { action, activeAutocomplete, activeUnitPopover, article, currencyCode, handleGridKey, issue, line, removeLine, rowIndex, selectArticle, selectPurchaseUnit, selected, setActiveAutocomplete, setActiveUnitPopover, setSelectedLineId, stockByArticle, stockUnitLabel, suggestions, unitSuggestions, updateLine } = props;
+  const stockUnitId = article?.salesUnitId ?? '';
+  const factorMatchesStockUnit = Boolean(stockUnitId && stockUnitId === line.stockUnitId);
   const isExpirationIssue = issue.level !== 'valid' && issue.message.toLowerCase().includes('expiration');
   return <Fragment><tr className={`erp-grid-row line-${issue.level} ${selected ? 'selected' : ''}`} onClick={() => setSelectedLineId(line.id)}>
     <td><span className={`line-indicator ${issue.level}`}></span></td>
@@ -739,7 +736,7 @@ function PurchaseGridRow(props: { action?: ReactNode; activeAutocomplete: string
         ]}
         dataGridCell={`${rowIndex}-1`}
         getKey={(option) => option.kind === 'create' ? `create-${option.label}` : option.item.productUnitId}
-        onChange={(value) => { setActiveUnitPopover(line.id); updateLine({ purchaseUnitQuery: value, purchaseUnitId: '' }); }}
+        onChange={(value) => { setActiveUnitPopover(line.id); updateLine({ purchaseUnitQuery: value, purchaseUnitId: '', conversionFactor: '' }); }}
         onClose={() => setActiveUnitPopover('')}
         onFallbackKeyDown={(event) => handleGridKey(event, rowIndex, 1, line.id)}
         onFocusNext={() => document.querySelector<HTMLElement>(`[data-grid-cell="${rowIndex}-2"]`)?.focus()}
@@ -753,29 +750,11 @@ function PurchaseGridRow(props: { action?: ReactNode; activeAutocomplete: string
       />
     </td>
     <td data-line-id={line.id} data-line-col="2"><input className="input compact-input numeric-cell" data-grid-cell={`${rowIndex}-2`} type="number" min="0.001" step="0.001" placeholder="Qte achat" value={line.quantity} onKeyDown={(event) => handleGridKey(event, rowIndex, 2, line.id)} onChange={(event) => updateLine({ quantity: event.target.value })} /></td>
-    <td data-line-id={line.id} data-line-col="3"><input className="input compact-input numeric-cell" data-grid-cell={`${rowIndex}-3`} type="number" min="0.0001" step="0.0001" placeholder="Facteur" value={line.conversionFactor} onKeyDown={(event) => handleGridKey(event, rowIndex, 3, line.id)} onChange={(event) => updateLine({ conversionFactor: event.target.value })} /></td>
+    <td data-line-id={line.id} data-line-col="3"><input className="input compact-input numeric-cell" data-grid-cell={`${rowIndex}-3`} type="number" min="0.0001" step="0.0001" placeholder="Facteur" value={factorMatchesStockUnit ? line.conversionFactor : ''} onKeyDown={(event) => handleGridKey(event, rowIndex, 3, line.id)} onChange={(event) => updateLine({ conversionFactor: event.target.value, stockUnitId })} /></td>
     <td className="unit-cell stock-unit-cell" data-line-id={line.id} data-line-col="8">
       <div className="purchase-stock-quantity-display">
-        <strong className="stock-qty-value">{lineStockQuantity(line)}</strong>
-        <FloatingSearchPopover
-          columns={[
-            { header: 'Code', render: (option) => option.kind === 'create' ? 'Nouveau' : option.item.unitCode },
-            { header: 'Unite stock', render: (option) => option.kind === 'create' ? `Creer "${option.label}"` : option.item.unitLabel },
-          ]}
-          dataGridCell={`${rowIndex}-8`}
-          getKey={(option) => option.kind === 'create' ? `create-stock-${option.label}` : option.item.productUnitId}
-          onChange={(value) => { setActiveStockUnitPopover(line.id); updateLine({ stockUnitQuery: value, stockUnitId: '', stockUnitLabel: '' }); }}
-          onClose={() => setActiveStockUnitPopover('')}
-          onFallbackKeyDown={(event) => handleGridKey(event, rowIndex, 8, line.id)}
-          onFocusNext={() => document.querySelector<HTMLElement>(`[data-grid-cell="${rowIndex}-4"]`)?.focus()}
-          onOpen={() => { setSelectedLineId(line.id); setActiveStockUnitPopover(line.id); }}
-          onSelect={(unit) => selectStockUnit(line.id, unit)}
-          open={activeStockUnitPopover === line.id}
-          placeholder="Unite stock"
-          searchPlaceholder="Rechercher unite stock..."
-          suggestions={stockUnitSuggestions}
-          value={line.stockUnitQuery}
-        />
+        <strong className="stock-qty-value">{factorMatchesStockUnit && Number(line.conversionFactor) > 0 ? stockQuantityFormat.format(lineStockQuantity(line)) : '—'}</strong>
+        {stockUnitLabel && <span title="Unité de stock et de vente définie dans la fiche article">{stockUnitLabel}</span>}
       </div>
     </td>
     <td data-line-id={line.id} data-line-col="4"><input className="input compact-input numeric-cell" data-grid-cell={`${rowIndex}-4`} type="number" min="0.01" step="0.01" placeholder="PA" value={line.purchaseUnitPrice} onKeyDown={(event) => handleGridKey(event, rowIndex, 4, line.id)} onChange={(event) => updateLine({ purchaseUnitPrice: event.target.value })} /></td>
@@ -859,7 +838,7 @@ function buildUnitOptions(units: ProductUnitItem[], query: string, canCreate: bo
   return exists ? options : [...options, { kind: 'create', label }];
 }
 
-function QuickEntryRow(props: { activeAutocomplete: string; activeStockUnitPopover: string; activeUnitPopover: string; article?: Article; commitQuickLine: () => void; currencyCode: string; handleGridKey: (event: KeyboardEvent<HTMLElement>, row: number, col: number, lineId: string) => void; issue: LineIssue; line: PurchaseDraftLine; rowIndex: number; selectArticle: (lineId: string, article: Article) => void; selectPurchaseUnit: (lineId: string, unit: SearchOption<ProductUnitItem>) => void | Promise<void>; selectStockUnit: (lineId: string, unit: SearchOption<ProductUnitItem>) => void | Promise<void>; setActiveAutocomplete: (id: string) => void; setActiveStockUnitPopover: (id: string) => void; setActiveUnitPopover: (id: string) => void; setSelectedLineId: (id: string) => void; stockByArticle: Map<string, number>; stockUnitSuggestions: SearchOption<ProductUnitItem>[]; suggestions: Article[]; unitSuggestions: SearchOption<ProductUnitItem>[]; updateQuickLine: (patch: Partial<PurchaseDraftLine>) => void }) {
-  const { activeAutocomplete, activeStockUnitPopover, activeUnitPopover, commitQuickLine, currencyCode, handleGridKey, issue, line, rowIndex, selectArticle, selectPurchaseUnit, selectStockUnit, setActiveAutocomplete, setActiveStockUnitPopover, setActiveUnitPopover, setSelectedLineId, stockByArticle, stockUnitSuggestions, suggestions, unitSuggestions, updateQuickLine } = props;
-  return <PurchaseGridRow action={<button aria-label="Ajouter la ligne" className="ghost-button compact-button row-action-button icon-only add" title="Ajouter la ligne" type="button" disabled={issue.blocksSave} onClick={commitQuickLine}><PlusIcon /></button>} activeAutocomplete={activeAutocomplete} activeStockUnitPopover={activeStockUnitPopover} activeUnitPopover={activeUnitPopover} article={props.article} currencyCode={currencyCode} handleGridKey={handleGridKey} issue={issue} line={line} removeLine={() => updateQuickLine(newLine())} rowIndex={rowIndex} selectArticle={selectArticle} selectPurchaseUnit={selectPurchaseUnit} selectStockUnit={selectStockUnit} selected={false} setActiveAutocomplete={setActiveAutocomplete} setActiveStockUnitPopover={setActiveStockUnitPopover} setActiveUnitPopover={setActiveUnitPopover} setSelectedLineId={setSelectedLineId} stockByArticle={stockByArticle} stockUnitSuggestions={stockUnitSuggestions} suggestions={suggestions} unitSuggestions={unitSuggestions} updateLine={updateQuickLine} />;
+function QuickEntryRow(props: { activeAutocomplete: string; activeUnitPopover: string; article?: Article; commitQuickLine: () => void; currencyCode: string; handleGridKey: (event: KeyboardEvent<HTMLElement>, row: number, col: number, lineId: string) => void; issue: LineIssue; line: PurchaseDraftLine; rowIndex: number; selectArticle: (lineId: string, article: Article) => void; selectPurchaseUnit: (lineId: string, unit: SearchOption<ProductUnitItem>) => void | Promise<void>; setActiveAutocomplete: (id: string) => void; setActiveUnitPopover: (id: string) => void; setSelectedLineId: (id: string) => void; stockByArticle: Map<string, number>; stockUnitLabel?: string; suggestions: Article[]; unitSuggestions: SearchOption<ProductUnitItem>[]; updateQuickLine: (patch: Partial<PurchaseDraftLine>) => void }) {
+  const { activeAutocomplete, activeUnitPopover, commitQuickLine, currencyCode, handleGridKey, issue, line, rowIndex, selectArticle, selectPurchaseUnit, setActiveAutocomplete, setActiveUnitPopover, setSelectedLineId, stockByArticle, stockUnitLabel, suggestions, unitSuggestions, updateQuickLine } = props;
+  return <PurchaseGridRow action={<button aria-label="Ajouter la ligne" className="ghost-button compact-button row-action-button icon-only add" title="Ajouter la ligne" type="button" disabled={issue.blocksSave} onClick={commitQuickLine}><PlusIcon /></button>} activeAutocomplete={activeAutocomplete} activeUnitPopover={activeUnitPopover} article={props.article} currencyCode={currencyCode} handleGridKey={handleGridKey} issue={issue} line={line} removeLine={() => updateQuickLine(newLine())} rowIndex={rowIndex} selectArticle={selectArticle} selectPurchaseUnit={selectPurchaseUnit} selected={false} setActiveAutocomplete={setActiveAutocomplete} setActiveUnitPopover={setActiveUnitPopover} setSelectedLineId={setSelectedLineId} stockByArticle={stockByArticle} stockUnitLabel={stockUnitLabel} suggestions={suggestions} unitSuggestions={unitSuggestions} updateLine={updateQuickLine} />;
 }

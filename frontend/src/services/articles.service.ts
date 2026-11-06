@@ -42,7 +42,7 @@ export const articlesService = {
     apiClient.get<PaginatedArticles>('/articles', { params }),
 
   getById: (id: string) =>
-    apiClient.get(`/articles/${id}`),
+    apiClient.get<Article>(`/articles/${id}`),
 
   create: (payload: Record<string, unknown>) =>
     apiClient.post<Article>('/articles', payload),

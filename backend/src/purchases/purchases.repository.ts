@@ -259,7 +259,6 @@ export class PurchasesRepository {
     const purchase = await this.findOne(user, purchaseId);
     if (!purchase) return null;
     if (purchase.status !== 'DRAFT') throw new Error('PURCHASE_NOT_DRAFT');
-    await this.assertArticle(user, dto.articleId);
     const purchaseCurrencyCode = purchase.currencyCode ?? 'USD';
     const purchaseQuantity = dto.purchaseQuantity ?? dto.quantity;
     const conversionFactor = dto.conversionFactor ?? 1;
@@ -293,7 +292,7 @@ export class PurchasesRepository {
         unitSnapshots.purchaseUnitLabel,
         purchaseQuantity,
         conversionFactor,
-        dto.stockUnitId ?? unitSnapshots.stockUnitId,
+        unitSnapshots.stockUnitId,
         unitSnapshots.stockUnitLabel,
         stockQuantity,
         purchaseCurrencyCode,
@@ -339,7 +338,7 @@ export class PurchasesRepository {
       if (!purchase) throw new Error('PURCHASE_NOT_FOUND');
       if (purchase.status !== 'DRAFT') throw new Error('PURCHASE_NOT_DRAFT');
 
-      const itemResult = await client.query<ItemRow>(
+      const itemResult = await client.query<ItemRow & { current_stock_unit_id: string | null }>(
         `
         SELECT pi.purchase_item_id, pi.tenant_id, pi.purchase_id, pi.article_id,
                l.lot_id,
@@ -347,17 +346,21 @@ export class PurchasesRepository {
                pi.expiry_date, pi.quantity, pi.purchase_unit_id, pi.purchase_unit_label_snapshot,
                pi.purchase_quantity, pi.conversion_factor, pi.stock_unit_id, pi.stock_unit_label_snapshot,
                pi.stock_quantity, pi.line_order, pi.unit_price_currency, pi.line_total_currency,
-               pi.purchase_unit_price, pi.selling_unit_price, pi.line_total
+               pi.purchase_unit_price, pi.selling_unit_price, pi.line_total, a.sales_unit_id AS current_stock_unit_id
         FROM purchase_items pi
         JOIN articles a ON a.article_id = pi.article_id AND a.tenant_id = pi.tenant_id
         LEFT JOIN lots l ON l.article_id = pi.article_id AND l.lot_number = pi.lot_number
         WHERE pi.tenant_id=$1 AND pi.purchase_id=$2
+        FOR SHARE OF a
         `,
         [user.tenantId, purchaseId],
       );
       if (!itemResult.rows.length) throw new Error('PURCHASE_HAS_NO_ITEMS');
 
       for (const item of itemResult.rows) {
+        if (item.stock_unit_id && item.stock_unit_id !== item.current_stock_unit_id) {
+          throw new Error('PURCHASE_STOCK_UNIT_MISMATCH');
+        }
         const quantity = Number(item.stock_quantity ?? item.quantity);
         if (quantity <= 0) throw new Error('INVALID_PURCHASE_QUANTITY');
         if (!item.lot_number?.trim()) throw new Error('INVALID_LOT_NUMBER');
@@ -588,14 +591,6 @@ export class PurchasesRepository {
     return result.rows[0].currency_id;
   }
 
-  private async assertArticle(user: AuthUser, articleId: string) {
-    const result = await this.db.query<{ total: string }>(
-      `SELECT COUNT(*)::int AS total FROM articles WHERE tenant_id=$1 AND article_id=$2 AND is_active=true`,
-      [user.tenantId, articleId],
-    );
-    if (Number(result.rows[0]?.total ?? 0) !== 1) throw new Error('ARTICLE_NOT_IN_TENANT');
-  }
-
   private async assertCashSession(user: AuthUser, siteId: string, cashSessionId: string) {
     const result = await this.db.query<{ total: string }>(
       `SELECT COUNT(*)::int AS total FROM cash_sessions WHERE tenant_id=$1 AND cash_session_id=$2 AND site_id=$3 AND status='OPEN'`,
@@ -628,25 +623,21 @@ export class PurchasesRepository {
   }
 
   private async resolveUnitSnapshots(user: AuthUser, articleId: string, purchaseUnitId?: string, stockUnitId?: string) {
-    const article = await this.db.query<{ sales_unit_id: string | null; packaging_unit_id: string | null; units_per_package: string | null; packaging: string | null }>(
-      `SELECT sales_unit_id, packaging_unit_id, units_per_package, packaging FROM articles WHERE tenant_id=$1 AND article_id=$2 LIMIT 1`,
+    const article = await this.db.query<{ sales_unit_id: string | null; packaging_unit_id: string | null; packaging: string | null }>(
+      `SELECT sales_unit_id, packaging_unit_id, packaging FROM articles WHERE tenant_id=$1 AND article_id=$2 AND is_active=true LIMIT 1`,
       [user.tenantId, articleId],
     );
     const current = article.rows[0];
-    const resolvedStockUnitId = stockUnitId ?? current?.sales_unit_id ?? null;
-    const purchaseLabel = purchaseUnitId ? await this.unitLabel(user, purchaseUnitId) : current?.packaging ?? await this.unitLabel(user, current?.packaging_unit_id ?? '');
-    if (purchaseUnitId && !purchaseLabel) throw new Error('PURCHASE_UNIT_NOT_IN_TENANT');
+    if (!current) throw new Error('ARTICLE_NOT_IN_TENANT');
+    const resolvedStockUnitId = current.sales_unit_id;
     if (!resolvedStockUnitId) throw new Error('STOCK_UNIT_REQUIRED');
+    if (stockUnitId && stockUnitId !== resolvedStockUnitId) throw new Error('PURCHASE_STOCK_UNIT_MISMATCH');
+    const purchaseLabel = purchaseUnitId ? await this.unitLabel(user, purchaseUnitId) : current.packaging ?? await this.unitLabel(user, current.packaging_unit_id ?? '');
+    if (purchaseUnitId && !purchaseLabel) throw new Error('PURCHASE_UNIT_NOT_IN_TENANT');
     const stockLabel = await this.unitLabel(user, resolvedStockUnitId);
     if (!stockLabel) throw new Error('STOCK_UNIT_NOT_IN_TENANT');
-    if (!current?.sales_unit_id && stockUnitId) {
-      await this.db.query(
-        `UPDATE articles SET sales_unit_id=$3, updated_at=CURRENT_TIMESTAMP WHERE tenant_id=$1 AND article_id=$2 AND sales_unit_id IS NULL`,
-        [user.tenantId, articleId, stockUnitId],
-      );
-    }
     return {
-      purchaseUnitLabel: purchaseLabel || current?.packaging || 'Unite',
+      purchaseUnitLabel: purchaseLabel || current.packaging || 'Unite',
       stockUnitId: resolvedStockUnitId,
       stockUnitLabel: stockLabel,
     };
