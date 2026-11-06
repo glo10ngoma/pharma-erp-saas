@@ -69,6 +69,17 @@ export class ArticleReferencesRepository {
     return this.toProductUnit(result.rows[0]);
   }
 
+  async updateProductUnit(user: AuthUser, id: string, dto: CreateProductUnitDto) {
+    const result = await this.db.query<ProductUnitRow>(
+      `UPDATE product_units
+       SET unit_code=$3, unit_label=$4, normalized_label=$5, updated_at=CURRENT_TIMESTAMP
+       WHERE tenant_id=$1 AND product_unit_id=$2
+       RETURNING product_unit_id, tenant_id, unit_code, unit_label, is_active`,
+      [user.tenantId, id, dto.unitCode.trim().toUpperCase(), dto.unitLabel.trim(), this.normalize(dto.unitLabel)],
+    );
+    return result.rows[0] ? this.toProductUnit(result.rows[0]) : null;
+  }
+
   async findAllDosages(user: AuthUser) {
     const result = await this.db.query<DosageRow>(
       `SELECT dosage_id, tenant_id, dosage_label, normalized_label, is_active

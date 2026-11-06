@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuthUser } from '../common/types/auth-user';
 import { ArticleReferencesRepository } from './article-references.repository';
 import { CreateActiveIngredientDto } from './dto/create-active-ingredient.dto';
@@ -15,7 +15,20 @@ export class ArticleReferencesService {
   }
 
   createProductUnit(user: AuthUser, dto: CreateProductUnitDto) {
-    return this.repository.createProductUnit(user, dto);
+    return this.repository.createProductUnit(user, dto).catch(this.handleUnitConflict);
+  }
+
+  async updateProductUnit(user: AuthUser, id: string, dto: CreateProductUnitDto) {
+    const unit = await this.repository.updateProductUnit(user, id, dto).catch(this.handleUnitConflict);
+    if (!unit) throw new NotFoundException('Unité de mesure introuvable.');
+    return unit;
+  }
+
+  private handleUnitConflict(error: unknown): never {
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === '23505') {
+      throw new ConflictException('Ce code ou ce libellé est déjà utilisé.');
+    }
+    throw error;
   }
 
   findAllDosages(user: AuthUser) {

@@ -1,7 +1,9 @@
+import { useAuth } from '../../auth/AuthContext';
 import { referenceService } from '../../services/reference.service';
 import { SimpleCodeNamePage } from './SimpleCodeNamePage';
 
 export function ProductUnitsPage() {
+  const { currentUser } = useAuth();
   return (
     <SimpleCodeNamePage
       title="Unités de mesure"
@@ -11,9 +13,10 @@ export function ProductUnitsPage() {
       codeField="unitCode"
       nameField="unitLabel"
       idField="productUnitId"
-      createPermission="product_units.create"
+      createPermission={currentUser?.role === 'SUPER_ADMIN' ? undefined : 'product_units.create'}
       getAll={referenceService.productUnits.getAll}
       create={referenceService.productUnits.create}
+      update={referenceService.productUnits.update}
     />
   );
 }

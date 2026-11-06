@@ -48,6 +48,7 @@ export const referenceService = {
   productUnits: {
     getAll: () => apiClient.get<ProductUnitItem[]>('/product-units'),
     create: (payload: Record<string, unknown>) => apiClient.post<ProductUnitItem>('/product-units', payload),
+    update: (id: string, payload: Record<string, unknown>) => apiClient.patch<ProductUnitItem>(`/product-units/${id}`, payload),
   },
   dosages: {
     getAll: () => apiClient.get<DosageItem[]>('/dosages'),

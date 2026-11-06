@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
@@ -26,6 +26,12 @@ export class ArticleReferencesController {
   @RequirePermission('product_units.create')
   createProductUnit(@CurrentUser() user: AuthUser, @Body() dto: CreateProductUnitDto) {
     return this.service.createProductUnit(user, dto);
+  }
+
+  @Patch('product-units/:id')
+  @RequirePermission('product_units.create')
+  updateProductUnit(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CreateProductUnitDto) {
+    return this.service.updateProductUnit(user, id, dto);
   }
 
   @Get('dosages')
