@@ -248,6 +248,7 @@ export function DashboardLayout() {
           {groups.map((group) => {
             const visibleLinks = group.links.filter(([to, , permission]) => {
               if (to === '/notifications') return canSeeNotifications;
+              if (to === '/product-units' && currentUser?.role === 'SUPER_ADMIN') return true;
               return !permission || permissions.includes(permission);
             });
             if (visibleLinks.length === 0) return null;
